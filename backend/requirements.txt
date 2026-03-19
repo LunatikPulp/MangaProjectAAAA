@@ -1,0 +1,16 @@
+fastapi>=0.116.1
+uvicorn>=0.35.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+Pillow>=10.0.0
+tqdm>=4.65.0
+playwright
+aiohttp>=3.12.0
+aiofiles>=24.1.0
+schedule>=1.2.0
+sqlalchemy>=2.0.0
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+cloudscraper>=1.2.71
