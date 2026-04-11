@@ -15,7 +15,7 @@ const FramedAvatar: React.FC<FramedAvatarProps> = ({ avatarUrl, username, size, 
   const [isGlitching, setIsGlitching] = useState(false);
   const frameImage = getFrameImage(frameKey);
   const src = avatarUrl && avatarUrl.startsWith('/') ? `${API_BASE}${avatarUrl}` : avatarUrl;
-  const frameSrc = frameImage && frameImage.startsWith('/') ? `${API_BASE}${frameImage}` : frameImage;
+  const frameSrc = frameImage && frameImage.startsWith('/Frames_shop/') ? frameImage : (frameImage && frameImage.startsWith('/') ? `${API_BASE}${frameImage}` : frameImage);
 
   const handleClick = () => {
     setIsGlitching(true);

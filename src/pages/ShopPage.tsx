@@ -878,7 +878,7 @@ const ShopPage: React.FC = () => {
                                             const active = owned && isItemActive(item);
                                             const canActivate = owned && ACTIVATABLE_CATEGORIES.includes(item.category);
                                             const isFree = item.price === 0;
-                                            const frameSrc = (item.preview.startsWith('/Frames_lvl/') || item.preview.startsWith('/Frames_shop/')) ? `${API_BASE}${item.preview}` : item.preview;
+                                            const frameSrc = item.preview.startsWith('/Frames_shop/') ? item.preview : (item.preview.startsWith('/Frames_lvl/') ? `${API_BASE}${item.preview}` : item.preview);
                                             return (
                                                 <div key={item.key} className={`group relative overflow-hidden rounded transition-all duration-200 hover:scale-[1.02] ${active ? 'ring-2 ring-green-500/60' : owned ? 'ring-1 ring-brand-accent/30' : 'ring-1 ring-white/5 hover:ring-white/15'}`}>
                                                     {/* Steam-style dark card */}
@@ -971,12 +971,14 @@ const ShopPage: React.FC = () => {
                                                 <div key={item.key} className={`border transition-all overflow-hidden ${rc.glow} ${active ? 'border-green-500/50' : owned ? 'border-brand-accent/30' : rc.border + ' hover:border-muted'}`}>
                                                     {/* Preview bar */}
                                                     <div className={`relative overflow-hidden bg-base/80 h-20 sm:h-28`} style={item.preview.startsWith('#') ? { background: `linear-gradient(135deg, ${item.preview}, ${item.preview}88, #0a0a0a)` } : {}}>
-                                                        {(item.preview.startsWith('/uploads/') || item.preview.startsWith('/Frames_lvl/') || item.preview.startsWith('/Frames_shop/')) ? (
+                                                        {(item.preview.startsWith('/uploads/') || item.preview.startsWith('/Frames_lvl/')) ? (
                                                             /\.(mp4|webm|ogg)$/i.test(item.preview) ? (
                                                                 <video src={`${API_BASE}${item.preview}`} muted loop autoPlay playsInline className="w-full h-full object-cover" />
                                                             ) : (
                                                                 <img src={`${API_BASE}${item.preview}`} alt="" className="w-full h-full object-cover" />
                                                             )
+                                                        ) : item.preview.startsWith('/Frames_shop/') ? (
+                                                            <img src={item.preview} alt="" className="w-full h-full object-cover" />
                                                         ) : !item.preview.startsWith('#') ? (
                                                             <div className="w-full h-full flex items-center justify-center text-4xl">{item.preview}</div>
                                                         ) : null}
@@ -1133,12 +1135,14 @@ const ShopPage: React.FC = () => {
                                                     className={`p-2 sm:p-3 border transition-all ${isLocked ? 'border-red-500/30 bg-red-500/5 opacity-60' : active ? 'border-green-500/30 bg-green-500/5' : owned ? 'border-brand-accent/30 bg-brand-accent/5' : 'border-overlay bg-base hover:border-muted hover:bg-surface-hover'}`}
                                                 >
                                                     <div className="flex flex-col items-center gap-2 mb-2 sm:mb-3">
-                                                        {(item.preview.startsWith('/uploads/') || item.preview.startsWith('/Frames_lvl/') || item.preview.startsWith('/Frames_shop/')) ? (
+                                                        {(item.preview.startsWith('/uploads/') || item.preview.startsWith('/Frames_lvl/')) ? (
                                                             /\.(mp4|webm|ogg)$/i.test(item.preview) ? (
                                                                 <video src={`${API_BASE}${item.preview}`} muted loop autoPlay playsInline className="w-14 h-14 sm:w-16 sm:h-16 object-cover border border-overlay shrink-0" />
                                                             ) : (
                                                                 <img src={`${API_BASE}${item.preview}`} alt="" className="w-14 h-14 sm:w-16 sm:h-16 object-cover border border-overlay shrink-0" />
                                                             )
+                                                        ) : item.preview.startsWith('/Frames_shop/') ? (
+                                                            <img src={item.preview} alt="" className="w-14 h-14 sm:w-16 sm:h-16 object-cover border border-overlay shrink-0" />
                                                         ) : (
                                                         <div className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center text-xl sm:text-2xl bg-surface border border-overlay shrink-0">
                                                             {item.preview.startsWith('#') ? (
@@ -1207,7 +1211,7 @@ const ShopPage: React.FC = () => {
                 <AnimatePresence>
                     {showConfirmModal && confirmItem && (() => {
                         const isFrame = confirmItem.category === 'frame';
-                        const frameSrc = isFrame && confirmItem.preview.startsWith('/') ? `${API_BASE}${confirmItem.preview}` : null;
+                        const frameSrc = isFrame && confirmItem.preview.startsWith('/Frames_shop/') ? confirmItem.preview : (isFrame && confirmItem.preview.startsWith('/') ? `${API_BASE}${confirmItem.preview}` : null);
                         const userAvatarSrc = avatarUrl ? (avatarUrl.startsWith('/') ? `${API_BASE}${avatarUrl}` : avatarUrl) : null;
                         const userBannerSrc = bannerUrl ? (bannerUrl.startsWith('/') ? `${API_BASE}${bannerUrl}` : bannerUrl) : null;
                         console.log('ShopPage modal - nicknameColor:', nicknameColor, 'nicknameFont:', nicknameFont, 'username:', user?.username || username);
@@ -1263,7 +1267,7 @@ const ShopPage: React.FC = () => {
                                                     </div>
                                                     {/* Frame — z-[2], scale-125 */}
                                                     <span className="inline-flex shrink-0 absolute top-0 left-0 z-[2] scale-125 select-none pointer-events-none">
-                                                        <img src={confirmItem.preview} alt="frame" style={{ width: '8rem', height: '8rem' }} />
+                                                        <img src={confirmItem.preview.startsWith('/Frames_shop/') ? confirmItem.preview : (confirmItem.preview.startsWith('/') ? `${API_BASE}${confirmItem.preview}` : confirmItem.preview)} alt="frame" style={{ width: '8rem', height: '8rem' }} />
                                                     </span>
                                                 </div>
                                                 <div className="flex-1 text-center sm:text-left min-w-0">
