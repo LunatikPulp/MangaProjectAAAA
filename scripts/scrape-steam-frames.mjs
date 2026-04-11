@@ -167,7 +167,8 @@ async function main() {
         for (const def of definitions) {
             const cid = def.community_item_data || {};
             const name = cid.item_title || cid.item_name || def.internal_description || `Frame ${def.defid}`;
-            const imageHash = cid.item_image_large || cid.item_image_small;
+            // item_image_small is APNG (animated), item_image_large is static
+            const imageHash = cid.item_image_small || cid.item_image_large;
 
             if (!imageHash) {
                 console.warn(`  No image for defid ${def.defid} (${name}), skipping`);

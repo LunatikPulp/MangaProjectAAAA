@@ -22,54 +22,54 @@ const FramedAvatar: React.FC<FramedAvatarProps> = ({ avatarUrl, username, size, 
     setTimeout(() => setIsGlitching(false), 300);
   };
 
-  const avatarElement = src
-    ? <img src={src} alt={username} className="w-full h-full rounded-full object-cover" />
-    : <Avatar name={username} size={frameImage ? Math.round(size * 0.7) : size} />;
-
-  // For small sizes use tighter ratio to avoid oversized container
-  const ratio = size <= 40 ? 0.78 : 0.7;
-  const containerSize = Math.round(size / ratio);
+  // Margin для рамки (чтобы scale-125 не обрезался)
+  const margin = frameImage ? size * 0.125 : 0;
 
   if (!frameImage) {
     return (
       <div
         className={`flex items-center justify-center cursor-pointer ${className || ''} ${isGlitching ? 'springtrap-glitch' : ''}`}
-        style={{ width: containerSize, height: containerSize }}
+        style={{ width: size, height: size }}
         onClick={handleClick}
       >
         {src
-          ? <img src={src} alt={username} style={{ width: size, height: size }} className="rounded-full object-cover" />
+          ? <img src={src} alt={username} style={{ width: size, height: size, borderRadius: 12 }} className="object-cover" />
           : <Avatar name={username} size={size} />
         }
       </div>
     );
   }
-  const avatarSize = size;
 
   return (
     <div
-      className={`relative shrink-0 cursor-pointer ${className || ''} ${isGlitching ? 'springtrap-glitch' : ''}`}
-      style={{ width: containerSize, height: containerSize }}
+      className={`relative flex shrink-0 cursor-pointer overflow-visible ${className || ''} ${isGlitching ? 'springtrap-glitch' : ''}`}
+      style={{ width: size + margin * 2, height: size + margin * 2, borderRadius: 12 }}
       onClick={handleClick}
     >
-      <div
-        className="rounded-full overflow-hidden absolute"
-        style={{
-          width: avatarSize,
-          height: avatarSize,
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-        }}
-      >
-        {avatarElement}
+      <div className="relative flex shrink-0" style={{ width: size, height: size, margin, borderRadius: 12 }}>
+        {/* Avatar — z-[1], rounded */}
+        {src ? (
+          <img
+            src={src}
+            alt={username}
+            className="z-[1] aspect-square size-full object-cover select-none"
+            style={{ borderRadius: 12 }}
+          />
+        ) : (
+          <div className="z-[1] aspect-square size-full flex items-center justify-center" style={{ borderRadius: 12, overflow: 'hidden' }}>
+            <Avatar name={username} size={size} />
+          </div>
+        )}
+        {/* Frame — z-[2], scale-125, absolute top-left */}
+        <span className="inline-flex shrink-0 absolute top-0 left-0 z-[2] scale-125 select-none pointer-events-none">
+          <img
+            src={frameSrc || ''}
+            alt="frame"
+            className="w-full h-full"
+            style={{ width: size, height: size }}
+          />
+        </span>
       </div>
-      <img
-        src={frameSrc || ''}
-        alt="frame"
-        className="absolute inset-0 w-full h-full pointer-events-none z-[5]"
-        style={{ objectFit: 'fill' }}
-      />
     </div>
   );
 };

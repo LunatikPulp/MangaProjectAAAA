@@ -5,13 +5,13 @@ import time
 
 root = os.path.dirname(os.path.abspath(__file__))
 
-print("🚀 Запуск Backend сервера...")
+print("Zapusk Backend servera...")
 backend = subprocess.Popen(
     [sys.executable, "server.py"],
     cwd=os.path.join(root, "backend")
 )
 
-print("🚀 Запуск Frontend сервера (Vite)...")
+print("Zapusk Frontend servera (Vite)...")
 # КЛЮЧЕВОЙ МОМЕНТ 1: Для Windows обязательно указываем npm.cmd
 npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
 
@@ -26,22 +26,22 @@ try:
     # Метод .wait() в Windows часто блокирует перехват Ctrl+C
     while True:
         time.sleep(1)
-        
+
         # Если вдруг один из серверов упадет сам (например, ошибка в коде),
         # скрипт это заметит и остановит второй сервер.
         if backend.poll() is not None or frontend.poll() is not None:
-            print("\n⚠️ Один из серверов неожиданно завершил работу.")
+            print("\nOdin iz serverov neozhidanno zavershil rabotu.")
             break
 
 except KeyboardInterrupt:
-    print("\n🛑 Получен сигнал остановки (Ctrl+C).")
+    print("\nPoluchен signal ostanovki (Ctrl+C).")
 
 finally:
     # Блок finally гарантирует, что процессы убьются в любом случае (даже при ошибке)
-    print("Закрываем процессы...")
+    print("Zakryvaem processy...")
     backend.terminate()
     frontend.terminate()
-    
+
     backend.wait()
     frontend.wait()
-    print("✅ Серверы успешно остановлены.")
+    print("Servery uspeshno ostanovleny.")

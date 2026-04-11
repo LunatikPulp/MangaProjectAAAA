@@ -96,17 +96,22 @@ const ShopModal: React.FC<ShopModalProps> = ({
 
     const filteredItems = useMemo(
         () => allItems
-            .filter(i => i.category === activeTab)
+            .filter(i => {
+                // Фильтруем по категории
+                if (i.category !== activeTab) return false;
+                // Исключаем рамки за уровни
+                if (activeTab === 'frame' && i.preview.includes('/Frames_lvl/')) return false;
+                return true;
+            })
             .sort((a, b) => {
-                if (activeTab === 'frame') {
-                    const aLvl = a.preview.startsWith('/Frames_lvl/');
-                    const bLvl = b.preview.startsWith('/Frames_lvl/');
-                    if (aLvl && !bLvl) return -1;
-                    if (!aLvl && bLvl) return 1;
-                }
+                // Сортируем по купленным (купленные наверх)
+                const aOwned = purchases.includes(a.key);
+                const bOwned = purchases.includes(b.key);
+                if (aOwned && !bOwned) return -1;
+                if (!aOwned && bOwned) return 1;
                 return 0;
             }),
-        [allItems, activeTab],
+        [allItems, activeTab, purchases],
     );
 
     const selectedItem = useMemo(
@@ -332,18 +337,18 @@ const ShopModal: React.FC<ShopModalProps> = ({
                                                 {/* Thumbnail */}
                                                 <div className={`${item.category === 'frame' ? 'w-[68px] h-[68px] md:w-[90px] md:h-[90px]' : thumbClass} flex items-center justify-center overflow-hidden relative ${item.category === 'frame' ? 'bg-gradient-to-b from-[#1a1a2e] to-[#0a0a15]' : 'bg-base/50'}`}>
                                                     {item.category === 'frame' && thumbSrc ? (
-                                                        /* Steam-style frame preview */
+                                                        /* Steam-style frame preview — 90% of container */
                                                         <>
-                                                            <svg className="absolute top-0.5 left-0.5 opacity-20" width="10" height="10" viewBox="0 0 64 62" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M5.68889 0H58.3111C61.44 0 64 2.56 64 5.68889V18.8444H0V5.68889C0 2.56 2.56 0 5.68889 0ZM17.23 12.73C17.82 12.73 18.3 12.25 18.3 11.66V6.83C18.3 6.24 17.82 5.76 17.23 5.76H7.99C7.4 5.76 6.92 6.24 6.92 6.83V11.66C6.92 12.25 7.4 12.73 7.99 12.73H17.23ZM5.69 61.87C2.56 61.87 0 59.31 0 56.18V22.4H64V56.18C64 59.31 61.44 61.87 58.31 61.87H5.69ZM26.52 29.92C24.77 28.94 23.33 29.79 23.33 31.79V48.56C23.33 50.57 24.77 51.41 26.52 50.44L41.17 42.3C43.27 41.13 43.27 39.22 41.17 38.05L26.52 29.92Z"/></svg>
-                                                            <div className="relative" style={{ width: 52, height: 52 }}>
-                                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#2a2a3e] to-[#1a1a2e] overflow-hidden flex items-center justify-center">
-                                                                        {activeChecks?.avatarUrl ? (
-                                                                            <img src={activeChecks.avatarUrl.startsWith('/') ? `${API_BASE}${activeChecks.avatarUrl}` : activeChecks.avatarUrl} alt="" className="w-full h-full object-cover" />
-                                                                        ) : (
+                                                            <div className="relative" style={{ width: '90%', height: '90%' }}>
+                                                                {/* Avatar 65% centered inside frame */}
+                                                                <div className="absolute overflow-hidden bg-gradient-to-br from-[#2a2a3e] to-[#1a1a2e]" style={{ width: '77%', height: '77%', top: '11.5%', left: '11.5%', borderRadius: '50%', zIndex: 1 }}>
+                                                                    {activeChecks?.avatarUrl ? (
+                                                                        <img src={activeChecks.avatarUrl.startsWith('/') ? `${API_BASE}${activeChecks.avatarUrl}` : activeChecks.avatarUrl} alt="" className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <div className="w-full h-full flex items-center justify-center">
                                                                             <span className="text-xs font-bold text-white/40">?</span>
-                                                                        )}
-                                                                    </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                                 <img src={thumbSrc} alt="" className="absolute inset-0 w-full h-full pointer-events-none z-10" style={{ objectFit: 'fill' }} loading="lazy" />
                                                             </div>

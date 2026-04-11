@@ -325,8 +325,8 @@ const Header: React.FC = () => {
 
               {user ? (
                 <div className="relative" ref={profileRef}>
-                  <button onClick={() => setProfileOpen(!isProfileOpen)} aria-label="Меню профиля" className="relative border-2 border-transparent hover:border-brand-accent rounded-full transition-colors p-0.5">
-                    <FramedAvatar avatarUrl={user.avatar_url} username={user.username} size={32} frameKey={user.avatar_frame} />
+                  <button onClick={() => setProfileOpen(!isProfileOpen)} aria-label="Меню профиля" className="relative">
+                    <FramedAvatar avatarUrl={user.avatar_url} username={user.username} size={32} frameKey={user.avatar_frame} className="border-2 border-transparent hover:border-brand-accent rounded-full transition-colors" />
                     {unreadMessages > 0 && (
                       <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-mono font-bold ring-2 ring-base z-10">
                         {unreadMessages > 99 ? '99+' : unreadMessages}

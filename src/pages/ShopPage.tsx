@@ -5,7 +5,7 @@ import { ToasterContext } from '../contexts/ToasterContext';
 import { AuthContext } from '../contexts/AuthContext';
 import { API_BASE } from '../services/externalApiService';
 
-interface ShopItem {
+export interface ShopItem {
     key: string;
     name: string;
     description: string;
@@ -15,7 +15,6 @@ interface ShopItem {
     rarity?: string;
     nickname_effect?: string;
     font_family?: string;
-    required_level?: number;
     locked?: boolean;
 }
 
@@ -69,8 +68,11 @@ const ScrapIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
 
 const ShopPage: React.FC = () => {
     const { showToaster } = useContext(ToasterContext);
-    const { refreshUser } = useContext(AuthContext);
-    const [activeCategory, setActiveCategory] = useState<ShopCategory>('avatar');
+    const { refreshUser, user } = useContext(AuthContext);
+    const [activeCategory, setActiveCategory] = useState<ShopCategory>(() => {
+        const saved = localStorage.getItem('shop_active_category');
+        return (saved as ShopCategory) || 'avatar';
+    });
     const [items, setItems] = useState<ShopItem[]>([]);
     const [myPurchases, setMyPurchases] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
@@ -97,6 +99,7 @@ const ShopPage: React.FC = () => {
     const [paymentProcessing, setPaymentProcessing] = useState<string | null>(null);
 
     const [selectedScrapPkg, setSelectedScrapPkg] = useState<ScrapPackage | null>(null);
+    const [username, setUsername] = useState('');
 
     // Purchase confirm modal
     const [confirmItem, setConfirmItem] = useState<ShopItem | null>(null);
@@ -120,6 +123,11 @@ const ShopPage: React.FC = () => {
             token ? fetch(`${API_BASE}/auth/profile-full`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()) : Promise.resolve(null),
             fetch(`${API_BASE}/payments/packages`).then(r => r.json()).catch(() => null),
         ]).then(([shopItems, purchases, profile, packages]) => {
+            console.log('ShopPage profile data:', profile);
+            console.log('nickname_color:', profile?.nickname_color);
+            console.log('nickname_font:', profile?.nickname_font);
+            console.log('user.nickname_color:', profile?.user?.nickname_color);
+            console.log('user.nickname_font:', profile?.user?.nickname_font);
             setItems(shopItems);
             setMyPurchases(purchases);
             if (profile?.gamification?.scrap != null) setScrap((profile.gamification.scrap || 0) + (profile.gamification.donated_scrap || 0));
@@ -132,6 +140,7 @@ const ShopPage: React.FC = () => {
             if (profile?.bio) setUserBio(profile.bio);
             if (profile?.nickname_color) { setNicknameColor(profile.nickname_color); setNickColorInput(profile.nickname_color); }
             if (profile?.nickname_font) { setNicknameFont(profile.nickname_font); setNickFontInput(profile.nickname_font); }
+            if (profile?.username) setUsername(profile.username);
             if (profile?.subscription_active) setSubscriptionActive(true);
             if (profile?.subscription_expires_at) setSubscriptionExpires(profile.subscription_expires_at);
             if (packages?.scrap_packages) setScrapPackages(packages.scrap_packages);
@@ -146,6 +155,11 @@ const ShopPage: React.FC = () => {
             if (res.ok) setPersRequests(await res.json());
         } catch { /* ignore */ }
     }, [token]);
+
+    const handleCategoryChange = (category: ShopCategory) => {
+        setActiveCategory(category);
+        localStorage.setItem('shop_active_category', category);
+    };
 
     useEffect(() => { fetchMyPersRequests(); }, [fetchMyPersRequests]);
 
@@ -170,16 +184,41 @@ const ShopPage: React.FC = () => {
         };
     }, [selectedScrapPkg]);
 
+    // Lock page scroll when purchase confirm modal is open
+    useEffect(() => {
+        if (!showConfirmModal) return;
+        const scrollY = window.scrollY;
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.overflow = 'hidden';
+        document.body.style.position = 'fixed';
+        document.body.style.top = `-${scrollY}px`;
+        document.body.style.left = '0';
+        document.body.style.right = '0';
+        return () => {
+            document.documentElement.style.overflow = '';
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            window.scrollTo(0, scrollY);
+        };
+    }, [showConfirmModal]);
+
     const filteredItems = items
-        .filter(i => i.category === activeCategory)
+        .filter(i => {
+            // Фильтруем по категории
+            if (i.category !== activeCategory) return false;
+            // Исключаем рамки за уровни (проверяем путь к файлу)
+            if (activeCategory === 'frame' && i.preview.includes('/Frames_lvl/')) return false;
+            return true;
+        })
         .sort((a, b) => {
-            if (activeCategory === 'frame') {
-                const aLvl = a.required_level || 0;
-                const bLvl = b.required_level || 0;
-                if (aLvl > 0 && bLvl === 0) return -1;
-                if (aLvl === 0 && bLvl > 0) return 1;
-                if (aLvl > 0 && bLvl > 0) return aLvl - bLvl;
-            }
+            // Сортируем по купленным (купленные наверх)
+            const aOwned = myPurchases.includes(a.key);
+            const bOwned = myPurchases.includes(b.key);
+            if (aOwned && !bOwned) return -1;
+            if (!aOwned && bOwned) return 1;
             return 0;
         });
 
@@ -257,6 +296,9 @@ const ShopPage: React.FC = () => {
                 else if (item.category === 'cover') setBannerUrl(item.preview);
                 else if (item.category === 'background') setBackgroundUrl(item.preview);
                 else if (item.category === 'status') setUserBio(item.name);
+
+                // Обновляем данные пользователя в AuthContext
+                await refreshUser();
             } else {
                 const err = await res.json().catch(() => ({}));
                 showToaster(err.detail || 'Ошибка применения');
@@ -455,7 +497,7 @@ const ShopPage: React.FC = () => {
                     {CATEGORIES.map(cat => (
                         <button
                             key={cat.key}
-                            onClick={() => setActiveCategory(cat.key)}
+                            onClick={() => handleCategoryChange(cat.key)}
                             className={`whitespace-nowrap px-3 py-2 font-mono text-xs border transition-all shrink-0 ${
                                 activeCategory === cat.key
                                     ? 'border-brand-accent bg-brand-accent/10 text-brand-accent'
@@ -477,7 +519,7 @@ const ShopPage: React.FC = () => {
                             {CATEGORIES.map(cat => (
                                 <button
                                     key={cat.key}
-                                    onClick={() => setActiveCategory(cat.key)}
+                                    onClick={() => handleCategoryChange(cat.key)}
                                     className={`w-full text-left px-3 py-2.5 font-mono text-sm transition-all border-l-2 ${
                                         activeCategory === cat.key
                                             ? 'border-brand-accent bg-brand-accent/10 text-brand-accent'
@@ -836,45 +878,33 @@ const ShopPage: React.FC = () => {
                                             const active = owned && isItemActive(item);
                                             const canActivate = owned && ACTIVATABLE_CATEGORIES.includes(item.category);
                                             const isFree = item.price === 0;
-                                            const isLevelFrame = (item.required_level || 0) > 0;
                                             const frameSrc = (item.preview.startsWith('/Frames_lvl/') || item.preview.startsWith('/Frames_shop/')) ? `${API_BASE}${item.preview}` : item.preview;
                                             return (
                                                 <div key={item.key} className={`group relative overflow-hidden rounded transition-all duration-200 hover:scale-[1.02] ${active ? 'ring-2 ring-green-500/60' : owned ? 'ring-1 ring-brand-accent/30' : 'ring-1 ring-white/5 hover:ring-white/15'}`}>
                                                     {/* Steam-style dark card */}
                                                     <div className="relative bg-gradient-to-b from-[#1a1a2e] to-[#0a0a15] aspect-square flex items-center justify-center overflow-hidden">
-                                                        {/* Filmstrip SVG icon */}
-                                                        <svg className="absolute top-1.5 left-1.5 opacity-20 group-hover:opacity-40 transition-opacity" width="16" height="16" viewBox="0 0 64 62" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                                                            <path fillRule="evenodd" clipRule="evenodd" d="M5.68889 0H58.3111C61.44 0 64 2.56 64 5.68889V18.8444H0V5.68889C0 2.56 2.56 0 5.68889 0ZM17.2302 12.7289C17.8183 12.7289 18.2969 12.2503 18.2969 11.6622V6.82667C18.2969 6.23858 17.8183 5.76 17.2302 5.76H7.98578C7.39769 5.76 6.91911 6.23858 6.91911 6.82667V11.6622C6.91911 12.2503 7.39769 12.7289 7.98578 12.7289H17.2302ZM36.6222 12.7289C37.2103 12.7289 37.6889 12.2503 37.6889 11.6622V6.82667C37.6889 6.23858 37.2103 5.76 36.6222 5.76H27.3778C26.7897 5.76 26.3111 6.23858 26.3111 6.82667V11.6622C26.3111 12.2503 26.7897 12.7289 27.3778 12.7289H36.6222ZM56.0142 12.7289C56.603 12.7289 57.0809 12.2503 57.0809 11.6622V6.82667C57.0809 6.23858 56.603 5.76 56.0142 5.76H46.7698C46.1824 5.76 45.7031 6.23858 45.7031 6.82667V11.6622C45.7031 12.2503 46.1824 12.7289 46.7698 12.7289H56.0142ZM5.68889 61.8667C2.56 61.8667 0 59.3067 0 56.1778V22.4H64V56.1778C64 59.3067 61.44 61.8667 58.3111 61.8667H5.68889ZM26.5202 29.9164C24.7673 28.9422 23.3323 29.7856 23.3323 31.7916V48.5639C23.3323 50.5714 24.7666 51.4133 26.5202 50.4391L41.1669 42.3033C43.2697 41.1342 43.2697 39.222 41.1669 38.053L26.5202 29.9164Z" />
-                                                        </svg>
-
-                                                        {/* Avatar + Frame preview */}
-                                                        <div className="relative w-[64px] h-[64px] sm:w-[80px] sm:h-[80px]">
-                                                            {/* Demo avatar */}
-                                                            <div className="absolute inset-0 flex items-center justify-center">
-                                                                <div className="w-[44px] h-[44px] sm:w-[56px] sm:h-[56px] rounded-full bg-gradient-to-br from-[#2a2a3e] to-[#1a1a2e] overflow-hidden flex items-center justify-center">
-                                                                    {avatarUrl ? (
-                                                                        <img src={avatarUrl.startsWith('/') ? `${API_BASE}${avatarUrl}` : avatarUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
-                                                                    ) : (
+                                                        {/* Avatar + Frame — remanga style */}
+                                                        <div className="relative flex shrink-0 overflow-visible" style={{ width: '75%', height: '75%', margin: '12.5%', borderRadius: 12 }}>
+                                                            {/* Avatar — z-[1] */}
+                                                            <div className="z-[1] aspect-square size-full bg-gradient-to-br from-[#2a2a3e] to-[#1a1a2e]" style={{ borderRadius: 12, overflow: 'hidden' }}>
+                                                                {avatarUrl ? (
+                                                                    <img src={avatarUrl.startsWith('/') ? `${API_BASE}${avatarUrl}` : avatarUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center">
                                                                         <span className="text-sm sm:text-base font-bold text-white/40">?</span>
-                                                                    )}
-                                                                </div>
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                            {/* Frame overlay */}
-                                                            <img
-                                                                src={frameSrc}
-                                                                alt=""
-                                                                className="absolute inset-0 w-full h-full pointer-events-none z-10"
-                                                                style={{ objectFit: 'fill' }}
-                                                                loading="lazy"
-                                                            />
-                                                        </div>
-
-                                                        {/* Level badge for level-unlock frames */}
-                                                        {isLevelFrame && (
-                                                            <span className="absolute top-1 right-1 text-[7px] sm:text-[8px] font-mono font-bold px-1 py-px bg-brand-accent/20 text-brand-accent border border-brand-accent/30 rounded-sm">
-                                                                LVL {item.required_level}
+                                                            {/* Frame overlay — z-[2], scale-125 */}
+                                                            <span className="inline-flex shrink-0 absolute top-0 left-0 z-[2] scale-125 select-none pointer-events-none">
+                                                                <img
+                                                                    src={frameSrc}
+                                                                    alt="frame"
+                                                                    className="w-full h-full"
+                                                                    loading="lazy"
+                                                                />
                                                             </span>
-                                                        )}
+                                                        </div>
 
                                                         {/* Active indicator */}
                                                         {active && (
@@ -1173,81 +1203,142 @@ const ShopPage: React.FC = () => {
             </div>
 
             {/* ═══ PURCHASE CONFIRMATION MODAL ═══ */}
-            <AnimatePresence>
-                {showConfirmModal && confirmItem && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={() => { setShowConfirmModal(false); setConfirmItem(null); }}
-                        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
-                    >
+            {createPortal(
+                <AnimatePresence>
+                    {showConfirmModal && confirmItem && (() => {
+                        const isFrame = confirmItem.category === 'frame';
+                        const frameSrc = isFrame && confirmItem.preview.startsWith('/') ? `${API_BASE}${confirmItem.preview}` : null;
+                        const userAvatarSrc = avatarUrl ? (avatarUrl.startsWith('/') ? `${API_BASE}${avatarUrl}` : avatarUrl) : null;
+                        const userBannerSrc = bannerUrl ? (bannerUrl.startsWith('/') ? `${API_BASE}${bannerUrl}` : bannerUrl) : null;
+                        console.log('ShopPage modal - nicknameColor:', nicknameColor, 'nicknameFont:', nicknameFont, 'username:', user?.username || username);
+                        return (
                         <motion.div
-                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                            animate={{ scale: 1, opacity: 1, y: 0 }}
-                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                            onClick={e => e.stopPropagation()}
-                            className="w-full max-w-sm bg-surface border border-overlay shadow-2xl"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => { setShowConfirmModal(false); setConfirmItem(null); }}
+                            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[99999] flex items-center justify-center p-4"
+                            style={{ overflow: 'hidden' }}
                         >
-                            {/* Header */}
-                            <div className="px-5 pt-5 pb-3 border-b border-overlay">
-                                <h3 className="text-sm font-mono font-bold text-text-primary tracking-wider">ПОДТВЕРЖДЕНИЕ ПОКУПКИ</h3>
-                            </div>
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                                onClick={e => e.stopPropagation()}
+                                className={`w-full bg-surface border border-overlay shadow-2xl overflow-hidden ${isFrame ? 'max-w-2xl' : 'max-w-sm'}`}
+                            >
+                                {/* Header */}
+                                <div className="px-5 pt-5 pb-3 border-b border-overlay">
+                                    <h3 className="text-sm font-mono font-bold text-text-primary tracking-wider">ПОДТВЕРЖДЕНИЕ ПОКУПКИ</h3>
+                                </div>
 
-                            {/* Item info */}
-                            <div className="px-5 py-4">
-                                <div className="flex items-center gap-4 mb-4">
-                                    <div className="w-14 h-14 flex items-center justify-center text-3xl bg-base border border-overlay shrink-0">
-                                        {confirmItem.preview.startsWith('#') ? (
-                                            <div className="w-8 h-8 rounded-full" style={{ backgroundColor: confirmItem.preview }} />
-                                        ) : confirmItem.preview.startsWith('/') ? (
-                                            <img src={`${API_BASE}${confirmItem.preview}`} alt="" className="w-full h-full object-cover" />
+                                {/* Frame preview — mini profile card */}
+                                {isFrame && frameSrc && (
+                                    <div className="relative overflow-hidden" style={{ height: 320 }}>
+                                        {/* Background: banner or skin gradient */}
+                                        {userBannerSrc ? (
+                                            <div className="absolute inset-0">
+                                                {userBannerSrc.endsWith('.mp4') || userBannerSrc.endsWith('.webm') ? (
+                                                    <video src={userBannerSrc} autoPlay loop muted playsInline className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <img src={userBannerSrc} alt="" className="w-full h-full object-cover" />
+                                                )}
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/10" />
+                                            </div>
                                         ) : (
-                                            confirmItem.preview
+                                            <div className="absolute inset-0 profile-surface-bg bg-gradient-to-b from-surface to-base" />
                                         )}
+                                        {/* Avatar + Frame + Username */}
+                                        <div className="relative z-10 px-4 sm:px-4 pt-24 sm:pt-32 pb-8 sm:pb-10">
+                                            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 sm:justify-start">
+                                                <div className="relative flex shrink-0 overflow-visible" style={{ width: '8rem', height: '8rem', margin: '1rem', borderRadius: 12 }}>
+                                                    {/* Avatar — z-[1] */}
+                                                    <div className="z-[1] aspect-square size-full bg-gradient-to-br from-[#2a2a3e] to-[#1a1a2e]" style={{ borderRadius: 12, overflow: 'hidden' }}>
+                                                        {userAvatarSrc ? (
+                                                            <img src={userAvatarSrc} alt="" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-white/40">?</div>
+                                                        )}
+                                                    </div>
+                                                    {/* Frame — z-[2], scale-125 */}
+                                                    <span className="inline-flex shrink-0 absolute top-0 left-0 z-[2] scale-125 select-none pointer-events-none">
+                                                        <img src={confirmItem.preview} alt="frame" style={{ width: '8rem', height: '8rem' }} />
+                                                    </span>
+                                                </div>
+                                                <div className="flex-1 text-center sm:text-left min-w-0">
+                                                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-display font-bold text-white drop-shadow-lg truncate"
+                                                        style={{
+                                                            color: nicknameColor || undefined,
+                                                            fontFamily: nicknameFont ? `'${nicknameFont}', monospace` : undefined
+                                                        }}>
+                                                        {user?.username || username || 'Username'}
+                                                    </h1>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-mono font-bold text-text-primary truncate">{confirmItem.name}</p>
-                                        <p className="text-[10px] font-mono text-muted mt-0.5">{confirmItem.description}</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center justify-between p-3 bg-base border border-overlay mb-4">
-                                    <span className="text-xs font-mono text-muted">Стоимость:</span>
-                                    <span className="text-sm font-mono font-bold text-yellow-400 inline-flex items-center gap-1">{confirmItem.price}<ScrapIcon className="w-4 h-4" /></span>
-                                </div>
-
-                                <div className="flex items-center justify-between p-3 bg-base border border-overlay">
-                                    <span className="text-xs font-mono text-muted">Ваш баланс:</span>
-                                    <span className={`text-sm font-mono font-bold inline-flex items-center gap-0.5 ${scrap >= confirmItem.price ? 'text-green-400' : 'text-red-400'}`}>{scrap}<ScrapIcon className="w-4 h-4" /></span>
-                                </div>
-
-                                {scrap < confirmItem.price && (
-                                    <p className="text-[10px] font-mono text-red-400 mt-2">Недостаточно Scrap для покупки</p>
                                 )}
-                            </div>
 
-                            {/* Buttons */}
-                            <div className="px-5 pb-5 flex gap-3">
-                                <button
-                                    onClick={() => { setShowConfirmModal(false); setConfirmItem(null); }}
-                                    className="flex-1 px-4 py-2.5 text-xs font-mono font-bold bg-base text-text-secondary border border-overlay hover:bg-surface-hover transition-all"
-                                >
-                                    ОТМЕНА
-                                </button>
-                                <button
-                                    onClick={handleConfirmPurchase}
-                                    disabled={scrap < confirmItem.price}
-                                    className="flex-1 px-4 py-2.5 text-xs font-mono font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/30 disabled:opacity-30 transition-all"
-                                >
-                                    КУПИТЬ
-                                </button>
-                            </div>
+                                {/* Item info (non-frame items keep original layout) */}
+                                <div className="px-5 py-4">
+                                    {!isFrame && (
+                                        <div className="flex items-center gap-4 mb-4">
+                                            <div className="w-14 h-14 flex items-center justify-center text-3xl bg-base border border-overlay shrink-0">
+                                                {confirmItem.preview.startsWith('#') ? (
+                                                    <div className="w-8 h-8 rounded-full" style={{ backgroundColor: confirmItem.preview }} />
+                                                ) : confirmItem.preview.startsWith('/') ? (
+                                                    <img src={`${API_BASE}${confirmItem.preview}`} alt="" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    confirmItem.preview
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-mono font-bold text-text-primary truncate">{confirmItem.name || confirmItem.description}</p>
+                                                <p className="text-[10px] font-mono text-muted mt-0.5">{confirmItem.description}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+
+                                    <div className="flex items-center justify-between p-3 bg-base border border-overlay mb-3">
+                                        <span className="text-xs font-mono text-muted">Стоимость:</span>
+                                        <span className="text-sm font-mono font-bold text-yellow-400 inline-flex items-center gap-1">{confirmItem.price} <ScrapIcon className="w-4 h-4" /></span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between p-3 bg-base border border-overlay">
+                                        <span className="text-xs font-mono text-muted">Ваш баланс:</span>
+                                        <span className={`text-sm font-mono font-bold inline-flex items-center gap-0.5 ${scrap >= confirmItem.price ? 'text-green-400' : 'text-red-400'}`}>{scrap} <ScrapIcon className="w-4 h-4" /></span>
+                                    </div>
+
+                                    {scrap < confirmItem.price && (
+                                        <p className="text-[10px] font-mono text-red-400 mt-2">Недостаточно Scrap для покупки</p>
+                                    )}
+                                </div>
+
+                                {/* Buttons */}
+                                <div className="px-5 pb-5 flex gap-3">
+                                    <button
+                                        onClick={() => { setShowConfirmModal(false); setConfirmItem(null); }}
+                                        className="flex-1 px-4 py-2.5 text-xs font-mono font-bold bg-base text-text-secondary border border-overlay hover:bg-surface-hover transition-all"
+                                    >
+                                        ОТМЕНА
+                                    </button>
+                                    <button
+                                        onClick={handleConfirmPurchase}
+                                        disabled={scrap < confirmItem.price}
+                                        className="flex-1 px-4 py-2.5 text-xs font-mono font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/30 disabled:opacity-30 transition-all"
+                                    >
+                                        КУПИТЬ
+                                    </button>
+                                </div>
+                            </motion.div>
                         </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                        );
+                    })()}
+                </AnimatePresence>,
+                document.body
+            )}
 
             {/* ═══ HOW TO GET SCRAP MODAL ═══ */}
             <AnimatePresence>

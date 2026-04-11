@@ -13,7 +13,7 @@ import ProfilePageSkeleton from '../components/skeletons/ProfilePageSkeleton';
 import { BookmarkStatus } from '../types';
 import { API_BASE } from '../services/externalApiService';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AVATAR_FRAMES } from '../config/avatarFrames';
+import { getFrameImage } from '../config/avatarFrames';
 import ShopModal from '../components/ShopModal';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -570,7 +570,7 @@ const ProfilePage: React.FC = () => {
     // Current frame (shop modal preview takes priority)
     const currentFrame = user?.avatar_frame || 'none';
     const activeFrame = previewFrameKey || (isEditOpen && editTab === 'appearance' ? previewFrame : currentFrame);
-    const frameImage = AVATAR_FRAMES[activeFrame]?.image || null;
+    const frameImage = getFrameImage(activeFrame);
 
     // Heatmap data
     const heatmap: Record<string, number> = profileData?.heatmap || {};
@@ -651,8 +651,15 @@ const ProfilePage: React.FC = () => {
         fetch(`${API_BASE}/shop/items`, { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.json())
             .then(data => {
-                setAllShopItems(data);
-                setShopSkins(data.filter((i: any) => i.category === 'skin'));
+                // Фильтруем рамки за уровни (по пути /Frames_lvl/)
+                const filteredData = data.filter((item: any) => {
+                    if (item.category === 'frame' && item.preview.includes('/Frames_lvl/')) {
+                        return false;
+                    }
+                    return true;
+                });
+                setAllShopItems(filteredData);
+                setShopSkins(filteredData.filter((i: any) => i.category === 'skin'));
             })
             .catch(() => {});
     }, [user?.id]);
@@ -1290,16 +1297,18 @@ const ProfilePage: React.FC = () => {
                     <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6">
 
                         {/* Avatar with frame + glitch */}
-                        <div className={`spring-avatar relative group shrink-0 overflow-visible cursor-pointer ${avatarGlitching ? 'springtrap-glitch' : ''}`} style={{ width: frameImage ? '10rem' : undefined, height: frameImage ? '10rem' : undefined }} onClick={handleAvatarClick}>
-                            <div className="rounded-full overflow-hidden border-4 border-surface transition-all duration-500" style={frameImage ? { position: 'absolute', top: '50%', left: '50%', width: '70%', height: '70%', transform: 'translate(-50%, -50%)' } : { width: '7rem', height: '7rem' }}>
-                                {avatarSrc ? (
-                                    <img src={avatarSrc} alt={user.username} className="w-full h-full object-cover" />
-                                ) : (
+                        <div className={`spring-avatar relative flex shrink-0 overflow-visible cursor-pointer ${avatarGlitching ? 'springtrap-glitch' : ''}`} style={{ width: frameImage ? '8rem' : '6rem', height: frameImage ? '8rem' : '6rem', margin: frameImage ? '1rem' : 0, borderRadius: 12 }} onClick={handleAvatarClick}>
+                            {avatarSrc ? (
+                                <img src={avatarSrc} alt={user.username} className="z-[1] aspect-square size-full object-cover select-none transition-all duration-500" style={{ borderRadius: 12 }} />
+                            ) : (
+                                <div className="z-[1] aspect-square size-full flex items-center justify-center transition-all duration-500" style={{ borderRadius: 12, overflow: 'hidden' }}>
                                     <Avatar name={user.avatar || user.username} size={144} />
-                                )}
-                            </div>
+                                </div>
+                            )}
                             {frameImage && (
-                                <img src={frameImage} alt="frame" className="absolute inset-0 w-full h-full pointer-events-none z-[5] transition-all duration-1000" style={{ objectFit: 'fill' }} />
+                                <span className="inline-flex shrink-0 absolute top-0 left-0 z-[2] scale-125 select-none pointer-events-none">
+                                    <img src={frameImage} alt="frame" style={{ width: '8rem', height: '8rem' }} />
+                                </span>
                             )}
                             {/* Online dot */}
                             <div className="absolute bottom-1 right-1 w-4 h-4 bg-brand-accent rounded-full border-2 border-surface z-10" />
