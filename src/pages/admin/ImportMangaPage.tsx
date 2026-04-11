@@ -5,6 +5,7 @@ import {
   massParseMangas,
   importCatalog,
   startChapterCrawler,
+  updateChapterCrawler,
   getCrawlerStatus,
 } from "../../services/externalApiService";
 import { MangaContext } from "../../contexts/MangaContext";
@@ -140,6 +141,17 @@ const ImportMangaPage: React.FC = () => {
     }
   };
 
+  const handleUpdateChapters = async () => {
+    try {
+      await updateChapterCrawler();
+      const status = await getCrawlerStatus();
+      setCrawlerStatus(status);
+      startPolling();
+    } catch (err: any) {
+      setCatalogError(err.message || "Ошибка обновления глав");
+    }
+  };
+
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Импорт манги</h1>
@@ -164,6 +176,13 @@ const ImportMangaPage: React.FC = () => {
             className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700 disabled:bg-overlay"
           >
             {crawlerStatus?.running ? "Краулер работает..." : "Загрузить главы"}
+          </button>
+          <button
+            onClick={handleUpdateChapters}
+            disabled={crawlerStatus?.running}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:bg-overlay"
+          >
+            {crawlerStatus?.running ? "Обновление..." : "Обновить главы"}
           </button>
         </div>
 

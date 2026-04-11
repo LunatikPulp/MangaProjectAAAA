@@ -11,6 +11,7 @@ interface AuthContextType {
   logout: () => void;
   register: (username: string, email: string, pass: string) => Promise<void>;
   updateUser: (userData: Partial<User>) => void | Promise<void>;
+  refreshUser: () => Promise<void>;
   deleteAccount: () => void;
   subscribeToManga: (mangaId: string) => void;
   unsubscribeFromManga: (mangaId: string) => void;
@@ -27,6 +28,7 @@ export const AuthContext = createContext<AuthContextType>({
   logout: () => {},
   register: async () => {},
   updateUser: () => {},
+  refreshUser: async () => {},
   deleteAccount: () => {},
   subscribeToManga: () => {},
   unsubscribeFromManga: () => {},
@@ -64,6 +66,7 @@ async function fetchMe(token: string): Promise<User | null> {
       subscribedMangaIds: [],
       bio: data.bio || '',
       profile_banner_url: data.profile_banner_url || '',
+      profile_background_url: data.profile_background_url || '',
       profile_theme: data.profile_theme || 'base',
       avatar_frame: data.avatar_frame || 'none',
       badge_ids: data.badge_ids || '[]',
@@ -146,6 +149,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     const newUser = { ...user, ...userData };
     updateUserState(newUser);
+  };
+
+  const refreshUser = async () => {
+    const token = localStorage.getItem('backend_token');
+    if (!token) return;
+    const backendUser = await fetchMe(token);
+    if (backendUser) {
+      if (user) {
+        backendUser.subscribedMangaIds = user.subscribedMangaIds || [];
+      }
+      updateUserState(backendUser);
+    }
   };
 
   const login = async (email: string, pass: string): Promise<void> => {
@@ -268,7 +283,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register, updateUser, deleteAccount, subscribeToManga, unsubscribeFromManga, authModal, openAuthModal, closeAuthModal, setAuthModalView }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, register, updateUser, refreshUser, deleteAccount, subscribeToManga, unsubscribeFromManga, authModal, openAuthModal, closeAuthModal, setAuthModalView }}>
       {children}
     </AuthContext.Provider>
   );

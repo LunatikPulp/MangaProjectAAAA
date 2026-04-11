@@ -312,9 +312,22 @@ const MessagesPage: React.FC = () => {
                      }}>
 
                     {/* Header */}
-                    <div className="px-4 py-4 relative z-10"
+                    <div className="px-4 py-3 relative z-10"
                          style={{ borderBottom: '1px solid #3D2B1F' }}>
                         <div className="flex items-center gap-2">
+                            {isMobile && (
+                                <button
+                                    onClick={() => navigate('/')}
+                                    className="shrink-0 w-8 h-8 flex items-center justify-center font-mono font-bold transition-colors mr-1"
+                                    style={{
+                                        color: '#A9FF00',
+                                        background: 'rgba(169,255,0,0.05)',
+                                        border: '1px solid #3D2B1F',
+                                    }}
+                                >
+                                    ◂
+                                </button>
+                            )}
                             <div className="w-1.5 h-1.5 animate-pulse"
                                  style={{
                                      background: '#A9FF00',
@@ -426,7 +439,7 @@ const MessagesPage: React.FC = () => {
                 {/* ═══════════════════════════════════════
                     RIGHT PANEL — Messages (70%)
                    ═══════════════════════════════════════ */}
-                <div className="flex-1 flex flex-col min-w-0 relative"
+                <div className="flex-1 flex flex-col min-w-0 relative overflow-hidden"
                      style={{
                          background: '#121212',
                          display: isMobile && !userId ? 'none' : 'flex',
@@ -482,7 +495,7 @@ const MessagesPage: React.FC = () => {
                             </div>
 
                             {/* ── Messages area ── */}
-                            <div className={`flex-1 overflow-y-auto ${isMobile ? 'px-3' : 'px-5'} py-4 space-y-1 rust-scrollbar`}>
+                            <div className={`flex-1 overflow-y-auto min-h-0 ${isMobile ? 'px-3' : 'px-5'} py-4 space-y-1 rust-scrollbar`}>
                                 {messages.length === 0 && (
                                     <div className="flex items-center justify-center h-full">
                                         <div className="text-center font-mono">

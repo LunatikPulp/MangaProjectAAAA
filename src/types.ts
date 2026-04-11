@@ -106,12 +106,14 @@ export interface User {
   subscribedMangaIds?: string[];
   bio?: string;
   profile_banner_url?: string;
+  profile_background_url?: string;
   profile_theme?: string;
   avatar_frame?: string;
   badge_ids?: string;
   showcase_manga_ids?: string;
   xp?: number;
   level?: number;
+  sound_enabled?: boolean;
 }
 
 export interface Comment {

@@ -89,7 +89,7 @@ const ManageMangaPage: React.FC<ManageMangaPageProps> = ({ manga }) => {
     };
 
     const handleUpdateChapterContent = (chapterId: string, newContent: Page[]) => {
-        updateChapterContent(manga.id, chapterId, newContent);
+        updateChapterContent(manga.id, chapterId, newContent.map(p => p.url || '').filter(Boolean));
         showToaster(`Содержимое главы ${editingContentChapter?.chapterNumber} обновлено!`);
         setEditingContentChapter(null);
     };

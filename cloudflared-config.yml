@@ -1,0 +1,15 @@
+tunnel: manga-project
+credentials-file: C:\Users\basov\.cloudflared\manga-project.json
+
+ingress:
+  # API запросы идут на бэкенд
+  - hostname: "*"
+    path: /api/*
+    service: http://localhost:8000
+
+  # Все остальное идет на фронтенд
+  - hostname: "*"
+    service: http://localhost:5173
+
+  # Обязательное правило по умолчанию
+  - service: http_status:404

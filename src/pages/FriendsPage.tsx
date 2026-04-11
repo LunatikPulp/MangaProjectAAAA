@@ -151,7 +151,7 @@ const FriendsPage: React.FC = () => {
                             value={friendSearch}
                             onChange={e => setFriendSearch(e.target.value)}
                             placeholder="Поиск среди друзей..."
-                            className="w-full bg-base border border-overlay px-3 py-2.5 text-sm text-text-primary font-mono placeholder:text-muted/50 focus:outline-none focus:border-brand-accent/50 transition-colors mb-4"
+                            className="w-full bg-base border border-overlay px-3 py-2.5 text-base sm:text-sm text-text-primary font-mono placeholder:text-muted/50 focus:outline-none focus:border-brand-accent/50 transition-colors mb-4"
                         />
 
                         {filteredFriends.length > 0 ? (
@@ -217,7 +217,7 @@ const FriendsPage: React.FC = () => {
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                             placeholder="Введите имя пользователя..."
-                            className="w-full bg-base border border-overlay px-3 py-2.5 text-sm text-text-primary font-mono placeholder:text-muted/50 focus:outline-none focus:border-brand-accent/50 transition-colors mb-4"
+                            className="w-full bg-base border border-overlay px-3 py-2.5 text-base sm:text-sm text-text-primary font-mono placeholder:text-muted/50 focus:outline-none focus:border-brand-accent/50 transition-colors mb-4"
                             autoFocus
                         />
 

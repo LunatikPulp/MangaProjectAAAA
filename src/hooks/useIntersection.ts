@@ -1,7 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react';
 
-type IntersectionObserverCallback = (entry: IntersectionObserverEntry) => void;
-
 export const useIntersection = (
   onIntersect: () => void,
   options?: IntersectionObserverInit

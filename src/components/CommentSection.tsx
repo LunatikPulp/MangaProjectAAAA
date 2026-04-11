@@ -173,6 +173,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ mangaId, chapterId }) =
         setComments(prev => [added, ...prev]);
         setNewComment('');
         showToaster('Комментарий добавлен!');
+        if (added.scrap_earned > 0) showToaster(`+${added.scrap_earned} за комментарий!`);
       } else {
         showToaster('Ошибка при добавлении комментария');
       }
@@ -196,6 +197,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ mangaId, chapterId }) =
       });
       if (res.ok) {
         const newReply = await res.json();
+        if (newReply.scrap_earned > 0) showToaster(`+${newReply.scrap_earned} за комментарий!`);
         const addReplyToTree = (list: Comment[]): Comment[] =>
           list.map(c => {
             if (c.id === commentId) {

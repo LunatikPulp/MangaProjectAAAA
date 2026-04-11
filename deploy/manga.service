@@ -1,0 +1,23 @@
+[Unit]
+Description=Manga Web App (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=manga
+Group=manga
+WorkingDirectory=/opt/manga/backend
+EnvironmentFile=/opt/manga/backend/.env
+ExecStart=/opt/manga/backend/venv/bin/uvicorn server:app --host 127.0.0.1 --port 8000 --workers 2
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/manga/backend
+
+[Install]
+WantedBy=multi-user.target

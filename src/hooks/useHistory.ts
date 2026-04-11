@@ -101,6 +101,10 @@ export const useHistory = () => {
                     method: 'POST',
                     headers,
                     body: JSON.stringify({ manga_id: mangaId, chapter_id: chapterId }),
+                }).then(r => r.ok ? r.json() : null).then(data => {
+                    if (data?.scrap_earned > 0) {
+                        window.dispatchEvent(new CustomEvent('scrap-earned', { detail: { amount: data.scrap_earned, reason: 'чтение глав' } }));
+                    }
                 }).catch(err => console.error('Failed to sync history item:', err));
             }
         }

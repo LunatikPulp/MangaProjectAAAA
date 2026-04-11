@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Date, Text, UniqueConstraint, Float
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -25,6 +25,7 @@ class User(Base):
     google_id = Column(String, default="")
     bio = Column(Text, default="")
     profile_banner_url = Column(String, default="")
+    profile_background_url = Column(String, default="")
     profile_theme = Column(String, default="base")
     avatar_frame = Column(String, default="none")
     badge_ids = Column(Text, default="[]")
@@ -32,6 +33,17 @@ class User(Base):
     xp = Column(Integer, default=0)
     level = Column(Integer, default=1)
     last_seen = Column(DateTime, default=None, nullable=True)
+    scrap = Column(Integer, default=0)
+    donated_scrap = Column(Integer, default=0)
+    active_title = Column(String, default="")
+    sound_enabled = Column(Boolean, default=False)
+    nickname_color = Column(String, default="")  # HEX color for mythic nickname
+    nickname_font = Column(String, default="")  # Google Font for mythic nickname
+    last_scrap_daily = Column(Date, default=None, nullable=True)
+    scrap_comments_today = Column(Integer, default=0)
+    scrap_comments_date = Column(Date, default=None, nullable=True)
+    subscription_type = Column(String, default="")  # "" or "springpro"
+    subscription_expires_at = Column(DateTime, nullable=True)
 
     likes = relationship("ChapterLike", back_populates="user")
     views = relationship("ChapterView", back_populates="user")
@@ -246,7 +258,8 @@ class MangaItem(Base):
     additional_info = Column(Text, default="{}")  # JSON-строка
     chapters = Column(Text, default="[]")  # JSON-строка со списком глав
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+    updated_at = Column(DateTime, default=datetime.utcnow)  # Обновляется при добавлении новых глав
+
     # Данные с mangabuff для сортировки
     mangabuff_rating = Column(String, default="0")  # Рейтинг с mangabuff (например "9.1")
     mangabuff_views = Column(Integer, default=0)  # Просмотры с mangabuff
@@ -271,7 +284,7 @@ class UserCard(Base):
 
 class UserNotification(Base):
     __tablename__ = "user_notifications"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     message = Column(Text, nullable=False)
@@ -279,3 +292,67 @@ class UserNotification(Base):
     category = Column(String, default="social")  # updates, social, important
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ShopItem(Base):
+    __tablename__ = "shop_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, default="")
+    category = Column(String, default="sticker")  # avatar, frame, cover, background, sticker, status, skin, personalization, springpro
+    price = Column(Integer, default=0)
+    preview = Column(String, default="")  # preview image or color code
+    rarity = Column(String, default="common")  # common, rare, epic, mythic
+    css_variables = Column(Text, default="{}")  # JSON with CSS variables
+    block_style = Column(String, default="none")  # none, neon-border, rusted-metal-bg, glassmorphism
+    nickname_effect = Column(String, default="none")  # none, gradient-pulse, toxic-glitch, custom-color
+    font_family = Column(String, default="")  # Google Font for mythic skins
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)  # NULL = global, set = personal item
+    required_level = Column(Integer, default=0)  # Level requirement for frames
+
+
+class UserPurchase(Base):
+    __tablename__ = "user_purchases"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    item_key = Column(String, nullable=False, index=True)
+    purchased_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    __table_args__ = (UniqueConstraint('user_id', 'item_key', name='unique_user_purchase'),)
+
+
+class PersonalizationRequest(Base):
+    __tablename__ = "personalization_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    type = Column(String, nullable=False)  # avatar, cover, video_cover, status
+    file_url = Column(String, default="")
+    text_value = Column(String, default="")  # for status type
+    status = Column(String, default="pending")  # pending, approved, rejected
+    price = Column(Integer, default=2000)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    reviewed_at = Column(DateTime, nullable=True)
+
+    user = relationship("User")
+
+
+class PaymentTransaction(Base):
+    __tablename__ = "payment_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    payment_id = Column(String, unique=True)
+    type = Column(String)  # "scrap" | "springpro"
+    amount_rub = Column(Float)
+    scrap_amount = Column(Integer, default=0)
+    package_id = Column(String, nullable=True)
+    status = Column(String, default="pending")  # pending/completed/failed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    user = relationship("User")

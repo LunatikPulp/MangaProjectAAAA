@@ -1,4 +1,4 @@
-import React, { createContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 interface ToasterContextType {
@@ -21,6 +21,16 @@ export const ToasterProvider: React.FC<{ children: ReactNode }> = ({ children })
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, 3000);
   }, []);
+
+  // Global scrap-earned event listener
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { amount, reason } = (e as CustomEvent).detail;
+      showToaster(`+${amount} за ${reason}!`);
+    };
+    window.addEventListener('scrap-earned', handler);
+    return () => window.removeEventListener('scrap-earned', handler);
+  }, [showToaster]);
 
   return (
     <ToasterContext.Provider value={{ showToaster }}>

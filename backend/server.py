@@ -31,7 +31,7 @@ from datetime import timedelta, datetime
 
 # Local imports
 from database import engine, SessionLocal, Base, get_db, DB_PATH
-from models import User, ChapterView, ChapterLike, ChapterMeta, MangaItem, MangaView, MangaRating, MangaBookmark, ReadingHistory, Chapter, WallComment, MangaComment, CommentLike, Friendship, UserBlock, DirectMessage, WallCommentReply, UserNotification
+from models import User, ChapterView, ChapterLike, ChapterMeta, MangaItem, MangaView, MangaRating, MangaBookmark, ReadingHistory, Chapter, WallComment, MangaComment, CommentLike, Friendship, UserBlock, DirectMessage, WallCommentReply, UserNotification, ShopItem, UserPurchase, PersonalizationRequest, PaymentTransaction
 import auth
 from auth import get_current_user, get_optional_user, get_password_hash, verify_password, create_access_token
 
@@ -201,9 +201,304 @@ def fix_chapter_ids_and_titles():
 fix_chapter_ids_and_titles()
 
 
+# Миграция: новые колонки для геймификации (scrap, active_title, sound_enabled)
+def migrate_gamification_columns():
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(users)")
+    columns = {row[1] for row in cursor.fetchall()}
+    new_cols = {
+        "scrap": "INTEGER DEFAULT 0",
+        "active_title": "TEXT DEFAULT ''",
+        "sound_enabled": "INTEGER DEFAULT 0",
+    }
+    for col_name, col_type in new_cols.items():
+        if col_name not in columns:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+            print(f"[MIGRATION] Добавлена колонка {col_name} в users")
+    conn.commit()
+    conn.close()
+
+migrate_gamification_columns()
+
+
+# Миграция: колонки для заработка scrap
+def migrate_scrap_earning_columns():
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(users)")
+    columns = {row[1] for row in cursor.fetchall()}
+    new_cols = {
+        "last_scrap_daily": "DATE DEFAULT NULL",
+        "scrap_comments_today": "INTEGER DEFAULT 0",
+        "scrap_comments_date": "DATE DEFAULT NULL",
+    }
+    for col_name, col_type in new_cols.items():
+        if col_name not in columns:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+            print(f"[MIGRATION] Добавлена колонка {col_name} в users")
+    conn.commit()
+    conn.close()
+
+migrate_scrap_earning_columns()
+
+
+# Миграция: новые колонки для скинов (ShopItem + User)
+def migrate_skin_columns():
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    # ShopItem columns
+    cursor.execute("PRAGMA table_info(shop_items)")
+    shop_cols = {row[1] for row in cursor.fetchall()}
+    new_shop_cols = {
+        "rarity": "TEXT DEFAULT 'common'",
+        "css_variables": "TEXT DEFAULT '{}'",
+        "block_style": "TEXT DEFAULT 'none'",
+        "nickname_effect": "TEXT DEFAULT 'none'",
+        "font_family": "TEXT DEFAULT ''",
+        "owner_id": "INTEGER",
+    }
+    for col_name, col_type in new_shop_cols.items():
+        if col_name not in shop_cols:
+            cursor.execute(f"ALTER TABLE shop_items ADD COLUMN {col_name} {col_type}")
+            print(f"[MIGRATION] Добавлена колонка {col_name} в shop_items")
+    # User columns
+    cursor.execute("PRAGMA table_info(users)")
+    user_cols = {row[1] for row in cursor.fetchall()}
+    new_user_cols = {
+        "nickname_color": "TEXT DEFAULT ''",
+        "nickname_font": "TEXT DEFAULT ''",
+    }
+    for col_name, col_type in new_user_cols.items():
+        if col_name not in user_cols:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+            print(f"[MIGRATION] Добавлена колонка {col_name} в users")
+    conn.commit()
+    conn.close()
+
+migrate_skin_columns()
+
+
+def migrate_subscription_columns():
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(users)")
+    user_cols = {row[1] for row in cursor.fetchall()}
+    new_cols = {
+        "subscription_type": "TEXT DEFAULT ''",
+        "subscription_expires_at": "DATETIME DEFAULT NULL",
+    }
+    for col_name, col_type in new_cols.items():
+        if col_name not in user_cols:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+            print(f"[MIGRATION] Добавлена колонка {col_name} в users")
+    conn.commit()
+    conn.close()
+
+migrate_subscription_columns()
+
+
+def migrate_donated_scrap_column():
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(users)")
+    user_cols = {row[1] for row in cursor.fetchall()}
+    if "donated_scrap" not in user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN donated_scrap INTEGER DEFAULT 0")
+        print("[MIGRATION] Добавлена колонка donated_scrap в users")
+    conn.commit()
+    conn.close()
+
+migrate_donated_scrap_column()
+
+def migrate_payment_package_id_column():
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    # Check if table exists first
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='payment_transactions'")
+    if not cursor.fetchone():
+        conn.close()
+        return
+    cursor.execute("PRAGMA table_info(payment_transactions)")
+    cols = {row[1] for row in cursor.fetchall()}
+    if "package_id" not in cols:
+        cursor.execute("ALTER TABLE payment_transactions ADD COLUMN package_id TEXT DEFAULT NULL")
+        print("[MIGRATION] Добавлена колонка package_id в payment_transactions")
+    conn.commit()
+    conn.close()
+
+migrate_payment_package_id_column()
+
+def migrate_profile_background_url_column():
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(users)")
+    user_cols = {row[1] for row in cursor.fetchall()}
+    if "profile_background_url" not in user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN profile_background_url TEXT DEFAULT ''")
+        print("[MIGRATION] Добавлена колонка profile_background_url в users")
+    conn.commit()
+    conn.close()
+
+migrate_profile_background_url_column()
+
+# Миграция: добавляем updated_at в manga_items + индексы для локальных метрик
+def migrate_local_metrics():
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # 1. Добавляем updated_at в manga_items
+    cursor.execute("PRAGMA table_info(manga_items)")
+    manga_cols = {row[1] for row in cursor.fetchall()}
+    if "updated_at" not in manga_cols:
+        cursor.execute("ALTER TABLE manga_items ADD COLUMN updated_at DATETIME")
+        print("[MIGRATION] Добавлена колонка updated_at в manga_items")
+        # Backfill: updated_at = MAX(chapters.created_at) или manga_items.created_at
+        cursor.execute("""
+            UPDATE manga_items SET updated_at = COALESCE(
+                (SELECT MAX(chapters.created_at) FROM chapters WHERE chapters.manga_id = manga_items.manga_id),
+                manga_items.created_at
+            )
+        """)
+        print("[MIGRATION] Backfill updated_at из chapters.created_at завершён")
+
+    # 2. Индексы для time-range запросов (локальные метрики)
+    existing_indexes = {row[1] for row in cursor.execute("SELECT * FROM sqlite_master WHERE type='index'").fetchall()}
+    index_definitions = {
+        "ix_manga_views_created_at": "CREATE INDEX IF NOT EXISTS ix_manga_views_created_at ON manga_views(created_at)",
+        "ix_manga_bookmarks_created_at": "CREATE INDEX IF NOT EXISTS ix_manga_bookmarks_created_at ON manga_bookmarks(created_at)",
+        "ix_chapters_manga_created": "CREATE INDEX IF NOT EXISTS ix_chapters_manga_created ON chapters(manga_id, created_at)",
+        "ix_manga_items_updated_at": "CREATE INDEX IF NOT EXISTS ix_manga_items_updated_at ON manga_items(updated_at)",
+        "ix_manga_items_created_at": "CREATE INDEX IF NOT EXISTS ix_manga_items_created_at ON manga_items(created_at)",
+    }
+    for idx_name, idx_sql in index_definitions.items():
+        if idx_name not in existing_indexes:
+            cursor.execute(idx_sql)
+            print(f"[MIGRATION] Создан индекс {idx_name}")
+
+    conn.commit()
+    conn.close()
+
+migrate_local_metrics()
+
+# Seed shop items
+def seed_shop_items():
+    db = SessionLocal()
+    try:
+        db.query(ShopItem).filter(ShopItem.owner_id == None).delete()
+        db.commit()
+        items = [
+            # Рамки для аватара (разблокируются по уровням)
+            ShopItem(key="frame_rusty_gear", name="Ржавая Шестерня", description="Разблокируется на 5 уровне", category="frame", price=0, preview="/Frames_lvl/Rusty_gear.png", rarity="common", required_level=5),
+            ShopItem(key="frame_neon_wire", name="Неоновая Проволока", description="Разблокируется на 10 уровне", category="frame", price=0, preview="/Frames_lvl/Neon_wire.png", rarity="rare", required_level=10),
+            ShopItem(key="frame_animatronic_jaw", name="Челюсть Аниматроника", description="Разблокируется на 15 уровне", category="frame", price=0, preview="/Frames_lvl/Animatronic_Jaw.png", rarity="rare", required_level=15),
+            ShopItem(key="frame_golden_rule", name="Золотое Правило", description="Разблокируется на 25 уровне", category="frame", price=0, preview="/Frames_lvl/The_Golden_Rule.png", rarity="epic", required_level=25),
+            ShopItem(key="frame_poisonous_vine", name="Ядовитая Лоза", description="Разблокируется на 35 уровне", category="frame", price=0, preview="/Frames_lvl/Poisonous_vine.png", rarity="epic", required_level=35),
+            ShopItem(key="frame_system_glitch", name="Системный Глитч", description="Разблокируется на 50 уровне", category="frame", price=0, preview="/Frames_lvl/System_Glitch.png", rarity="mythic", required_level=50),
+            # Стикеры
+            ShopItem(key="sticker_kek", name="KEK", description="Классический стикер для стены", category="sticker", price=30, preview="😂"),
+            ShopItem(key="sticker_rage", name="RAGE", description="Когда сюжет бесит", category="sticker", price=30, preview="😡"),
+            ShopItem(key="sticker_uwu", name="UwU", description="Кавайный стикер", category="sticker", price=30, preview="🥺"),
+            ShopItem(key="sticker_based", name="BASED", description="Основано и красно-пилюлено", category="sticker", price=50, preview="💊"),
+            ShopItem(key="sticker_f", name="Press F", description="Почтить память павшего персонажа", category="sticker", price=40, preview="🪦"),
+            # Статусы
+            ShopItem(key="status_online_fire", name="Горит 🔥", description="Статус online с огнём", category="status", price=80, preview="🔥"),
+            ShopItem(key="status_sleeping", name="Сплю 💤", description="Не беспокоить, читаю мангу", category="status", price=60, preview="💤"),
+            ShopItem(key="status_hacking", name="Хакаю систему", description="Занят взломом SpringManga", category="status", price=100, preview="💻"),
+            ShopItem(key="status_invisible", name="Невидимка", description="Скрыть онлайн-статус", category="status", price=150, preview="👤"),
+            # ── RARE TIER: Системные аномалии (1 000 Scrap) ──
+            ShopItem(key="skin_spring-locked", name="Пружинный Замок", description="Багровый скин с запёкшейся кровью. Блоки пульсируют тёмно-красным при наведении.", category="skin", price=1000, preview="#6B0000",
+                     rarity="rare", css_variables='{"--profile-accent":"#6B0000","--profile-accent-rgb":"107 0 0","--profile-glow":"#CC1B1B","--profile-glow-rgb":"204 27 27","--profile-surface":"#1A0808","--profile-border":"rgba(139,0,0,0.3)","--profile-badge-bg":"rgba(139,0,0,0.1)"}',
+                     block_style="spring-locked", nickname_effect="spring-locked"),
+            ShopItem(key="skin_coolant-leak", name="Утечка Охладителя", description="Ледяной циан с эффектом инея. Блоки покрыты морозным блеском.", category="skin", price=1000, preview="#006B8F",
+                     rarity="rare", css_variables='{"--profile-accent":"#006B8F","--profile-accent-rgb":"0 107 143","--profile-glow":"#00D4FF","--profile-glow-rgb":"0 212 255","--profile-surface":"#080F14","--profile-border":"rgba(0,180,230,0.2)","--profile-badge-bg":"rgba(0,180,230,0.06)"}',
+                     block_style="coolant-leak", nickname_effect="coolant-leak"),
+            ShopItem(key="skin_cyber-sakura", name="Кибер-Сакура", description="Кислотно-розовый киберпанк с VHS-помехами и неоновым шумом.", category="skin", price=1000, preview="#FF2D8A",
+                     rarity="rare", css_variables='{"--profile-accent":"#FF2D8A","--profile-accent-rgb":"255 45 138","--profile-glow":"#FF69E0","--profile-glow-rgb":"255 105 224","--profile-surface":"#18081A","--profile-border":"rgba(255,45,138,0.25)","--profile-badge-bg":"rgba(255,45,138,0.08)"}',
+                     block_style="cyber-sakura", nickname_effect="cyber-sakura"),
+            # ── EPIC TIER: Критические угрозы (5 000 Scrap) ──
+            ShopItem(key="skin_biohazard", name="Радиация", description="Ураново-жёлтый с дышащим свечением. Блоки пульсируют радиоактивным светом.", category="skin", price=5000, preview="#B8CC00",
+                     rarity="epic", css_variables='{"--profile-accent":"#B8CC00","--profile-accent-rgb":"184 204 0","--profile-glow":"#DFFF00","--profile-glow-rgb":"223 255 0","--profile-surface":"#0D0E04","--profile-border":"rgba(184,204,0,0.2)","--profile-badge-bg":"rgba(184,204,0,0.06)"}',
+                     block_style="biohazard", nickname_effect="biohazard"),
+            ShopItem(key="skin_terminal", name="Терминал", description="Абсолютная тьма с зелёным консольным шрифтом. CRT-сканлайны бегут по экрану.", category="skin", price=5000, preview="#00FF41",
+                     rarity="epic", css_variables='{"--profile-accent":"#00FF41","--profile-accent-rgb":"0 255 65","--profile-glow":"#00FF41","--profile-glow-rgb":"0 255 65","--profile-surface":"#000000","--profile-border":"rgba(0,255,65,0.12)","--profile-badge-bg":"rgba(0,255,65,0.04)"}',
+                     block_style="terminal", nickname_effect="terminal"),
+            ShopItem(key="skin_golden-era", name="Золотая Эра", description="Потускневшее золото с патиной времени. Текстура шума и зернистости.", category="skin", price=5000, preview="#B8860B",
+                     rarity="epic", css_variables='{"--profile-accent":"#B8860B","--profile-accent-rgb":"184 134 11","--profile-glow":"#DAA520","--profile-glow-rgb":"218 165 32","--profile-surface":"#141008","--profile-border":"rgba(184,134,11,0.25)","--profile-badge-bg":"rgba(184,134,11,0.08)"}',
+                     block_style="golden-era", nickname_effect="golden-era"),
+            # ── LEGENDARY / MYTHIC TIER: Полное разрушение (15 000 Scrap) ──
+            ShopItem(key="skin_system-crash", name="System.Crash()", description="BSOD — экран смерти. Жёсткий глитч-эффект раздваивает ник на красный и синий каналы.", category="skin", price=15000, preview="#0000AA",
+                     rarity="mythic", css_variables='{"--profile-accent":"#0000AA","--profile-accent-rgb":"0 0 170","--profile-glow":"#FFFFFF","--profile-glow-rgb":"255 255 255","--profile-surface":"#000044","--profile-border":"rgba(0,0,170,0.4)","--profile-badge-bg":"rgba(0,0,170,0.15)"}',
+                     block_style="system-crash", nickname_effect="system-crash", font_family="VT323"),
+            ShopItem(key="skin_phantom", name="Фантом", description="Ghost in the Machine — аномалия в системе. Нестабильные голограммы, хроматическая аберрация, призрачные эхо.", category="skin", price=15000, preview="#00FFFF",
+                     rarity="mythic", css_variables='{"--profile-accent":"#00FFFF","--profile-accent-rgb":"0 255 255","--profile-glow":"#00FFFF","--profile-glow-rgb":"0 255 255","--profile-surface":"#000000","--profile-border":"rgba(0,255,255,0.08)","--profile-badge-bg":"rgba(0,255,255,0.04)"}',
+                     block_style="phantom", nickname_effect="phantom", font_family="Creepster"),
+            # SPRINGPRO подписка
+            ShopItem(key="springpro_month", name="SPRINGPRO 1 мес", description="Все привилегии на 30 дней: без рекламы, эксклюзивные рамки, +50% Scrap", category="springpro", price=1200, preview="⭐"),
+            ShopItem(key="springpro_3month", name="SPRINGPRO 3 мес", description="Всё то же, но выгоднее! Экономия ~17%", category="springpro", price=3000, preview="🌟"),
+            ShopItem(key="springpro_year", name="SPRINGPRO 1 год", description="Максимальная выгода: экономия ~41%, эксклюзивный титул", category="springpro", price=8500, preview="👑"),
+        ]
+        # Import scraped Steam frames from JSON
+        import json as _json
+        frames_json_path = os.path.join(os.path.dirname(__file__), '..', 'public', 'Frames_shop', 'frames_data.json')
+        if os.path.exists(frames_json_path):
+            with open(frames_json_path, 'r', encoding='utf-8') as f:
+                steam_frames = _json.load(f)
+            for sf in steam_frames:
+                items.append(ShopItem(
+                    key=sf['key'], name=sf.get('name', ''), description=sf.get('description', 'SPRINGSHOP FRAME'),
+                    category='frame', price=sf.get('price', 1666),
+                    preview=sf['preview'],
+                    required_level=sf.get('required_level', 0),
+                ))
+            print(f"[SEED] Загружено {len(steam_frames)} Steam рамок из frames_data.json")
+
+        for item in items:
+            db.add(item)
+        db.commit()
+        print(f"[SEED] Добавлено {len(items)} товаров в магазин")
+    finally:
+        db.close()
+
+seed_shop_items()
+
+
 def upsert_chapters(db: Session, manga_id: str, chapters_list: list):
-    """Upsert глав в таблицу chapters"""
+    """Upsert глав в таблицу chapters. Возвращает количество НОВЫХ добавленных глав."""
     seen_ids = set()
+    new_count = 0
     for ch in chapters_list:
         cid = str(ch.get("chapter_id", ch.get("id", "")))
         if not cid:
@@ -234,8 +529,16 @@ def upsert_chapters(db: Session, manga_id: str, chapters_list: list):
                 pages=json.dumps(pages, ensure_ascii=False) if isinstance(pages, list) else str(pages),
                 total_pages=len(pages) if isinstance(pages, list) else 0,
             ))
+            new_count += 1
             db.flush()
     db.flush()
+    # Обновляем updated_at ТОЛЬКО если появились реально новые главы
+    if new_count > 0:
+        manga_item = db.query(MangaItem).filter(MangaItem.manga_id == manga_id).first()
+        if manga_item:
+            manga_item.updated_at = datetime.utcnow()
+            db.flush()
+    return new_count
 
 
 def chapters_from_db(db: Session, manga_id: str) -> list:
@@ -307,6 +610,9 @@ HEADERS = {
     "Upgrade-Insecure-Requests": "1"
 }
 
+# --- Russian proxy for mangabuff.ru (bypasses geo-block on foreign VPS) ---
+MANGABUFF_PROXY = os.environ.get("MANGABUFF_PROXY", None)  # e.g. http://user:pass@host:port
+
 # --- Mangabuff account credentials for 18+ content ---
 MANGABUFF_EMAIL = os.environ.get("MANGABUFF_EMAIL", "basovroma765@gmail.com")
 MANGABUFF_PASSWORD = os.environ.get("MANGABUFF_PASSWORD", "66625422")
@@ -326,7 +632,7 @@ async def mangabuff_login() -> dict:
     jar = aiohttp.CookieJar()
     async with aiohttp.ClientSession(headers=HEADERS, cookie_jar=jar) as sess:
         # 1. GET /login → grab CSRF token
-        async with sess.get(f"{BASE_URL}/login") as resp:
+        async with sess.get(f"{BASE_URL}/login", proxy=MANGABUFF_PROXY) as resp:
             html = await resp.text()
             soup = BS(html, "html.parser")
             meta = soup.select_one('meta[name="csrf-token"]')
@@ -350,6 +656,7 @@ async def mangabuff_login() -> dict:
                 "email": MANGABUFF_EMAIL,
                 "password": MANGABUFF_PASSWORD,
             },
+            proxy=MANGABUFF_PROXY,
         ) as resp:
             body = await resp.json()
             if not body.get("status"):
@@ -398,6 +705,10 @@ class ProfileUpdate(BaseModel):
     profile_theme: Optional[str] = None
     avatar_frame: Optional[str] = None
     showcase_manga_ids: Optional[str] = None
+    active_title: Optional[str] = None
+    sound_enabled: Optional[bool] = None
+    nickname_color: Optional[str] = None
+    nickname_font: Optional[str] = None
 
 class PasswordChange(BaseModel):
     old_password: str
@@ -461,13 +772,30 @@ MANGA_DIR = os.path.join(BACKEND_DIR, "manga")
 UPLOADS_DIR = os.path.join(BACKEND_DIR, "uploads")
 AVATARS_DIR = os.path.join(UPLOADS_DIR, "avatars")
 BANNERS_DIR = os.path.join(UPLOADS_DIR, "banners")
+BACKGROUNDS_DIR = os.path.join(UPLOADS_DIR, "backgrounds")
+SHOP_UPLOADS_DIR = os.path.join(UPLOADS_DIR, "shop")
+FRAMES_LVL_DIR = os.path.join(os.path.dirname(BACKEND_DIR), "public", "Frames_lvl")
+FRAMES_SHOP_DIR = os.path.join(os.path.dirname(BACKEND_DIR), "public", "Frames_shop")
 os.makedirs(MANGA_DIR, exist_ok=True)
 os.makedirs(AVATARS_DIR, exist_ok=True)
 os.makedirs(BANNERS_DIR, exist_ok=True)
+os.makedirs(BACKGROUNDS_DIR, exist_ok=True)
+os.makedirs(SHOP_UPLOADS_DIR, exist_ok=True)
+
+PAYPALYCH_API_KEY = os.environ.get("PAYPALYCH_API_KEY", "")
+PAYPALYCH_SHOP_ID = os.environ.get("PAYPALYCH_SHOP_ID", "")
+PAYPALYCH_SECRET = os.environ.get("PAYPALYCH_SECRET", "")
+
+def is_springpro_active(user: User) -> bool:
+    if not user.subscription_expires_at:
+        return False
+    return user.subscription_expires_at > datetime.utcnow()
 
 # Раздаём файлы из папки "manga" по адресу /static
 app.mount("/static", StaticFiles(directory=MANGA_DIR), name="static")
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
+app.mount("/Frames_lvl", StaticFiles(directory=FRAMES_LVL_DIR), name="frames_lvl")
+app.mount("/Frames_shop", StaticFiles(directory=FRAMES_SHOP_DIR), name="frames_shop")
 
 # 👇 Разрешаем фронту обращаться к API
 app.add_middleware(
@@ -505,7 +833,7 @@ class FastMangaParser:
         
         for attempt in range(retries):
             try:
-                async with session.get(url, headers=headers, timeout=30) as response:
+                async with session.get(url, headers=headers, timeout=30, proxy=MANGABUFF_PROXY) as response:
                     if response.status == 200:
                         content = await response.read()
                         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -1176,7 +1504,7 @@ class FastMangaParser:
             chapter_url = f"{BASE_URL}{chapter_url}"
         async with sem:
             try:
-                async with session.get(chapter_url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                async with session.get(chapter_url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=30), proxy=MANGABUFF_PROXY) as resp:
                     if resp.status != 200:
                         print(f"[WARN] Chapter page {chapter_url} returned {resp.status}")
                         return []
@@ -1197,7 +1525,7 @@ class FastMangaParser:
     async def get_csrf_token(self, session: aiohttp.ClientSession) -> str:
         """Получает CSRF-токен с mangabuff.ru"""
         try:
-            async with session.get(BASE_URL, headers=HEADERS) as resp:
+            async with session.get(BASE_URL, headers=HEADERS, proxy=MANGABUFF_PROXY) as resp:
                 html = await resp.text()
                 soup = BeautifulSoup(html, "html.parser")
                 meta = soup.select_one('meta[name*="csrf-token"]')
@@ -1216,7 +1544,7 @@ class FastMangaParser:
 
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             # Загружаем страницу манги
-            async with session.get(manga_page_url, headers=HEADERS) as resp:
+            async with session.get(manga_page_url, headers=HEADERS, proxy=MANGABUFF_PROXY) as resp:
                 if resp.status != 200:
                     raise Exception(f"mangabuff вернул {resp.status} для {manga_page_url}")
                 html = await resp.text()
@@ -1395,6 +1723,7 @@ class FastMangaParser:
                             headers=load_headers,
                             data=post_data,
                             timeout=aiohttp.ClientTimeout(total=30),
+                            proxy=MANGABUFF_PROXY,
                         ) as load_resp:
                             print(f"[PARSE] /chapters/load status={load_resp.status}")
                             if load_resp.status != 200:
@@ -1533,7 +1862,7 @@ class FastMangaParser:
                 os.makedirs(covers_dir, exist_ok=True)
                 cover_path = os.path.join(covers_dir, "main_cover.jpg")
                 try:
-                    async with session.get(cover_url, headers={**HEADERS, "Referer": BASE_URL}) as r:
+                    async with session.get(cover_url, headers={**HEADERS, "Referer": BASE_URL}, proxy=MANGABUFF_PROXY) as r:
                         if r.status == 200:
                             content = await r.read()
                             async with aiofiles.open(cover_path, 'wb') as f:
@@ -1641,7 +1970,7 @@ class FastMangaParser:
 
                 try:
                     print(f"Скачиваем обложку: {cover_url}")
-                    r = requests.get(cover_url, headers={**HEADERS, "Referer": BASE_URL}, timeout=30)
+                    r = requests.get(cover_url, headers={**HEADERS, "Referer": BASE_URL}, timeout=30, proxies={"http": MANGABUFF_PROXY, "https": MANGABUFF_PROXY} if MANGABUFF_PROXY else None)
                     r.raise_for_status()
                     with open(cover_path, "wb") as f:
                         f.write(r.content)
@@ -1902,16 +2231,15 @@ async def get_manga_list(
 
     total_count = query.count()
 
-    # Сортировка
-    from sqlalchemy import case as sa_case
+    # Сортировка (на основе локальных метрик пользователей)
+    from sqlalchemy import case as sa_case, desc as sa_desc
     if sort == "year":
-        query = query.order_by(MangaItem.year.desc(), MangaItem.mangabuff_newest_rank.asc())
-    elif sort == "popularity":
-        query = query.order_by(
-            sa_case((MangaItem.mangabuff_popularity_rank == 0, 999999), else_=MangaItem.mangabuff_popularity_rank).asc()
-        )
-    elif sort == "views":
-        query = query.order_by(MangaItem.mangabuff_views.desc())
+        query = query.order_by(MangaItem.year.desc(), MangaItem.created_at.desc())
+    elif sort in ("popularity", "views"):
+        # Популярность / просмотры = количество локальных просмотров (all-time)
+        views_sq = db.query(MangaView.manga_id, func.count(MangaView.id).label("v_cnt")).group_by(MangaView.manga_id).subquery()
+        query = query.outerjoin(views_sq, MangaItem.manga_id == views_sq.c.manga_id)
+        query = query.order_by(func.coalesce(views_sq.c.v_cnt, 0).desc())
     elif sort == "chapters":
         from sqlalchemy import func as sa_fn
         if not (chapters_min or chapters_max):
@@ -1921,16 +2249,21 @@ async def get_manga_list(
         else:
             query = query.order_by(sa_fn.coalesce(ch_count_sq.c.ch_cnt, 0).desc())
     elif sort == "updated":
-        query = query.order_by(
-            sa_case((MangaItem.mangabuff_updated_rank == 0, 999999), else_=MangaItem.mangabuff_updated_rank).asc()
-        )
+        query = query.order_by(sa_case((MangaItem.updated_at == None, datetime.min), else_=MangaItem.updated_at).desc())
     elif sort == "newest":
-        query = query.order_by(
-            sa_case((MangaItem.mangabuff_newest_rank == 0, 999999), else_=MangaItem.mangabuff_newest_rank).asc()
-        )
+        query = query.order_by(MangaItem.created_at.desc())
     elif sort == "rating":
+        # Средний рейтинг локальных пользователей, порог >= 20 голосов
+        rat_sort_sq = db.query(
+            MangaRating.manga_id,
+            func.avg(MangaRating.rating).label("avg_r"),
+            func.count(MangaRating.id).label("r_cnt")
+        ).group_by(MangaRating.manga_id).subquery()
+        query = query.outerjoin(rat_sort_sq, MangaItem.manga_id == rat_sort_sq.c.manga_id)
+        # Тайтлы с >= 20 голосами показываются первыми, отсортированные по avg_r desc
         query = query.order_by(
-            sa_case((MangaItem.mangabuff_rating_rank == 0, 999999), else_=MangaItem.mangabuff_rating_rank).asc()
+            sa_case((func.coalesce(rat_sort_sq.c.r_cnt, 0) >= 20, 0), else_=1).asc(),
+            func.coalesce(rat_sort_sq.c.avg_r, 0).desc()
         )
     else:
         query = query.order_by(MangaItem.created_at.desc())
@@ -2680,7 +3013,7 @@ async def proxy_image(url: str = Query(..., description="URL изображен�
 
     try:
         session = await get_chapter_session()
-        async with session.get(url, headers={**HEADERS, "Referer": BASE_URL}) as resp:
+        async with session.get(url, headers={**HEADERS, "Referer": BASE_URL}, proxy=MANGABUFF_PROXY) as resp:
             if resp.status != 200:
                 raise HTTPException(status_code=resp.status, detail="Failed to fetch image")
             content_type = resp.content_type or "image/jpeg"
@@ -2750,12 +3083,18 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "notify_telegram": bool(current_user.notify_telegram),
         "bio": current_user.bio or "",
         "profile_banner_url": current_user.profile_banner_url or "",
+        "profile_background_url": current_user.profile_background_url or "",
         "profile_theme": current_user.profile_theme or "base",
         "avatar_frame": current_user.avatar_frame or "none",
         "badge_ids": current_user.badge_ids or "[]",
         "showcase_manga_ids": current_user.showcase_manga_ids or "[]",
         "xp": current_user.xp or 0,
         "level": current_user.level or 1,
+        "scrap": current_user.scrap or 0,
+        "active_title": current_user.active_title or "",
+        "sound_enabled": bool(current_user.sound_enabled),
+        "subscription_active": is_springpro_active(current_user),
+        "subscription_expires_at": current_user.subscription_expires_at.isoformat() if current_user.subscription_expires_at else None,
     }
 
 @app.put("/auth/profile", summary="Обновить профиль")
@@ -2783,11 +3122,43 @@ async def update_profile(data: ProfileUpdate, current_user: User = Depends(get_c
     if data.bio is not None:
         current_user.bio = data.bio
     if data.profile_theme is not None:
+        FREE_THEMES = {"base", "neon", "corroded"}
+        if data.profile_theme not in FREE_THEMES:
+            purchase = db.query(UserPurchase).filter(
+                UserPurchase.user_id == current_user.id,
+                UserPurchase.item_key == f"skin_{data.profile_theme}"
+            ).first()
+            if not purchase:
+                raise HTTPException(400, "У вас нет доступа к этому скину")
         current_user.profile_theme = data.profile_theme
+        # Auto-reset mythic controls when switching to non-mythic skin
+        new_skin = db.query(ShopItem).filter(ShopItem.key == f"skin_{data.profile_theme}").first()
+        if not (new_skin and new_skin.rarity == "mythic"):
+            current_user.nickname_color = ""
+            current_user.nickname_font = ""
     if data.avatar_frame is not None:
         current_user.avatar_frame = data.avatar_frame
     if data.showcase_manga_ids is not None:
         current_user.showcase_manga_ids = data.showcase_manga_ids
+    if data.active_title is not None:
+        current_user.active_title = data.active_title
+    if data.sound_enabled is not None:
+        current_user.sound_enabled = data.sound_enabled
+    if data.nickname_color is not None:
+        # Validate: only mythic skin owners can set custom nickname color
+        theme = data.profile_theme or current_user.profile_theme or "base"
+        skin_item = db.query(ShopItem).filter(ShopItem.key == f"skin_{theme}").first()
+        if skin_item and skin_item.rarity == "mythic":
+            current_user.nickname_color = data.nickname_color
+        elif not data.nickname_color:
+            current_user.nickname_color = ""
+    if data.nickname_font is not None:
+        theme = data.profile_theme or current_user.profile_theme or "base"
+        skin_item = db.query(ShopItem).filter(ShopItem.key == f"skin_{theme}").first()
+        if skin_item and skin_item.rarity == "mythic":
+            current_user.nickname_font = data.nickname_font
+        elif not data.nickname_font:
+            current_user.nickname_font = ""
     db.commit()
     return {"ok": True}
 
@@ -2817,21 +3188,34 @@ async def upload_avatar(file: UploadFile = FastAPIFile(...), current_user: User 
     ext = os.path.splitext(file.filename or "img.png")[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
         raise HTTPException(status_code=400, detail="Недопустимый формат файла")
+    # GIF avatars restricted to admin + SPRINGPRO
+    if ext == ".gif" and current_user.role != "admin" and not is_springpro_active(current_user):
+        raise HTTPException(status_code=403, detail="GIF-аватар доступен только для ADMIN и SPRINGPRO")
     filename = f"{current_user.id}{ext}"
     filepath = os.path.join(AVATARS_DIR, filename)
     content = await file.read()
     with open(filepath, "wb") as f:
         f.write(content)
-    current_user.avatar_url = f"/uploads/avatars/{filename}"
+    import time as _time
+    current_user.avatar_url = f"/uploads/avatars/{filename}?v={int(_time.time())}"
     db.commit()
     return {"avatar_url": current_user.avatar_url}
 
 @app.post("/auth/banner", summary="Загрузить баннер профиля")
 async def upload_banner(file: UploadFile = FastAPIFile(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ext = os.path.splitext(file.filename or "img.png")[1].lower()
-    if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm", ".ogg"):
-        raise HTTPException(status_code=400, detail="Недопустимый формат файла")
-    filename = f"{current_user.id}_banner{ext}"
+    allowed = current_user.role == "admin" or is_springpro_active(current_user)
+    if not allowed:
+        raise HTTPException(403, "Загрузка доступна с подпиской SPRINGPRO")
+    ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm"}
+    MIME_TO_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp", "video/mp4": ".mp4", "video/webm": ".webm"}
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if not ext or ext not in ALLOWED_EXTS:
+        ext = MIME_TO_EXT.get(file.content_type or "", "")
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"Недопустимый формат: {ext or 'неизвестный'} (файл: {file.filename}, тип: {file.content_type})")
+    import time
+    ts = int(time.time())
+    filename = f"{current_user.id}_banner_{ts}{ext}"
     filepath = os.path.join(BANNERS_DIR, filename)
     content = await file.read()
     with open(filepath, "wb") as f:
@@ -2839,6 +3223,24 @@ async def upload_banner(file: UploadFile = FastAPIFile(...), current_user: User 
     current_user.profile_banner_url = f"/uploads/banners/{filename}"
     db.commit()
     return {"banner_url": current_user.profile_banner_url}
+
+@app.post("/auth/background", summary="Загрузить фон профиля (админ)")
+async def upload_background(file: UploadFile = FastAPIFile(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(403, "Только для администраторов")
+    ext = os.path.splitext(file.filename or "img.png")[1].lower()
+    if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm"):
+        raise HTTPException(status_code=400, detail="Недопустимый формат файла")
+    import time
+    ts = int(time.time())
+    filename = f"{current_user.id}_bg_{ts}{ext}"
+    filepath = os.path.join(BACKGROUNDS_DIR, filename)
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+    current_user.profile_background_url = f"/uploads/backgrounds/{filename}"
+    db.commit()
+    return {"background_url": current_user.profile_background_url}
 
 # ═══ WALL COMMENTS ═══
 
@@ -2876,6 +3278,18 @@ async def add_wall_comment(user_id: int, data: WallCommentCreate, current_user: 
     if user_id != current_user.id:
         notif_msg = f'<a href="/user/{current_user.id}" class="text-brand-accent hover:underline font-bold">{current_user.username}</a> оставил комментарий в вашем <a href="/user/{user_id}" class="text-brand-accent hover:underline">профиле</a>'
         create_notification(db, user_id, notif_msg, f"/user/{user_id}", "social")
+    # ── Scrap for comment (max 5/day) ──
+    from datetime import date as _date
+    today = _date.today()
+    scrap_earned = 0
+    if current_user.scrap_comments_date is None or current_user.scrap_comments_date != today:
+        current_user.scrap_comments_today = 0
+        current_user.scrap_comments_date = today
+    if (current_user.scrap_comments_today or 0) < 5:
+        scrap_earned = int(10 * (1.5 if is_springpro_active(current_user) else 1.0))
+        current_user.scrap = (current_user.scrap or 0) + scrap_earned
+        current_user.scrap_comments_today = (current_user.scrap_comments_today or 0) + 1
+        db.commit()
     return {
         "id": comment.id,
         "author_id": current_user.id,
@@ -2884,6 +3298,7 @@ async def add_wall_comment(user_id: int, data: WallCommentCreate, current_user: 
         "author_avatar_frame": current_user.avatar_frame,
         "text": comment.text,
         "timestamp": comment.created_at.strftime("%d.%m.%y %H:%M") if comment.created_at else "",
+        "scrap_earned": scrap_earned,
     }
 
 @app.delete("/auth/wall-comments/{comment_id}", summary="Удалить комментарий со стены")
@@ -2948,7 +3363,21 @@ async def get_profile_full(current_user: User = Depends(get_current_user), db: S
             "level": lvl,
             "xp_current_level": xp_current_level,
             "xp_next_level": xp_next_level,
+            "scrap": current_user.scrap or 0,
+            "donated_scrap": current_user.donated_scrap or 0,
         },
+        "active_title": current_user.active_title or "",
+        "sound_enabled": bool(current_user.sound_enabled),
+        "profile_theme": current_user.profile_theme or "base",
+        "avatar_frame": current_user.avatar_frame or "none",
+        "avatar_url": current_user.avatar_url or "",
+        "profile_banner_url": current_user.profile_banner_url or "",
+        "profile_background_url": current_user.profile_background_url or "",
+        "bio": current_user.bio or "",
+        "nickname_color": current_user.nickname_color or "",
+        "nickname_font": current_user.nickname_font or "",
+        "subscription_active": is_springpro_active(current_user),
+        "subscription_expires_at": current_user.subscription_expires_at.isoformat() if current_user.subscription_expires_at else None,
     }
 
 @app.post("/auth/check-achievements", summary="Проверить достижения")
@@ -3016,34 +3445,103 @@ async def check_achievements(current_user: User = Depends(get_current_user), db:
         if "new_year" not in existing:
             existing.append("new_year")
             new_badges.append("new_year")
-    
+
+    # Easter egg achievements (checked via frontend flags)
+    # These are NOT auto-unlocked, frontend must explicitly request via /auth/unlock-achievement
+
     if new_badges:
         current_user.badge_ids = json.dumps(existing)
         db.commit()
     
     return {"badges": existing, "new_badges": new_badges}
 
+@app.post("/auth/unlock-achievement", summary="Разблокировать специальную ачивку")
+async def unlock_achievement(
+    achievement_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Разблокировать специальную ачивку (easter eggs, секретные достижения)"""
+    import json
+
+    # Список разрешённых специальных ачивок
+    allowed_achievements = ["konami_master", "horror_discoverer"]
+
+    if achievement_id not in allowed_achievements:
+        raise HTTPException(status_code=400, detail="Invalid achievement ID")
+
+    try:
+        existing = json.loads(current_user.badge_ids or "[]")
+    except:
+        existing = []
+
+    # Проверяем, не разблокирована ли уже
+    if achievement_id in existing:
+        return {"success": False, "message": "Achievement already unlocked"}
+
+    # Добавляем ачивку
+    existing.append(achievement_id)
+    current_user.badge_ids = json.dumps(existing)
+    db.commit()
+
+    return {"success": True, "achievement": achievement_id, "badges": existing}
+
 @app.post("/auth/sync-xp", summary="Синхронизировать XP")
 async def sync_xp(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     chapters_read = db.query(ReadingHistory).filter(ReadingHistory.user_id == current_user.id).count()
     total_ratings = db.query(MangaRating).filter(MangaRating.user_id == current_user.id).count()
     total_bookmarks = db.query(MangaBookmark).filter(MangaBookmark.user_id == current_user.id).count()
-    
+
     xp = chapters_read * 10 + total_ratings * 5 + total_bookmarks * 3
-    
+
     xp_for_level = lambda l: 50 * l * l
     lvl = 1
     while xp >= xp_for_level(lvl):
         lvl += 1
-    
+
     old_level = current_user.level or 1
     level_up = lvl > old_level
-    
+
     current_user.xp = xp
     current_user.level = lvl
+
+    # ── Auto-unlock frames based on level ──
+    if level_up:
+        frames = db.query(ShopItem).filter(
+            ShopItem.category == "frame",
+            ShopItem.required_level > 0,
+            ShopItem.required_level <= lvl,
+            ShopItem.required_level > old_level
+        ).all()
+        for frame in frames:
+            existing = db.query(UserPurchase).filter(
+                UserPurchase.user_id == current_user.id,
+                UserPurchase.item_key == frame.key
+            ).first()
+            if not existing:
+                purchase = UserPurchase(user_id=current_user.id, item_key=frame.key)
+                db.add(purchase)
+
+    # ── Scrap earning: daily login & level-up ──
+    from datetime import date as _date
+    today = _date.today()
+    daily_scrap = 0
+    level_scrap = 0
+
+    springpro_mult = 1.5 if is_springpro_active(current_user) else 1.0
+
+    if current_user.last_scrap_daily is None or current_user.last_scrap_daily != today:
+        daily_scrap = int(25 * springpro_mult)
+        current_user.scrap = (current_user.scrap or 0) + daily_scrap
+        current_user.last_scrap_daily = today
+
+    if level_up:
+        level_scrap = int(lvl * 25 * springpro_mult)
+        current_user.scrap = (current_user.scrap or 0) + level_scrap
+
     db.commit()
-    
-    return {"xp": xp, "level": lvl, "level_up": level_up}
+
+    return {"xp": xp, "level": lvl, "level_up": level_up, "scrap": current_user.scrap or 0, "daily_scrap": daily_scrap, "level_scrap": level_scrap}
 
 @app.delete("/auth/account", summary="Удалить аккаунт")
 async def delete_account(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -3264,6 +3762,7 @@ async def rate_manga(
         MangaRating.manga_id == manga_id,
         MangaRating.user_id == current_user.id
     ).first()
+    scrap_earned = 0
     if existing:
         existing.rating = rating
     else:
@@ -3275,7 +3774,7 @@ async def rate_manga(
     distribution = {}
     for r in all_ratings:
         distribution[str(r.rating)] = distribution.get(str(r.rating), 0) + 1
-    return {"status": "ok", "average": round(avg, 2), "total": len(all_ratings), "distribution": distribution}
+    return {"status": "ok", "average": round(avg, 2), "total": len(all_ratings), "distribution": distribution, "scrap_earned": scrap_earned}
 
 # ─── Закладки манги ─────────────────────────────────────────────────
 @app.get("/auth/bookmarks", summary="Получить все закладки текущего пользователя")
@@ -3377,7 +3876,7 @@ async def random_bookmark(
 # ═══════════ Викторина (Quiz) ═══════════
 
 @app.get("/quiz/question", summary="Получить вопрос викторины")
-async def get_quiz_question(mode: str = Query("cover", regex="^(cover|genre|character)$"), db: Session = Depends(get_db)):
+async def get_quiz_question(mode: str = Query("cover", pattern="^(cover|genre|character)$"), db: Session = Depends(get_db)):
     """
     Генерирует вопрос викторины.
     mode=cover — Угадай мангу по обложке
@@ -3592,6 +4091,19 @@ async def add_manga_comment(
             notif_msg = f'<a href="/user/{current_user.id}" class="text-brand-accent hover:underline font-bold">{current_user.username}</a> ответил на ваш <a href="/manga/{manga_id}" class="text-brand-accent hover:underline">комментарий</a>'
             create_notification(db, parent.user_id, notif_msg, f"/manga/{manga_id}", "social")
 
+    # ── Scrap for comment (max 5/day) ──
+    from datetime import date as _date
+    today = _date.today()
+    scrap_earned = 0
+    if current_user.scrap_comments_date is None or current_user.scrap_comments_date != today:
+        current_user.scrap_comments_today = 0
+        current_user.scrap_comments_date = today
+    if (current_user.scrap_comments_today or 0) < 5:
+        scrap_earned = int(10 * (1.5 if is_springpro_active(current_user) else 1.0))
+        current_user.scrap = (current_user.scrap or 0) + scrap_earned
+        current_user.scrap_comments_today = (current_user.scrap_comments_today or 0) + 1
+        db.commit()
+
     return {
         "id": comment.id,
         "userId": current_user.email,
@@ -3602,6 +4114,7 @@ async def add_manga_comment(
         "likedBy": [],
         "replies": [],
         "parentId": comment.parent_id,
+        "scrap_earned": scrap_earned,
     }
 
 
@@ -3712,7 +4225,7 @@ async def add_history(
         from datetime import datetime
         existing.read_at = datetime.utcnow()
         db.commit()
-        return {"status": "updated"}
+        return {"status": "updated", "scrap_earned": 0}
     entry = ReadingHistory(
         user_id=current_user.id,
         manga_id=data.manga_id,
@@ -3720,6 +4233,14 @@ async def add_history(
     )
     db.add(entry)
     db.commit()
+
+    # ── Scrap for every 5th chapter ──
+    scrap_earned = 0
+    total_chapters = db.query(ReadingHistory).filter(ReadingHistory.user_id == current_user.id).count()
+    if total_chapters % 5 == 0:
+        scrap_earned = 5
+        current_user.scrap = (current_user.scrap or 0) + scrap_earned
+        db.commit()
 
     # ── Card drop logic ──
     card_dropped = None
@@ -3768,7 +4289,7 @@ async def add_history(
     except:
         pass
 
-    return {"status": "created", "card_dropped": card_dropped}
+    return {"status": "created", "card_dropped": card_dropped, "scrap_earned": scrap_earned}
 
 @app.delete("/history", summary="Очистить историю чтения")
 async def clear_history(
@@ -3875,7 +4396,7 @@ async def get_chapter_session() -> aiohttp.ClientSession:
         base_url = URL(BASE_URL)
         try:
             # GET /login to grab CSRF token
-            async with _chapter_session.get(f"{BASE_URL}/login") as resp:
+            async with _chapter_session.get(f"{BASE_URL}/login", proxy=MANGABUFF_PROXY) as resp:
                 html = await resp.text()
                 soup = BeautifulSoup(html, "html.parser")
                 meta = soup.select_one('meta[name="csrf-token"]')
@@ -3896,6 +4417,7 @@ async def get_chapter_session() -> aiohttp.ClientSession:
                         "email": MANGABUFF_EMAIL,
                         "password": MANGABUFF_PASSWORD,
                     },
+                    proxy=MANGABUFF_PROXY,
                 ) as resp:
                     body = await resp.json()
                     if body.get("status"):
@@ -3940,7 +4462,7 @@ async def import_catalog(db: Session = Depends(get_db)):
         while True:
             catalog_page_url = f"{CATALOG_URL}?page={page_num}"
             try:
-                async with session.get(catalog_page_url) as resp:
+                async with session.get(catalog_page_url, proxy=MANGABUFF_PROXY) as resp:
                     if resp.status != 200:
                         break
                     html = await resp.text()
@@ -3968,8 +4490,24 @@ async def import_catalog(db: Session = Depends(get_db)):
             page_num += 1
             await asyncio.sleep(0.3)
 
+        total_found = len(all_items)
+
+        # Фильтруем: оставляем только те, которых ещё нет в БД
+        existing_ids = set(
+            mid for (mid,) in db.query(MangaItem.manga_id).all()
+        )
+        new_items = []
+        skipped = 0
+        for slug, name in all_items:
+            manga_page_url = f"{BASE_URL}/manga/{slug}"
+            manga_id = hashlib.md5(manga_page_url.encode()).hexdigest()
+            if manga_id in existing_ids:
+                skipped += 1
+            else:
+                new_items.append((slug, name))
+        all_items = new_items
         total = len(all_items)
-        print(f"[CATALOG] Found {total} items to import")
+        print(f"[CATALOG] Found {total_found} on mangabuff, {skipped} already in DB, {total} new to import")
 
         # 2. Для каждого slug парсим страницу манги
         async def fetch_and_save(slug: str, name: str):
@@ -3980,7 +4518,7 @@ async def import_catalog(db: Session = Depends(get_db)):
 
             try:
                 async with sem:
-                    async with session.get(manga_page_url) as resp:
+                    async with session.get(manga_page_url, proxy=MANGABUFF_PROXY) as resp:
                         if resp.status != 200:
                             errors += 1
                             return
@@ -4124,7 +4662,7 @@ async def import_catalog(db: Session = Depends(get_db)):
                         cover_path = os.path.join(covers_dir, "main_cover.jpg")
                         try:
                             async with sem:
-                                async with session.get(cover, headers={**HEADERS, "Referer": BASE_URL}) as r:
+                                async with session.get(cover, headers={**HEADERS, "Referer": BASE_URL}, proxy=MANGABUFF_PROXY) as r:
                                     if r.status == 200:
                                         content = await r.read()
                                         async with aiofiles.open(cover_path, 'wb') as f:
@@ -4162,15 +4700,18 @@ async def import_catalog(db: Session = Depends(get_db)):
     return {"imported": imported, "total": total, "errors": errors}
 
 
-async def background_chapter_crawler(force: bool = False):
-    """Фоновый краулер: берёт манги без глав (или все при force) и загружает их с mangabuff."""
+async def background_chapter_crawler(force: bool = False, update: bool = False):
+    """Фоновый краулер: берёт манги без глав (или все при force/update) и загружает их с mangabuff.
+    force=True: удаляет старые главы и парсит заново.
+    update=True: проходит ВСЕ тайтлы, но НЕ удаляет старые главы — только добавляет новые.
+    """
     global crawler_status
     crawler_status = {"running": True, "processed": 0, "total": 0, "current_title": "", "errors": 0}
 
     db = SessionLocal()
     try:
         from sqlalchemy import func
-        if force:
+        if force or update:
             items = db.query(MangaItem).all()
         else:
             manga_with_chapters = db.query(Chapter.manga_id).distinct().subquery()
@@ -4197,7 +4738,7 @@ async def background_chapter_crawler(force: bool = False):
             # Получаем CSRF-токен один раз
             csrf_token = ""
             try:
-                async with session.get(BASE_URL) as resp:
+                async with session.get(BASE_URL, proxy=MANGABUFF_PROXY) as resp:
                     html = await resp.text()
                     soup = BeautifulSoup(html, "html.parser")
                     meta = soup.select_one('meta[name*="csrf-token"]')
@@ -4221,7 +4762,7 @@ async def background_chapter_crawler(force: bool = False):
                     manga_page_url = f"{BASE_URL}/manga/{slug}"
                     try:
                         async with sem:
-                            async with session.get(manga_page_url) as resp:
+                            async with session.get(manga_page_url, proxy=MANGABUFF_PROXY) as resp:
                                 if resp.status != 200:
                                     crawler_status["errors"] += 1
                                     crawler_status["processed"] += 1
@@ -4282,6 +4823,7 @@ async def background_chapter_crawler(force: bool = False):
                                     headers=load_headers,
                                     data={"manga_id": manga_data_id},
                                     timeout=aiohttp.ClientTimeout(total=30),
+                                    proxy=MANGABUFF_PROXY,
                                 ) as load_resp:
                                     if load_resp.status == 200:
                                         raw_text = await load_resp.text()
@@ -4341,7 +4883,7 @@ async def background_chapter_crawler(force: bool = False):
 
                     try:
                         crawl_db = SessionLocal()
-                        if force:
+                        if force and not update:
                             crawl_db.query(Chapter).filter(Chapter.manga_id == item.manga_id).delete()
                         upsert_chapters(crawl_db, item.manga_id, formatted)
                         crawl_db.commit()
@@ -4367,12 +4909,15 @@ async def background_chapter_crawler(force: bool = False):
 
 
 @app.post("/catalog/crawl-chapters", summary="Запустить фоновый краулер глав")
-async def start_chapter_crawler(force: bool = Query(False, description="Перепарсить ВСЕ манги, включая уже имеющие главы")):
+async def start_chapter_crawler(
+    force: bool = Query(False, description="Перепарсить ВСЕ манги, УДАЛИВ старые главы"),
+    update: bool = Query(False, description="Проверить ВСЕ манги и добавить только НОВЫЕ главы (без удаления)")
+):
     global crawler_status
     if crawler_status.get("running"):
         return {"status": "already_running", **crawler_status}
-    asyncio.create_task(background_chapter_crawler(force=force))
-    return {"status": "started", "force": force}
+    asyncio.create_task(background_chapter_crawler(force=force, update=update))
+    return {"status": "started", "force": force, "update": update}
 
 
 @app.post("/catalog/recrawl-manga/{manga_id}", summary="Перепарсить главы и год для конкретной манги")
@@ -4396,7 +4941,7 @@ async def recrawl_single_manga(manga_id: str, db: Session = Depends(get_db)):
         except Exception:
             pass
 
-        async with session.get(manga_page_url) as resp:
+        async with session.get(manga_page_url, proxy=MANGABUFF_PROXY) as resp:
             if resp.status != 200:
                 raise HTTPException(status_code=502, detail=f"Source returned {resp.status}")
             html = await resp.text()
@@ -4445,6 +4990,7 @@ async def recrawl_single_manga(manga_id: str, db: Session = Depends(get_db)):
                         headers=load_headers,
                         data={"manga_id": manga_data_id},
                         timeout=aiohttp.ClientTimeout(total=30),
+                        proxy=MANGABUFF_PROXY,
                     ) as load_resp:
                         if load_resp.status == 200:
                             raw_text = await load_resp.text()
@@ -4578,7 +5124,7 @@ async def get_chapter_pages(chapter_slug: str, manga_id: Optional[str] = Query(N
     for chapter_url in candidate_urls:
         tried_urls.append(chapter_url)
         try:
-            async with session.get(chapter_url) as resp:
+            async with session.get(chapter_url, proxy=MANGABUFF_PROXY) as resp:
                 print(f"[chapter-pages] GET {chapter_url} -> {resp.status}")
                 if resp.status != 200:
                     continue
@@ -4620,7 +5166,17 @@ async def get_chapter_pages(chapter_slug: str, manga_id: Optional[str] = Query(N
             except Exception:
                 pass
             async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=True)
+                launch_opts = {"headless": True}
+                if MANGABUFF_PROXY:
+                    # Parse proxy URL for Playwright format
+                    from urllib.parse import urlparse as _urlparse
+                    _pp = _urlparse(MANGABUFF_PROXY)
+                    launch_opts["proxy"] = {"server": f"{_pp.scheme}://{_pp.hostname}:{_pp.port}"}
+                    if _pp.username:
+                        launch_opts["proxy"]["username"] = _pp.username
+                    if _pp.password:
+                        launch_opts["proxy"]["password"] = _pp.password
+                browser = await pw.chromium.launch(**launch_opts)
                 context = await browser.new_context(user_agent=HEADERS["User-Agent"])
                 if pw_cookies:
                     await context.add_cookies(pw_cookies)
@@ -4786,7 +5342,7 @@ async def _do_scrape_ranks():
 
                 # First get total pages
                 first_url = f"https://mangabuff.ru/manga?sort={sort_name}"
-                async with session.get(first_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
+                async with session.get(first_url, headers={"User-Agent": "Mozilla/5.0"}, proxy=MANGABUFF_PROXY) as resp:
                     html = await resp.text()
                 soup = BeautifulSoup(html, "html.parser")
 
@@ -4812,7 +5368,7 @@ async def _do_scrape_ranks():
                     else:
                         page_url = f"https://mangabuff.ru/manga?sort={sort_name}&page={page_num}"
                         try:
-                            async with session.get(page_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
+                            async with session.get(page_url, headers={"User-Agent": "Mozilla/5.0"}, proxy=MANGABUFF_PROXY) as resp:
                                 if resp.status != 200:
                                     continue
                                 page_html = await resp.text()
@@ -4906,7 +5462,7 @@ async def _do_scrape_views():
         async def do_login(session):
             """Логин в mangabuff через сессию с cookie_jar."""
             try:
-                async with session.get(f"{BASE_URL}/login") as resp:
+                async with session.get(f"{BASE_URL}/login", proxy=MANGABUFF_PROXY) as resp:
                     html = await resp.text()
                     login_soup = BeautifulSoup(html, "html.parser")
                     meta = login_soup.select_one('meta[name="csrf-token"]')
@@ -4923,7 +5479,7 @@ async def _do_scrape_views():
                     "_token": csrf,
                     "email": MANGABUFF_EMAIL,
                     "password": MANGABUFF_PASSWORD,
-                }) as resp:
+                }, proxy=MANGABUFF_PROXY) as resp:
                     body = await resp.json()
                     print(f"[SCRAPE-VIEWS] Login: {body}")
             except Exception as e:
@@ -4931,7 +5487,7 @@ async def _do_scrape_views():
 
         async def fetch_one(session, manga_id, source_url, title):
             try:
-                async with session.get(source_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
+                async with session.get(source_url, headers={"User-Agent": "Mozilla/5.0"}, proxy=MANGABUFF_PROXY) as resp:
                     if resp.status != 200:
                         return None
                     html = await resp.text()
@@ -4992,9 +5548,13 @@ async def _do_scrape_views():
 
 @app.get("/manga/home-sections", summary="Секции для главной страницы")
 async def get_home_sections(db: Session = Depends(get_db)):
-    """Возвращает тайтлы для секций главной страницы, отсортированные по данным mangabuff."""
-    from sqlalchemy import func as sa_fn
+    """Возвращает тайтлы для секций главной страницы, отсортированные по локальным метрикам пользователей."""
+    from sqlalchemy import func as sa_fn, desc as sa_desc, case as sa_case
     from collections import defaultdict
+
+    now = datetime.utcnow()
+    seven_days_ago = now - timedelta(days=7)
+    thirty_days_ago = now - timedelta(days=30)
 
     # Предрасчёт пользовательских рейтингов для всех манг
     user_ratings_agg = dict(
@@ -5007,17 +5567,16 @@ async def get_home_sections(db: Session = Depends(get_db)):
         .group_by(MangaRating.manga_id)
         .all()
     )
-    # Реальные просмотры
+    # Локальные просмотры (all-time)
     real_views_map = dict(
         db.query(MangaView.manga_id, sa_fn.count(MangaView.id))
         .group_by(MangaView.manga_id)
         .all()
     )
 
-    def build_section(query, limit=10):
-        items = query.limit(limit).all()
+    def build_section_from_items(items, limit=10):
         result = []
-        for item in items:
+        for item in items[:limit]:
             avg_user = user_ratings_agg.get(item.manga_id)
             user_avg = round(float(avg_user), 2) if avg_user else None
             user_total = user_ratings_count.get(item.manga_id, 0)
@@ -5038,36 +5597,94 @@ async def get_home_sections(db: Session = Depends(get_db)):
             })
         return result
 
-    # --- Секция "Последние обновления" с данными о главах ---
+    def build_section(query, limit=10):
+        return build_section_from_items(query.limit(limit).all(), limit)
+
+    # === Subqueries для локальных метрик ===
+
+    # Просмотры за 7 дней
+    views_7d_sq = db.query(
+        MangaView.manga_id, sa_fn.count(MangaView.id).label("v7")
+    ).filter(MangaView.created_at >= seven_days_ago).group_by(MangaView.manga_id).subquery()
+
+    # Закладки за 7 дней
+    bookmarks_7d_sq = db.query(
+        MangaBookmark.manga_id, sa_fn.count(MangaBookmark.id).label("b7")
+    ).filter(MangaBookmark.created_at >= seven_days_ago).group_by(MangaBookmark.manga_id).subquery()
+
+    # All-time просмотры (для горячих новинок)
+    views_all_sq = db.query(
+        MangaView.manga_id, sa_fn.count(MangaView.id).label("v_all")
+    ).group_by(MangaView.manga_id).subquery()
+
+    # Рейтинг с порогом >= 20 голосов
+    rating_sq = db.query(
+        MangaRating.manga_id,
+        sa_fn.avg(MangaRating.rating).label("avg_r"),
+        sa_fn.count(MangaRating.id).label("r_cnt")
+    ).group_by(MangaRating.manga_id).having(sa_fn.count(MangaRating.id) >= 20).subquery()
+
+    # --- "Горячие новинки": добавлены за 30 дней, по просмотрам ---
+    hot_new_items = db.query(MangaItem).outerjoin(
+        views_all_sq, MangaItem.manga_id == views_all_sq.c.manga_id
+    ).filter(
+        MangaItem.created_at >= thirty_days_ago
+    ).order_by(sa_fn.coalesce(views_all_sq.c.v_all, 0).desc()).limit(10).all()
+
+    # --- "Популярное": активность за 7 дней (просмотры + закладки) ---
+    popular_q = db.query(MangaItem).outerjoin(
+        views_7d_sq, MangaItem.manga_id == views_7d_sq.c.manga_id
+    ).outerjoin(
+        bookmarks_7d_sq, MangaItem.manga_id == bookmarks_7d_sq.c.manga_id
+    ).order_by(
+        (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
+    )
+
+    # --- "Топ по рейтингу": средний рейтинг с порогом >= 20 голосов ---
+    top_rated_items = db.query(MangaItem).join(
+        rating_sq, MangaItem.manga_id == rating_sq.c.manga_id
+    ).order_by(rating_sq.c.avg_r.desc()).limit(10).all()
+
+    # --- "Новинки": по дате добавления в БД ---
+    newest_q = db.query(MangaItem).order_by(MangaItem.created_at.desc())
+
+    # --- "Последние обновления": по updated_at, только тайтлы с главами ---
+    # Subquery: manga_id у которых есть хотя бы 1 глава
+    manga_with_chapters_sq = db.query(Chapter.manga_id).distinct().subquery()
     updated_items = db.query(MangaItem).filter(
-        MangaItem.mangabuff_updated_rank > 0
-    ).order_by(MangaItem.mangabuff_updated_rank.asc()).limit(30).all()
+        MangaItem.updated_at != None,
+        MangaItem.manga_id.in_(db.query(manga_with_chapters_sq.c.manga_id))
+    ).order_by(MangaItem.updated_at.desc()).limit(30).all()
 
     updated_manga_ids = [item.manga_id for item in updated_items]
 
-    # Получаем главы для этих манг
     chapters_raw = db.query(Chapter).filter(
         Chapter.manga_id.in_(updated_manga_ids)
-    ).order_by(Chapter.created_at.desc()).all()
+    ).order_by(Chapter.created_at.desc()).all() if updated_manga_ids else []
 
-    # Группируем главы по manga_id
     chapters_by_manga = defaultdict(list)
     for ch in chapters_raw:
         chapters_by_manga[ch.manga_id].append(ch)
 
+    def _ch_sort_key(c):
+        """Сортировка глав: сначала по дате добавления, потом по номеру главы (desc)."""
+        try:
+            num = float(c.chapter_number) if c.chapter_number else 0
+        except (ValueError, TypeError):
+            num = 0
+        return (c.created_at or datetime.min, num)
+
     latest_updates = []
     for item in updated_items:
         manga_chapters = chapters_by_manga.get(item.manga_id, [])
-        # Сортируем по дате (newest first)
-        manga_chapters.sort(key=lambda c: c.created_at or datetime.min, reverse=True)
+        manga_chapters.sort(key=_ch_sort_key, reverse=True)
 
         latest_chapter = None
         recent_count = 0
         if manga_chapters:
             latest_chapter = manga_chapters[0]
-            # Считаем главы добавленные за последние 24 часа
             if latest_chapter.created_at:
-                cutoff = datetime.utcnow() - timedelta(hours=24)
+                cutoff = now - timedelta(hours=24)
                 recent_count = sum(1 for c in manga_chapters if c.created_at and c.created_at > cutoff)
 
         avg_user = user_ratings_agg.get(item.manga_id)
@@ -5096,65 +5713,56 @@ async def get_home_sections(db: Session = Depends(get_db)):
             "total_chapters": len(manga_chapters),
         })
 
-    # --- Остальные секции ---
-    popular_q = db.query(MangaItem).filter(MangaItem.mangabuff_popularity_rank > 0).order_by(MangaItem.mangabuff_popularity_rank.asc())
-    top_rated_q = db.query(MangaItem).filter(MangaItem.mangabuff_rating_rank > 0).order_by(MangaItem.mangabuff_rating_rank.asc())
-    newest_q = db.query(MangaItem).filter(MangaItem.mangabuff_newest_rank > 0).order_by(MangaItem.mangabuff_newest_rank.asc())
+    # --- "Новый сезон": год >= 2024, по популярности за 7 дней ---
+    new_season_q = db.query(MangaItem).outerjoin(
+        views_7d_sq, MangaItem.manga_id == views_7d_sq.c.manga_id
+    ).outerjoin(
+        bookmarks_7d_sq, MangaItem.manga_id == bookmarks_7d_sq.c.manga_id
+    ).filter(
+        MangaItem.year >= 2024
+    ).order_by(
+        (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
+    )
 
-    # Горячие новинки = новинки с высоким рейтингом
-    hot_new_q = db.query(MangaItem).filter(
-        MangaItem.mangabuff_newest_rank > 0,
-        MangaItem.mangabuff_newest_rank <= 100,
-    ).order_by(MangaItem.mangabuff_popularity_rank.asc())
-
-    # Новый сезон = год >= 2024, сортировка по популярности
-    new_season_q = db.query(MangaItem).filter(
-        MangaItem.year >= 2024,
-        MangaItem.mangabuff_popularity_rank > 0,
-    ).order_by(MangaItem.mangabuff_popularity_rank.asc())
-
-    # Свежие главы = обновлённые
+    # --- "Свежие главы" = то же что "обновления" ---
     fresh_q = db.query(MangaItem).filter(
-        MangaItem.mangabuff_updated_rank > 0
-    ).order_by(MangaItem.mangabuff_updated_rank.asc())
+        MangaItem.updated_at != None
+    ).order_by(MangaItem.updated_at.desc())
 
-    # Топ по типам (по популярности)
-    top_manhwa_q = db.query(MangaItem).filter(
-        MangaItem.manga_type == "Manhwa",
-        MangaItem.mangabuff_popularity_rank > 0,
-    ).order_by(MangaItem.mangabuff_popularity_rank.asc())
-
-    top_manga_q = db.query(MangaItem).filter(
-        MangaItem.manga_type == "Manga",
-        MangaItem.mangabuff_popularity_rank > 0,
-    ).order_by(MangaItem.mangabuff_popularity_rank.asc())
-
-    top_manhua_q = db.query(MangaItem).filter(
-        MangaItem.manga_type == "Manhua",
-        MangaItem.mangabuff_popularity_rank > 0,
-    ).order_by(MangaItem.mangabuff_popularity_rank.asc())
+    # --- Топ по типам: средний рейтинг с порогом >= 20 голосов ---
+    def top_by_type(manga_type, limit=5):
+        items = db.query(MangaItem).join(
+            rating_sq, MangaItem.manga_id == rating_sq.c.manga_id
+        ).filter(
+            MangaItem.manga_type == manga_type
+        ).order_by(rating_sq.c.avg_r.desc()).limit(limit).all()
+        return build_section_from_items(items, limit)
 
     return {
         "popular": build_section(popular_q, 10),
-        "top_rated": build_section(top_rated_q, 10),
+        "top_rated": build_section_from_items(top_rated_items, 10),
         "newest": build_section(newest_q, 10),
         "updated": latest_updates,
-        "hot_new": build_section(hot_new_q, 10),
+        "hot_new": build_section_from_items(hot_new_items, 10),
         "new_season": build_section(new_season_q, 5),
         "popular_today": build_section(popular_q.offset(10), 5),
         "fresh_chapters": build_section(fresh_q, 10),
         "featured": build_section(popular_q, 5),
-        "top_manhwa": build_section(top_manhwa_q, 5),
-        "top_manga": build_section(top_manga_q, 5),
-        "top_manhua": build_section(top_manhua_q, 5),
+        "top_manhwa": top_by_type("Manhwa", 5),
+        "top_manga": top_by_type("Manga", 5),
+        "top_manhua": top_by_type("Manhua", 5),
     }
 
 
 @app.get("/manga/section/{section_key}", summary="Данные секции для страницы списка")
 async def get_section_list(section_key: str, db: Session = Depends(get_db)):
-    """Возвращает 20 тайтлов для конкретной секции (те же данные что на главной, но больше)."""
-    from sqlalchemy import func as sa_fn
+    """Возвращает 20 тайтлов для конкретной секции, отсортированных по локальным метрикам."""
+    from sqlalchemy import func as sa_fn, desc as sa_desc
     LIMIT = 20
+
+    now = datetime.utcnow()
+    seven_days_ago = now - timedelta(days=7)
+    thirty_days_ago = now - timedelta(days=30)
 
     # Пользовательские рейтинги
     user_ratings_agg = dict(
@@ -5168,17 +5776,16 @@ async def get_section_list(section_key: str, db: Session = Depends(get_db)):
         .all()
     )
 
-    # Реальные просмотры
+    # Локальные просмотры
     real_views_map = dict(
         db.query(MangaView.manga_id, sa_fn.count(MangaView.id))
         .group_by(MangaView.manga_id)
         .all()
     )
 
-    def build_items(query, limit=LIMIT):
-        items = query.limit(limit).all()
+    def build_items(items, limit=LIMIT):
         result = []
-        for item in items:
+        for item in items[:limit]:
             avg_user = user_ratings_agg.get(item.manga_id)
             user_avg = round(float(avg_user), 2) if avg_user else None
             user_total = user_ratings_count.get(item.manga_id, 0)
@@ -5199,57 +5806,79 @@ async def get_section_list(section_key: str, db: Session = Depends(get_db)):
             })
         return result
 
+    # Subqueries
+    views_7d_sq = db.query(
+        MangaView.manga_id, sa_fn.count(MangaView.id).label("v7")
+    ).filter(MangaView.created_at >= seven_days_ago).group_by(MangaView.manga_id).subquery()
+
+    bookmarks_7d_sq = db.query(
+        MangaBookmark.manga_id, sa_fn.count(MangaBookmark.id).label("b7")
+    ).filter(MangaBookmark.created_at >= seven_days_ago).group_by(MangaBookmark.manga_id).subquery()
+
+    views_all_sq = db.query(
+        MangaView.manga_id, sa_fn.count(MangaView.id).label("v_all")
+    ).group_by(MangaView.manga_id).subquery()
+
+    rating_sq = db.query(
+        MangaRating.manga_id,
+        sa_fn.avg(MangaRating.rating).label("avg_r"),
+        sa_fn.count(MangaRating.id).label("r_cnt")
+    ).group_by(MangaRating.manga_id).having(sa_fn.count(MangaRating.id) >= 20).subquery()
+
+    def popular_7d_query():
+        return db.query(MangaItem).outerjoin(
+            views_7d_sq, MangaItem.manga_id == views_7d_sq.c.manga_id
+        ).outerjoin(
+            bookmarks_7d_sq, MangaItem.manga_id == bookmarks_7d_sq.c.manga_id
+        ).order_by(
+            (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
+        ).limit(LIMIT).all()
+
+    def top_by_type_query(manga_type):
+        return db.query(MangaItem).join(
+            rating_sq, MangaItem.manga_id == rating_sq.c.manga_id
+        ).filter(
+            MangaItem.manga_type == manga_type
+        ).order_by(rating_sq.c.avg_r.desc()).limit(LIMIT).all()
+
     section_map = {
         "hot": lambda: build_items(
-            db.query(MangaItem).filter(
-                MangaItem.mangabuff_newest_rank > 0,
-                MangaItem.mangabuff_newest_rank <= 100,
-            ).order_by(MangaItem.mangabuff_popularity_rank.asc())
+            db.query(MangaItem).outerjoin(
+                views_all_sq, MangaItem.manga_id == views_all_sq.c.manga_id
+            ).filter(
+                MangaItem.created_at >= thirty_days_ago
+            ).order_by(sa_fn.coalesce(views_all_sq.c.v_all, 0).desc()).limit(LIMIT).all()
         ),
         "fresh": lambda: build_items(
             db.query(MangaItem).filter(
-                MangaItem.mangabuff_updated_rank > 0
-            ).order_by(MangaItem.mangabuff_updated_rank.asc())
+                MangaItem.updated_at != None
+            ).order_by(MangaItem.updated_at.desc()).limit(LIMIT).all()
         ),
-        "popular": lambda: build_items(
-            db.query(MangaItem).filter(
-                MangaItem.mangabuff_popularity_rank > 0
-            ).order_by(MangaItem.mangabuff_popularity_rank.asc())
-        ),
+        "popular": lambda: build_items(popular_7d_query()),
         "new-season": lambda: build_items(
-            db.query(MangaItem).filter(
-                MangaItem.year >= 2024,
-                MangaItem.mangabuff_popularity_rank > 0,
-            ).order_by(MangaItem.mangabuff_popularity_rank.asc())
+            db.query(MangaItem).outerjoin(
+                views_7d_sq, MangaItem.manga_id == views_7d_sq.c.manga_id
+            ).outerjoin(
+                bookmarks_7d_sq, MangaItem.manga_id == bookmarks_7d_sq.c.manga_id
+            ).filter(
+                MangaItem.year >= 2024
+            ).order_by(
+                (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
+            ).limit(LIMIT).all()
         ),
-        "trending": lambda: build_items(
-            db.query(MangaItem).filter(
-                MangaItem.mangabuff_popularity_rank > 0
-            ).order_by(MangaItem.mangabuff_popularity_rank.asc())
-        ),
+        "trending": lambda: build_items(popular_7d_query()),
         "popular-today": lambda: build_items(
-            db.query(MangaItem).filter(
-                MangaItem.mangabuff_popularity_rank > 0
-            ).order_by(MangaItem.mangabuff_popularity_rank.asc()).offset(10)
+            db.query(MangaItem).outerjoin(
+                views_7d_sq, MangaItem.manga_id == views_7d_sq.c.manga_id
+            ).outerjoin(
+                bookmarks_7d_sq, MangaItem.manga_id == bookmarks_7d_sq.c.manga_id
+            ).order_by(
+                (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
+            ).offset(10).limit(LIMIT).all()
         ),
-        "top-manhwa": lambda: build_items(
-            db.query(MangaItem).filter(
-                MangaItem.manga_type == "Manhwa",
-                MangaItem.mangabuff_popularity_rank > 0,
-            ).order_by(MangaItem.mangabuff_popularity_rank.asc())
-        ),
-        "top-manga": lambda: build_items(
-            db.query(MangaItem).filter(
-                MangaItem.manga_type == "Manga",
-                MangaItem.mangabuff_popularity_rank > 0,
-            ).order_by(MangaItem.mangabuff_popularity_rank.asc())
-        ),
-        "top-manhua": lambda: build_items(
-            db.query(MangaItem).filter(
-                MangaItem.manga_type == "Manhua",
-                MangaItem.mangabuff_popularity_rank > 0,
-            ).order_by(MangaItem.mangabuff_popularity_rank.asc())
-        ),
+        "top-manhwa": lambda: build_items(top_by_type_query("Manhwa")),
+        "top-manga": lambda: build_items(top_by_type_query("Manga")),
+        "top-manhua": lambda: build_items(top_by_type_query("Manhua")),
     }
 
     builder = section_map.get(section_key)
@@ -5330,6 +5959,7 @@ async def get_user_public_profile(user_id: int, db: Session = Depends(get_db)):
         "about": u.about or "",
         "profile_theme": u.profile_theme or "base",
         "profile_banner_url": u.profile_banner_url or "",
+        "profile_background_url": u.profile_background_url or "",
         "private_profile": bool(u.private_profile),
         "badge_ids": json.loads(u.badge_ids) if u.badge_ids else [],
         "showcase_manga_ids": json.loads(u.showcase_manga_ids) if u.showcase_manga_ids else [],
@@ -5596,8 +6226,9 @@ async def send_message(user_id: int, data: SendMessageBody, current_user: User =
 # ═══════════════════════════════════════════════════════════
 
 @app.get("/auth/wall-comments/{user_id}/with-replies", summary="Комментарии стены с ответами")
-async def get_wall_comments_with_replies(user_id: int, db: Session = Depends(get_db)):
-    comments = db.query(WallComment).filter(WallComment.profile_user_id == user_id).order_by(WallComment.created_at.desc()).limit(50).all()
+async def get_wall_comments_with_replies(user_id: int, offset: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+    total = db.query(WallComment).filter(WallComment.profile_user_id == user_id).count()
+    comments = db.query(WallComment).filter(WallComment.profile_user_id == user_id).order_by(WallComment.created_at.desc()).offset(offset).limit(limit).all()
     result = []
     for c in comments:
         author = db.query(User).filter(User.id == c.author_id).first()
@@ -5624,7 +6255,7 @@ async def get_wall_comments_with_replies(user_id: int, db: Session = Depends(get
             "timestamp": c.created_at.strftime("%d.%m.%y %H:%M") if c.created_at else "",
             "replies": replies,
         })
-    return result
+    return {"comments": result, "total": total, "has_more": offset + limit < total}
 
 
 class WallReplyCreate(BaseModel):
@@ -5804,10 +6435,15 @@ async def get_user_profile_full(user_id: int, db: Session = Depends(get_db)):
         "birthday": u.birthday or "",
         "profile_theme": u.profile_theme or "base",
         "profile_banner_url": u.profile_banner_url or "",
+        "profile_background_url": u.profile_background_url or "",
         "private_profile": bool(u.private_profile),
         "role": u.role or "user",
         "badge_ids": badge_list,
         "corruption": corruption,
+        "active_title": u.active_title or "",
+        "nickname_color": u.nickname_color or "",
+        "nickname_font": u.nickname_font or "",
+        "subscription_active": u.subscription_type == "springpro" and u.subscription_expires_at and u.subscription_expires_at > datetime.utcnow(),
         "stats": {
             "chapters_read": history_count,
             "total_likes": like_count,
@@ -5888,6 +6524,630 @@ def create_notification(db: Session, user_id: int, message: str, link: str = "",
     notif = UserNotification(user_id=user_id, message=message, link=link, category=category)
     db.add(notif)
     db.commit()
+
+
+# ═══════════════════════════════════════════════════════════
+# SHOP & SCRAP
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/shop/items", summary="Список товаров магазина")
+async def get_shop_items(current_user: User = Depends(get_optional_user), db: Session = Depends(get_db)):
+    from sqlalchemy import or_
+    query = db.query(ShopItem).filter(
+        or_(ShopItem.owner_id == None, ShopItem.owner_id == (current_user.id if current_user else -1))
+    )
+    items = query.all()
+    user_level = current_user.level if current_user else 1
+    return [
+        {
+            "key": i.key,
+            "name": i.name,
+            "description": i.description,
+            "category": i.category,
+            "price": i.price,
+            "preview": i.preview,
+            "rarity": i.rarity or "common",
+            "css_variables": i.css_variables or "{}",
+            "block_style": i.block_style or "none",
+            "nickname_effect": i.nickname_effect or "none",
+            "font_family": i.font_family or "",
+            "required_level": i.required_level or 0,
+            "locked": (i.required_level or 0) > user_level,
+        }
+        for i in items
+    ]
+
+@app.post("/shop/buy/{item_key}", summary="Купить предмет за Scrap")
+async def buy_shop_item(item_key: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    item = db.query(ShopItem).filter(ShopItem.key == item_key).first()
+    if not item:
+        raise HTTPException(404, "Товар не найден")
+    # Check level requirement for frames
+    if item.category == "frame" and (item.required_level or 0) > 0:
+        if current_user.level < item.required_level:
+            raise HTTPException(400, f"Требуется {item.required_level} уровень")
+    existing = db.query(UserPurchase).filter(UserPurchase.user_id == current_user.id, UserPurchase.item_key == item_key).first()
+    if existing:
+        raise HTTPException(400, "Уже куплено")
+    earned = current_user.scrap or 0
+    donated = current_user.donated_scrap or 0
+    # SpringPro can only be purchased with donated scrap
+    if item.category == "springpro":
+        if donated < item.price:
+            raise HTTPException(400, f"Недостаточно донатных Scrap (нужно {item.price}, есть {donated})")
+        current_user.donated_scrap = donated - item.price
+    else:
+        total = earned + donated
+        if total < item.price:
+            raise HTTPException(400, f"Недостаточно Scrap (нужно {item.price}, есть {total})")
+        # Deduct earned first, overflow from donated
+        remaining_cost = item.price
+        if earned >= remaining_cost:
+            current_user.scrap = earned - remaining_cost
+        else:
+            current_user.scrap = 0
+            remaining_cost -= earned
+            current_user.donated_scrap = donated - remaining_cost
+    purchase = UserPurchase(user_id=current_user.id, item_key=item_key)
+    db.add(purchase)
+    # Auto-activate springpro subscription on purchase
+    if item.category == "springpro":
+        days = 30
+        if "3month" in item_key:
+            days = 90
+        elif "year" in item_key:
+            days = 365
+        current_user.subscription_type = "springpro"
+        base = current_user.subscription_expires_at if (current_user.subscription_expires_at and current_user.subscription_expires_at > datetime.utcnow()) else datetime.utcnow()
+        current_user.subscription_expires_at = base + timedelta(days=days)
+    db.commit()
+    result = {"ok": True, "scrap": (current_user.scrap or 0) + (current_user.donated_scrap or 0), "earned_scrap": current_user.scrap or 0, "donated_scrap": current_user.donated_scrap or 0}
+    if item.category == "springpro":
+        result["subscription_active"] = True
+        result["subscription_expires_at"] = current_user.subscription_expires_at.isoformat() if current_user.subscription_expires_at else None
+    return result
+
+@app.get("/auth/my-purchases", summary="Мои покупки")
+async def get_my_purchases(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    purchases = db.query(UserPurchase).filter(UserPurchase.user_id == current_user.id).all()
+    return [p.item_key for p in purchases]
+
+@app.post("/shop/activate/{item_key}", summary="Применить купленный предмет")
+async def activate_shop_item(item_key: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    item = db.query(ShopItem).filter(ShopItem.key == item_key).first()
+    if not item:
+        raise HTTPException(404, "Товар не найден")
+    # Check level requirement for frames
+    if item.category == "frame" and (item.required_level or 0) > 0:
+        if current_user.level < item.required_level:
+            raise HTTPException(400, f"Требуется {item.required_level} уровень")
+    purchase = db.query(UserPurchase).filter(UserPurchase.user_id == current_user.id, UserPurchase.item_key == item_key).first()
+    if not purchase:
+        raise HTTPException(400, "Предмет не куплен")
+    cat = item.category
+    if cat == "skin":
+        current_user.profile_theme = item.key.replace("skin_", "", 1)
+        # Сбрасываем настройки ника для немифических скинов
+        if item.rarity != "mythic":
+            current_user.nickname_color = None
+            current_user.nickname_font = None
+    elif cat == "frame":
+        current_user.avatar_frame = item.key
+    elif cat == "cover":
+        current_user.profile_banner_url = item.preview
+    elif cat == "avatar":
+        current_user.avatar_url = item.preview
+    elif cat == "background":
+        current_user.profile_background_url = item.preview
+    elif cat == "status":
+        current_user.bio = item.name
+    elif cat == "springpro":
+        # Activate subscription
+        days = 30
+        if "3month" in item.key:
+            days = 90
+        elif "year" in item.key:
+            days = 365
+        current_user.subscription_type = "springpro"
+        base = current_user.subscription_expires_at if (current_user.subscription_expires_at and current_user.subscription_expires_at > datetime.utcnow()) else datetime.utcnow()
+        current_user.subscription_expires_at = base + timedelta(days=days)
+    else:
+        raise HTTPException(400, "Этот предмет нельзя применить")
+    db.commit()
+    return {"ok": True, "applied": item_key}
+
+
+class SubscribeScrapRequest(BaseModel):
+    plan: str = "springpro_month"  # springpro_month | springpro_3month | springpro_year
+
+@app.post("/shop/subscribe-springpro", summary="Подписка SPRINGPRO за донатный Scrap")
+async def subscribe_springpro_scrap(data: SubscribeScrapRequest = SubscribeScrapRequest(), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Buy SPRINGPRO subscription using ONLY donated scrap (purchased with real money)."""
+    PLAN_MAP = {
+        "springpro_month": {"days": 30},
+        "springpro_3month": {"days": 90},
+        "springpro_year": {"days": 365},
+    }
+    plan_info = PLAN_MAP.get(data.plan)
+    if not plan_info:
+        raise HTTPException(400, "Неизвестный план подписки")
+    item = db.query(ShopItem).filter(ShopItem.key == data.plan).first()
+    if not item:
+        raise HTTPException(404, "Подписка не найдена")
+    price = item.price
+    donated = current_user.donated_scrap or 0
+    if donated < price:
+        raise HTTPException(400, f"Недостаточно донатных Scrap (нужно {price}, есть {donated})")
+    current_user.donated_scrap = donated - price
+    # Activate subscription
+    current_user.subscription_type = "springpro"
+    base = current_user.subscription_expires_at if (current_user.subscription_expires_at and current_user.subscription_expires_at > datetime.utcnow()) else datetime.utcnow()
+    current_user.subscription_expires_at = base + timedelta(days=plan_info["days"])
+    db.commit()
+    return {
+        "ok": True,
+        "donated_scrap": current_user.donated_scrap or 0,
+        "earned_scrap": current_user.scrap or 0,
+        "subscription_active": True,
+        "subscription_expires_at": current_user.subscription_expires_at.isoformat() if current_user.subscription_expires_at else None,
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# PROFILE COMPATIBILITY
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/users/{user_id}/compatibility", summary="Совместимость профилей")
+async def get_profile_compatibility(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    my_bookmarks = set(b.manga_id for b in db.query(MangaBookmark).filter(MangaBookmark.user_id == current_user.id).all())
+    their_bookmarks = set(b.manga_id for b in db.query(MangaBookmark).filter(MangaBookmark.user_id == user_id).all())
+    if not my_bookmarks and not their_bookmarks:
+        return {"compatibility": 0, "common": 0, "total": 0}
+    union = my_bookmarks | their_bookmarks
+    intersection = my_bookmarks & their_bookmarks
+    compatibility = round(len(intersection) / len(union) * 100) if union else 0
+    return {"compatibility": compatibility, "common": len(intersection), "total": len(union)}
+
+
+# ═══════════════════════════════════════════════════════════
+# ADMIN SHOP CRUD
+# ═══════════════════════════════════════════════════════════
+
+class ShopItemCreate(BaseModel):
+    key: str
+    name: str
+    description: str = ""
+    category: str = "sticker"
+    price: int = 0
+    preview: str = ""
+    rarity: str = "common"
+    css_variables: str = "{}"
+    block_style: str = "none"
+    nickname_effect: str = "none"
+    font_family: str = ""
+
+class ShopItemUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    price: Optional[int] = None
+    preview: Optional[str] = None
+    rarity: Optional[str] = None
+    css_variables: Optional[str] = None
+    block_style: Optional[str] = None
+    nickname_effect: Optional[str] = None
+    font_family: Optional[str] = None
+
+class ScrapGrant(BaseModel):
+    amount: int
+
+@app.post("/admin/shop/items", summary="Создать товар (админ)")
+async def admin_create_shop_item(data: ShopItemCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(403, "Доступ запрещён")
+    existing = db.query(ShopItem).filter(ShopItem.key == data.key).first()
+    if existing:
+        raise HTTPException(400, "Товар с таким ключом уже существует")
+    item = ShopItem(key=data.key, name=data.name, description=data.description, category=data.category, price=data.price, preview=data.preview,
+                    rarity=data.rarity, css_variables=data.css_variables, block_style=data.block_style, nickname_effect=data.nickname_effect, font_family=data.font_family)
+    db.add(item)
+    db.commit()
+    return {"ok": True, "id": item.id}
+
+@app.put("/admin/shop/items/{item_key}", summary="Обновить товар (админ)")
+async def admin_update_shop_item(item_key: str, data: ShopItemUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(403, "Доступ запрещён")
+    item = db.query(ShopItem).filter(ShopItem.key == item_key).first()
+    if not item:
+        raise HTTPException(404, "Товар не найден")
+    if data.name is not None: item.name = data.name
+    if data.description is not None: item.description = data.description
+    if data.category is not None: item.category = data.category
+    if data.price is not None: item.price = data.price
+    if data.preview is not None: item.preview = data.preview
+    if data.rarity is not None: item.rarity = data.rarity
+    if data.css_variables is not None: item.css_variables = data.css_variables
+    if data.block_style is not None: item.block_style = data.block_style
+    if data.nickname_effect is not None: item.nickname_effect = data.nickname_effect
+    if data.font_family is not None: item.font_family = data.font_family
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/admin/shop/items/{item_key}", summary="Удалить товар (админ)")
+async def admin_delete_shop_item(item_key: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(403, "Доступ запрещён")
+    item = db.query(ShopItem).filter(ShopItem.key == item_key).first()
+    if not item:
+        raise HTTPException(404, "Товар не найден")
+    db.delete(item)
+    db.commit()
+    return {"ok": True}
+
+@app.post("/admin/users/{user_id}/scrap", summary="Начислить/списать Scrap (админ)")
+async def admin_grant_scrap(user_id: int, data: ScrapGrant, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(403, "Доступ запрещён")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(404, "Пользователь не найден")
+    target.donated_scrap = max(0, (target.donated_scrap or 0) + data.amount)
+    db.commit()
+    return {"ok": True, "donated_scrap": target.donated_scrap}
+
+
+# ═══════════════════════════════════════════════════════════
+# PERSONALIZATION REQUESTS
+# ═══════════════════════════════════════════════════════════
+
+PERSONALIZATION_DIR = os.path.join(UPLOADS_DIR, "personalization")
+os.makedirs(PERSONALIZATION_DIR, exist_ok=True)
+
+PERSONALIZATION_PRICE = 5000
+REFUND_WINDOW_MINUTES = 10
+
+@app.post("/auth/personalization/request", summary="Заявка на персонализацию")
+async def create_personalization_request(
+    type: str = Query(..., pattern="^(background)$"),
+    file: UploadFile = FastAPIFile(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    earned = current_user.scrap or 0
+    donated = current_user.donated_scrap or 0
+    total = earned + donated
+    if total < PERSONALIZATION_PRICE:
+        raise HTTPException(400, f"Недостаточно Scrap (нужно {PERSONALIZATION_PRICE}, есть {total})")
+
+    file_url = ""
+    if not file:
+        raise HTTPException(400, "Загрузите файл")
+    ext = os.path.splitext(file.filename or "file.png")[1].lower()
+    allowed = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm")
+    if ext not in allowed:
+        raise HTTPException(400, f"Недопустимый формат: {ext}")
+    filename = f"{current_user.id}_{type}_{int(datetime.utcnow().timestamp())}{ext}"
+    filepath = os.path.join(PERSONALIZATION_DIR, filename)
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+    file_url = f"/uploads/personalization/{filename}"
+
+    # Deduct earned first, overflow from donated
+    remaining_cost = PERSONALIZATION_PRICE
+    if earned >= remaining_cost:
+        current_user.scrap = earned - remaining_cost
+    else:
+        current_user.scrap = 0
+        remaining_cost -= earned
+        current_user.donated_scrap = donated - remaining_cost
+    req = PersonalizationRequest(
+        user_id=current_user.id,
+        type=type,
+        file_url=file_url,
+        text_value="",
+        price=PERSONALIZATION_PRICE,
+    )
+    db.add(req)
+    db.commit()
+    return {"ok": True, "id": req.id, "scrap": current_user.scrap}
+
+@app.get("/auth/personalization/my-requests", summary="Мои заявки на персонализацию")
+async def get_my_personalization_requests(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    reqs = db.query(PersonalizationRequest).filter(PersonalizationRequest.user_id == current_user.id).order_by(PersonalizationRequest.created_at.desc()).all()
+    return [{
+        "id": r.id,
+        "type": r.type,
+        "file_url": r.file_url,
+        "text_value": r.text_value,
+        "status": r.status,
+        "price": r.price,
+        "created_at": r.created_at.isoformat() if r.created_at else "",
+        "refundable": r.status == "pending" and r.created_at and (datetime.utcnow() - r.created_at).total_seconds() < REFUND_WINDOW_MINUTES * 60,
+    } for r in reqs]
+
+@app.delete("/auth/personalization/{req_id}/refund", summary="Возврат Scrap за заявку")
+async def refund_personalization(req_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    req = db.query(PersonalizationRequest).filter(PersonalizationRequest.id == req_id, PersonalizationRequest.user_id == current_user.id).first()
+    if not req:
+        raise HTTPException(404, "Заявка не найдена")
+    if req.status != "pending":
+        raise HTTPException(400, "Заявка уже обработана")
+    if not req.created_at or (datetime.utcnow() - req.created_at).total_seconds() > REFUND_WINDOW_MINUTES * 60:
+        raise HTTPException(400, "Время возврата истекло (10 мин)")
+    current_user.scrap = (current_user.scrap or 0) + req.price
+    db.delete(req)
+    db.commit()
+    return {"ok": True, "scrap": current_user.scrap}
+
+@app.get("/admin/personalization/pending", summary="Заявки на модерацию (админ)")
+async def admin_get_pending_personalization(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(403, "Доступ запрещён")
+    reqs = db.query(PersonalizationRequest).filter(PersonalizationRequest.status == "pending").order_by(PersonalizationRequest.created_at.asc()).all()
+    result = []
+    for r in reqs:
+        u = db.query(User).filter(User.id == r.user_id).first()
+        result.append({
+            "id": r.id,
+            "user_id": r.user_id,
+            "username": u.username if u else "?",
+            "avatar_url": u.avatar_url if u else "",
+            "type": r.type,
+            "file_url": r.file_url,
+            "text_value": r.text_value,
+            "price": r.price,
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+        })
+    return result
+
+@app.put("/admin/personalization/{req_id}/approve", summary="Одобрить заявку (админ)")
+async def admin_approve_personalization(req_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(403, "Доступ запрещён")
+    req = db.query(PersonalizationRequest).filter(PersonalizationRequest.id == req_id).first()
+    if not req:
+        raise HTTPException(404, "Заявка не найдена")
+    if req.status != "pending":
+        raise HTTPException(400, "Заявка уже обработана")
+    req.status = "approved"
+    req.reviewed_at = datetime.utcnow()
+    # Apply personalization
+    target = db.query(User).filter(User.id == req.user_id).first()
+    if target:
+        if req.type == "background":
+            target.profile_background_url = req.file_url
+        # Create a personal shop item so user can re-activate it later
+        import time
+        item_key = f"pers_{req.type}_{req.user_id}_{int(time.time())}"
+        cat = "background" if req.type == "background" else "cover"
+        shop_item = ShopItem(
+            key=item_key,
+            name=f"Мой {('фон' if req.type == 'background' else 'обложка')}",
+            description="Одобренная персонализация",
+            category=cat,
+            price=0,
+            preview=req.file_url,
+            rarity="common",
+            owner_id=req.user_id,
+        )
+        db.add(shop_item)
+        db.flush()
+        # Grant the item to the user as purchased
+        purchase = UserPurchase(user_id=req.user_id, item_key=item_key)
+        db.add(purchase)
+    db.commit()
+    return {"ok": True}
+
+@app.put("/admin/personalization/{req_id}/reject", summary="Отклонить заявку (админ)")
+async def admin_reject_personalization(req_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(403, "Доступ запрещён")
+    req = db.query(PersonalizationRequest).filter(PersonalizationRequest.id == req_id).first()
+    if not req:
+        raise HTTPException(404, "Заявка не найдена")
+    if req.status != "pending":
+        raise HTTPException(400, "Заявка уже обработана")
+    req.status = "rejected"
+    req.reviewed_at = datetime.utcnow()
+    # Refund scrap
+    target = db.query(User).filter(User.id == req.user_id).first()
+    if target:
+        target.scrap = (target.scrap or 0) + req.price
+    db.commit()
+    return {"ok": True}
+
+
+# ═══ PAYMENTS (PAYPALYCH) ═══
+
+SCRAP_PACKAGES = [
+    {"id": "scrap_600", "scrap": 600, "price_rub": 99, "label": "", "first_buy_x2": True},
+    {"id": "scrap_1600", "scrap": 1600, "price_rub": 249, "label": "", "first_buy_x2": True},
+    {"id": "scrap_3500", "scrap": 3500, "price_rub": 499, "label": "popular", "first_buy_x2": True},
+    {"id": "scrap_8000", "scrap": 8000, "price_rub": 999, "label": "discount_30", "first_buy_x2": True},
+    {"id": "scrap_18000", "scrap": 18000, "price_rub": 1990, "label": "discount_40", "first_buy_x2": True},
+    {"id": "scrap_50000", "scrap": 50000, "price_rub": 4990, "label": "vip", "first_buy_x2": True},
+    {"id": "scrap_120000", "scrap": 120000, "price_rub": 9990, "label": "elite", "first_buy_x2": True},
+]
+SPRINGPRO_PLANS_RUB = [
+    {"id": "springpro_1m", "months": 1, "price_rub": 159, "label": ""},
+    {"id": "springpro_3m", "months": 3, "price_rub": 419, "label": "economy_5"},
+    {"id": "springpro_12m", "months": 12, "price_rub": 1490, "label": "economy_20"},
+]
+SPRINGPRO_PRICE_RUB = 159
+
+@app.get("/payments/packages", summary="Доступные пакеты для покупки")
+async def get_payment_packages():
+    return {
+        "scrap_packages": SCRAP_PACKAGES,
+        "springpro_price": SPRINGPRO_PRICE_RUB,
+        "springpro_plans": SPRINGPRO_PLANS_RUB,
+    }
+
+class CreatePaymentRequest(BaseModel):
+    type: str  # "scrap" | "springpro"
+    package_id: Optional[str] = None  # for scrap packages
+
+@app.post("/payments/create", summary="Создать платёж через PAYPALYCH")
+async def create_payment(data: CreatePaymentRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    import uuid
+
+    if data.type == "scrap":
+        pkg = next((p for p in SCRAP_PACKAGES if p["id"] == data.package_id), None)
+        if not pkg:
+            raise HTTPException(400, "Неизвестный пакет")
+        amount_rub = pkg["price_rub"]
+        scrap_amount = pkg["scrap"]
+        description = f"{scrap_amount} SCRAP для {current_user.username}"
+    elif data.type == "springpro":
+        plan = next((p for p in SPRINGPRO_PLANS_RUB if p["id"] == data.package_id), None) if data.package_id else None
+        amount_rub = plan["price_rub"] if plan else SPRINGPRO_PRICE_RUB
+        scrap_amount = 0
+        months = plan["months"] if plan else 1
+        description = f"SPRINGPRO подписка ({months} мес) для {current_user.username}"
+    else:
+        raise HTTPException(400, "Неизвестный тип платежа")
+
+    payment_id = str(uuid.uuid4())
+
+    txn = PaymentTransaction(
+        user_id=current_user.id,
+        payment_id=payment_id,
+        type=data.type,
+        amount_rub=amount_rub,
+        scrap_amount=scrap_amount,
+        package_id=data.package_id,
+        status="pending",
+        created_at=datetime.utcnow(),
+    )
+    db.add(txn)
+    db.commit()
+
+    if not PAYPALYCH_API_KEY:
+        raise HTTPException(500, "Платежная система не настроена")
+
+    try:
+        resp = requests.post(
+            "https://paypalych.com/api/v1/bill/create",
+            json={
+                "amount": amount_rub,
+                "order_id": payment_id,
+                "description": description,
+                "type": "normal",
+                "shop_id": PAYPALYCH_SHOP_ID,
+                "custom_fields": json.dumps({"user_id": current_user.id, "type": data.type}),
+            },
+            headers={"Authorization": f"Bearer {PAYPALYCH_API_KEY}"},
+            timeout=15,
+        )
+        resp_data = resp.json()
+        if resp.status_code == 200 and resp_data.get("link_page_url"):
+            return {"payment_url": resp_data["link_page_url"], "payment_id": payment_id}
+        else:
+            txn.status = "failed"
+            db.commit()
+            raise HTTPException(502, f"Ошибка платежной системы: {resp_data.get('message', 'unknown')}")
+    except requests.RequestException as e:
+        txn.status = "failed"
+        db.commit()
+        raise HTTPException(502, f"Ошибка связи с платежной системой: {str(e)}")
+
+@app.post("/payments/webhook", summary="Webhook от PAYPALYCH")
+async def payment_webhook(request: Request, db: Session = Depends(get_db)):
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(400, "Invalid JSON")
+
+    order_id = body.get("order_id") or body.get("InvId")
+    status = body.get("status", "").lower()
+    sign = body.get("sign") or body.get("SignatureValue")
+
+    if not order_id:
+        raise HTTPException(400, "Missing order_id")
+
+    # Verify signature if secret is configured
+    if PAYPALYCH_SECRET and sign:
+        import hmac as _hmac
+        expected = _hmac.new(PAYPALYCH_SECRET.encode(), order_id.encode(), hashlib.sha256).hexdigest()
+        if sign.lower() != expected.lower():
+            raise HTTPException(403, "Invalid signature")
+
+    txn = db.query(PaymentTransaction).filter(PaymentTransaction.payment_id == order_id).first()
+    if not txn:
+        raise HTTPException(404, "Transaction not found")
+
+    if txn.status == "completed":
+        return {"ok": True}
+
+    if status in ("paid", "success", "completed"):
+        txn.status = "completed"
+        txn.completed_at = datetime.utcnow()
+
+        user = db.query(User).filter(User.id == txn.user_id).first()
+        if user:
+            if txn.type == "scrap":
+                scrap_to_add = txn.scrap_amount
+                user.donated_scrap = (user.donated_scrap or 0) + scrap_to_add
+                # First purchase x2 bonus: give same amount as earned (free) scrap
+                if txn.package_id:
+                    prev = db.query(PaymentTransaction).filter(
+                        PaymentTransaction.user_id == txn.user_id,
+                        PaymentTransaction.type == "scrap",
+                        PaymentTransaction.package_id == txn.package_id,
+                        PaymentTransaction.status == "completed",
+                        PaymentTransaction.id != txn.id,
+                    ).first()
+                    if not prev:
+                        user.scrap = (user.scrap or 0) + txn.scrap_amount
+            elif txn.type == "springpro":
+                user.subscription_type = "springpro"
+                plan = next((p for p in SPRINGPRO_PLANS_RUB if p["id"] == txn.package_id), None) if txn.package_id else None
+                months = plan["months"] if plan else 1
+                base = user.subscription_expires_at if (user.subscription_expires_at and user.subscription_expires_at > datetime.utcnow()) else datetime.utcnow()
+                user.subscription_expires_at = base + timedelta(days=30 * months)
+
+        db.commit()
+        return {"ok": True}
+    elif status in ("failed", "cancelled", "expired"):
+        txn.status = "failed"
+        db.commit()
+        return {"ok": True}
+
+    return {"ok": True}
+
+@app.get("/payments/status/{payment_id}", summary="Статус платежа")
+async def get_payment_status(payment_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    txn = db.query(PaymentTransaction).filter(
+        PaymentTransaction.payment_id == payment_id,
+        PaymentTransaction.user_id == current_user.id,
+    ).first()
+    if not txn:
+        raise HTTPException(404, "Платёж не найден")
+    return {
+        "status": txn.status,
+        "type": txn.type,
+        "scrap_amount": txn.scrap_amount,
+        "amount_rub": txn.amount_rub,
+    }
+
+# ═══ ADMIN: SHOP FILE UPLOAD ═══
+
+@app.post("/admin/shop/upload", summary="Загрузить файл для товара магазина")
+async def admin_shop_upload(file: UploadFile = FastAPIFile(...), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(403, "Только для админов")
+    ext = os.path.splitext(file.filename or "file.png")[1].lower()
+    if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm"):
+        raise HTTPException(400, "Недопустимый формат. Допустимы: jpg, png, gif, webp, mp4, webm")
+    import uuid
+    filename = f"{uuid.uuid4().hex}{ext}"
+    filepath = os.path.join(SHOP_UPLOADS_DIR, filename)
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+    return {"url": f"/uploads/shop/{filename}"}
 
 
 if __name__ == "__main__":

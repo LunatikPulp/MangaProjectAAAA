@@ -2,8 +2,7 @@ import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Manga, CharacterInfo, typeDisplayNames } from '../types';
-import { isGeminiAvailable, generateCharacterInfo } from '../services/geminiService';
+import { Manga, typeDisplayNames } from '../types';
 import ReportIcon from '../components/icons/ReportIcon';
 import { useHistory } from '../hooks/useHistory';
 import { useReadingProgress } from '../hooks/useReadingProgress';
@@ -80,8 +79,6 @@ const formatAgeRating = (value?: string, genres?: string[], tags?: string[]) => 
 const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
     const [activeTab, setActiveTab] = useState('overview');
     const [isReportModalOpen, setReportModalOpen] = useState(false);
-    const [characters, setCharacters] = useState<CharacterInfo[]>([]);
-    const [isLoadingCharacters, setIsLoadingCharacters] = useState(false);
     const [isStatsExpanded, setStatsExpanded] = useState(false);
     const [isRatingModalOpen, setRatingModalOpen] = useState(false);
     const [isMenuOpen, setMenuOpen] = useState(false);
@@ -120,35 +117,6 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
         }).catch(() => {});
     }, [manga.id]);
 
-    useEffect(() => {
-        const fetchCharacters = async () => {
-            if (isGeminiAvailable()) {
-                const cacheKey = `gemini-chars-${manga.id}`;
-                try {
-                    const cachedData = sessionStorage.getItem(cacheKey);
-                    if (cachedData) {
-                        setCharacters(JSON.parse(cachedData));
-                        return;
-                    }
-                } catch (e) {
-                    console.warn("Corrupted characters cache, fetching again.", e);
-                    sessionStorage.removeItem(cacheKey);
-                }
-                
-                setIsLoadingCharacters(true);
-                const chars = await generateCharacterInfo(manga);
-                if (chars.length > 0) {
-                    setCharacters(chars);
-                    sessionStorage.setItem(cacheKey, JSON.stringify(chars));
-                }
-                setIsLoadingCharacters(false);
-            }
-        };
-
-        if (activeTab === 'characters' && characters.length === 0) {
-            fetchCharacters();
-        }
-    }, [activeTab, manga, characters.length]);
 
     
     const handleReport = () => {
@@ -395,7 +363,6 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
                         <div className="flex items-center gap-0 p-0 bg-surface border border-overlay overflow-x-auto scrollbar-hide">
                              <TabButton name="overview" activeTab={activeTab} setActiveTab={setActiveTab}>Главная</TabButton>
                              <TabButton name="chapters" activeTab={activeTab} setActiveTab={setActiveTab}>Главы <span className="ml-1.5 opacity-60 text-xs">({manga.chapters.length})</span></TabButton>
-                             {isGeminiAvailable() && <TabButton name="characters" activeTab={activeTab} setActiveTab={setActiveTab}>Персонажи</TabButton>}
                              <TabButton name="discussion" activeTab={activeTab} setActiveTab={setActiveTab}>Обсуждение</TabButton>
                         </div>
 
@@ -641,35 +608,6 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
                                     </motion.div>
                                 )}
                                 
-                                {activeTab === 'characters' && isGeminiAvailable() && (
-                                     <motion.div 
-                                        key="characters"
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -10 }}
-                                     >
-                                        {isLoadingCharacters ? (
-                                            <div className="space-y-4 animate-pulse">
-                                                {[1,2].map(i => <div key={i} className="h-20 bg-surface rounded-xl"></div>)}
-                                            </div>
-                                        ) : (
-                                            <div className="grid gap-4">
-                                                {characters.map((char, idx) => (
-                                                    <div key={idx} className="flex gap-4 p-4 bg-surface-50 rounded-xl border border-text-primary-5">
-                                                        <div className="w-12 h-12 rounded-full bg-brand-20 flex items-center justify-center font-bold text-brand shrink-0">
-                                                            {char.name[0]}
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="font-bold text-sm">{char.name}</h4>
-                                                            <p className="text-xs text-muted mt-1 leading-relaxed">{char.description}</p>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                     </motion.div>
-                                )}
-
                                 {activeTab === 'discussion' && (
                                      <motion.div 
                                         key="discussion"

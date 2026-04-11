@@ -1,6 +1,8 @@
 import { Manga, Chapter, Page } from "../types";
 
-export const API_BASE = "http://127.0.0.1:8000";
+export const API_BASE = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
+  ? "http://127.0.0.1:8000"
+  : "/api";
 
 /** Проксирует внешний URL изображения через бэкенд (замена watermark) */
 export function proxyImageUrl(url: string, wm: string = ""): string {
@@ -136,10 +138,17 @@ export async function importCatalog(): Promise<{
   return res.json();
 }
 
-/** Запустить краулер глав */
+/** Запустить краулер глав (только тайтлы без глав) */
 export async function startChapterCrawler(): Promise<{ status: string }> {
   const res = await fetch(`${API_BASE}/catalog/crawl-chapters`, { method: "POST" });
   if (!res.ok) throw new Error("Ошибка запуска краулера");
+  return res.json();
+}
+
+/** Обновить главы: проверить ВСЕ тайтлы и добавить только новые главы */
+export async function updateChapterCrawler(): Promise<{ status: string }> {
+  const res = await fetch(`${API_BASE}/catalog/crawl-chapters?update=true`, { method: "POST" });
+  if (!res.ok) throw new Error("Ошибка запуска обновления глав");
   return res.json();
 }
 

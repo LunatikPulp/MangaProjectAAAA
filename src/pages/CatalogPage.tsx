@@ -51,8 +51,9 @@ const parseFiltersFromParams = (params: URLSearchParams) => ({
     chaptersMax: params.get('chaptersMax') || '',
 });
 
-const filtersToParams = (filters: typeof defaultFilters, sortKey: SortKey): URLSearchParams => {
+const filtersToParams = (filters: typeof defaultFilters, sortKey: SortKey, search?: string): URLSearchParams => {
     const params = new URLSearchParams();
+    if (search) params.set('search', search);
     if (filters.type !== 'all') params.set('type', filters.type);
     if (filters.status !== 'all') params.set('status', filters.status);
     filters.genres.forEach(g => params.append('genres', g));
@@ -82,6 +83,13 @@ const CatalogPage: React.FC = () => {
     const [filters, setFilters] = useState(initialFilters);
     const [sortKey, setSortKey] = useState<SortKey>(initialSort);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
+    const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(searchQuery), 350);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     // Sync filters/sort to URL (replace, not push, to avoid polluting history on every filter change)
     const isFirstRender = useRef(true);
@@ -90,15 +98,16 @@ const CatalogPage: React.FC = () => {
             isFirstRender.current = false;
             return;
         }
-        const params = filtersToParams(filters, sortKey);
+        const params = filtersToParams(filters, sortKey, searchQuery);
         setSearchParams(params, { replace: true });
-    }, [filters, sortKey, setSearchParams]);
+    }, [filters, sortKey, searchQuery, setSearchParams]);
 
     // Listen for popstate (browser back) — restore filters from URL
     useEffect(() => {
         const handlePopState = () => {
             const params = new URLSearchParams(window.location.search);
             setFilters(parseFiltersFromParams(params));
+            setSearchQuery(params.get('search') || '');
             const s = params.get('sort');
             setSortKey((s && VALID_SORT_KEYS.includes(s as SortKey)) ? s as SortKey : 'popularity');
         };
@@ -132,6 +141,7 @@ const CatalogPage: React.FC = () => {
         params.set('page', String(page));
         params.set('limit', '30');
         params.set('sort', sortKey);
+        if (debouncedSearch) params.set('search', debouncedSearch);
         if (filters.type !== 'all') params.set('manga_type', filters.type);
         if (filters.status !== 'all') params.set('status', filters.status);
         if (filters.ageRating !== 'all') params.set('age_rating', filters.ageRating);
@@ -145,7 +155,7 @@ const CatalogPage: React.FC = () => {
         // Send genres as multiple params
         filters.genres.forEach(g => params.append('genre', g));
         return params.toString();
-    }, [filters, sortKey]);
+    }, [filters, sortKey, debouncedSearch]);
 
     // Normalize backend item to Manga (simplified)
     const normalizeItem = useCallback((item: any): Manga => {
@@ -206,13 +216,19 @@ const CatalogPage: React.FC = () => {
         }
     }, [buildQuery, normalizeItem]);
 
-    // Reset and fetch on filter/sort change
+    // Pick up ?search= when navigating to catalog from header search
+    useEffect(() => {
+        const s = searchParams.get('search') || '';
+        if (s !== searchQuery) setSearchQuery(s);
+    }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Reset and fetch on filter/sort/search change
     useEffect(() => {
         setLoading(true);
         setMangaItems([]);
         pageRef.current = 1;
         fetchData(1).finally(() => setLoading(false));
-    }, [filters, sortKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [filters, sortKey, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Load more
     const handleLoadMore = useCallback(async () => {
@@ -270,6 +286,28 @@ const CatalogPage: React.FC = () => {
                     >
                         Фильтры
                     </button>
+                </div>
+                <div className="relative mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                    </svg>
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        placeholder="Поиск по каталогу..."
+                        className="w-full bg-surface border border-overlay pl-10 pr-10 py-2.5 text-base sm:text-sm font-mono text-text-primary placeholder-muted focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent-30 transition-all"
+                    />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text-primary transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    )}
                 </div>
                 {loading ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-8">

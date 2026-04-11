@@ -1,0 +1,709 @@
+/* ═══════════════════════════════════════════════════════════════════
+   SPRINGTRAP NIGHTMARE MODE — FNAF 3 Horror Easter Egg
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Avatar Glitch (Clicks 1-2) ── */
+.spring-glitch-avatar {
+  position: relative;
+  animation: springAvatarShake 0.6s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  filter: sepia(1) hue-rotate(60deg) saturate(3) contrast(1.5);
+}
+
+.spring-glitch-avatar::before,
+.spring-glitch-avatar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0.7;
+  mix-blend-mode: screen;
+}
+
+.spring-glitch-avatar::before {
+  background: rgba(255, 0, 0, 0.5);
+  transform: translate(-4px, 2px);
+  clip-path: inset(20% 0 30% 0);
+  animation: chromaShiftRed 0.6s steps(5);
+}
+
+.spring-glitch-avatar::after {
+  background: rgba(0, 100, 255, 0.5);
+  transform: translate(4px, -2px);
+  clip-path: inset(50% 0 10% 0);
+  animation: chromaShiftBlue 0.6s steps(5);
+}
+
+@keyframes springAvatarShake {
+  0%, 100% { transform: translate(0); }
+  10% { transform: translate(-3px, 2px) rotate(-1deg); }
+  20% { transform: translate(3px, -2px) rotate(1deg); }
+  30% { transform: translate(-2px, -2px) rotate(-0.5deg); }
+  40% { transform: translate(2px, 2px) rotate(0.5deg); }
+  50% { transform: translate(-3px, 1px) rotate(-1deg); }
+  60% { transform: translate(3px, -1px) rotate(1deg); }
+  70% { transform: translate(-2px, 2px) rotate(-0.5deg); }
+  80% { transform: translate(2px, -2px) rotate(0.5deg); }
+  90% { transform: translate(-1px, 1px) rotate(-0.2deg); }
+}
+
+@keyframes chromaShiftRed {
+  0% { transform: translate(-4px, 2px); clip-path: inset(20% 0 30% 0); }
+  25% { transform: translate(-6px, 3px); clip-path: inset(50% 0 10% 0); }
+  50% { transform: translate(-3px, -2px); clip-path: inset(10% 0 60% 0); }
+  75% { transform: translate(-5px, 1px); clip-path: inset(40% 0 20% 0); }
+  100% { transform: translate(-4px, 2px); clip-path: inset(20% 0 30% 0); }
+}
+
+@keyframes chromaShiftBlue {
+  0% { transform: translate(4px, -2px); clip-path: inset(50% 0 10% 0); }
+  25% { transform: translate(6px, -3px); clip-path: inset(10% 0 60% 0); }
+  50% { transform: translate(3px, 2px); clip-path: inset(40% 0 20% 0); }
+  75% { transform: translate(5px, -1px); clip-path: inset(20% 0 30% 0); }
+  100% { transform: translate(4px, -2px); clip-path: inset(50% 0 10% 0); }
+}
+
+/* ── Fullscreen Video Overlay (I_AM.mp4) ── */
+.fnaf-video-fullscreen-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 99999;
+  background: #000000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fnaf-video-fullscreen {
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+}
+
+/* ── Video Background (springmanga_background.mp4) ── */
+.fnaf-video-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   NIGHTMARE MODE — TOTAL SITE HIJACK
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. ТОТАЛЬНАЯ ЗАМЕНА ТИПОГРАФИКИ И ФОНА ── */
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Special+Elite&display=swap');
+
+html.springtrap-nightmare-active {
+  cursor: crosshair !important;
+}
+
+html.springtrap-nightmare-active body {
+  background: transparent !important;
+  background-image: none !important;
+  font-family: 'VT323', 'Special Elite', monospace !important;
+  filter: none;
+  cursor: crosshair !important;
+}
+
+/* Make app container transparent so video background shows through */
+html.springtrap-nightmare-active .bg-base {
+  background: transparent !important;
+}
+
+html.springtrap-nightmare-active #root {
+  background: transparent !important;
+}
+
+/* Restore dark background on reader page (no video there) */
+html.springtrap-reader-page.springtrap-nightmare-active body {
+  background: #020302 !important;
+}
+
+html.springtrap-reader-page.springtrap-nightmare-active .bg-base {
+  background: #020302 !important;
+}
+
+html.springtrap-reader-page.springtrap-nightmare-active #root {
+  background: #020302 !important;
+}
+
+@keyframes toxicFogDrift {
+  0% {
+    background-position: 0% 0%, 100% 100%, 50% 50%;
+  }
+  100% {
+    background-position: 100% 100%, 0% 0%, 30% 70%;
+  }
+}
+
+/* Замена всех шрифтов */
+html.springtrap-nightmare-active * {
+  font-family: 'VT323', 'Special Elite', monospace !important;
+  cursor: crosshair !important;
+}
+
+/* ── 2. СТИЛИЗАЦИЯ НАВИГАЦИИ ── */
+/* Header Navigation - Desktop */
+html.springtrap-nightmare-active header nav a {
+  color: #22c55e !important;
+  text-shadow: 0 0 8px #22c55e !important;
+  animation: textFlicker 3s steps(2) infinite;
+  font-family: 'VT323', monospace !important;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Каталог -> СИСТЕМА ОХРАНЫ */
+html.springtrap-nightmare-active header nav a[href="/catalog"]::after {
+  content: '[ СИСТЕМА ОХРАНЫ ]';
+}
+
+/* Топы -> БАЗА ДАННЫХ */
+html.springtrap-nightmare-active header nav a[href="/tops"]::after {
+  content: '[ БАЗА ДАННЫХ ]';
+}
+
+/* История -> ОШИБКА 1983 */
+html.springtrap-nightmare-active header nav a[href="/history"]::after {
+  content: '[ ОШИБКА 1983 ]';
+}
+
+/* Викторина -> ТЕСТ ПРОТОКОЛ */
+html.springtrap-nightmare-active header nav a[href="/quiz"]::after {
+  content: '[ ПРОТОКОЛ ]';
+}
+
+/* Карточки -> АРХИВ */
+html.springtrap-nightmare-active header nav a[href="/cards"]::after {
+  content: '[ АРХИВ ]';
+}
+
+@keyframes textFlicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
+/* ── 3. РАЗРУШЕНИЕ СЕТКИ И КАРТОЧЕК МАНГИ ── */
+html.springtrap-nightmare-active .manga-card,
+html.springtrap-nightmare-active [class*="card"],
+html.springtrap-nightmare-active article {
+  transition: all 0.3s ease;
+}
+
+html.springtrap-nightmare-active .manga-card:nth-child(odd),
+html.springtrap-nightmare-active [class*="card"]:nth-child(odd) {
+  transform: rotate(-1.5deg) translateY(4px) !important;
+  filter: grayscale(1) sepia(0.5) hue-rotate(50deg) contrast(1.5) !important;
+}
+
+html.springtrap-nightmare-active .manga-card:nth-child(even),
+html.springtrap-nightmare-active [class*="card"]:nth-child(even) {
+  transform: rotate(2deg) translateY(-2px) !important;
+  filter: grayscale(1) contrast(2) brightness(0.6) !important;
+}
+
+/* Пропавшие элементы (Redacted) */
+html.springtrap-nightmare-active .manga-card:nth-child(5n),
+html.springtrap-nightmare-active [class*="card"]:nth-child(5n) {
+  background: #000 !important;
+  border: 2px dashed #dc2626 !important;
+  position: relative;
+  overflow: hidden;
+}
+
+html.springtrap-nightmare-active .manga-card:nth-child(5n) *,
+html.springtrap-nightmare-active [class*="card"]:nth-child(5n) * {
+  opacity: 0 !important;
+}
+
+html.springtrap-nightmare-active .manga-card:nth-child(5n)::before,
+html.springtrap-nightmare-active [class*="card"]:nth-child(5n)::before {
+  content: '[ ДАННЫЕ УДАЛЕНЫ ]';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #dc2626;
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-align: center;
+  opacity: 1 !important;
+  z-index: 10;
+  text-shadow: 0 0 10px #dc2626;
+  animation: redactedPulse 2s ease-in-out infinite;
+}
+
+html.springtrap-nightmare-active .manga-card:nth-child(7n)::before,
+html.springtrap-nightmare-active [class*="card"]:nth-child(7n)::before {
+  content: '[ SUBJECT MISSING ]';
+}
+
+@keyframes redactedPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Обложки манг как негативы */
+html.springtrap-nightmare-active .manga-card img,
+html.springtrap-nightmare-active [class*="card"] img {
+  mix-blend-mode: hard-light !important;
+  filter: grayscale(0.8) contrast(1.5) brightness(0.7) !important;
+}
+
+/* ── 4. ЗЛОВЕЩИЙ ХЕДЕР И ПОИСК ── */
+html.springtrap-nightmare-active header,
+html.springtrap-nightmare-active .header,
+html.springtrap-nightmare-active nav {
+  background: #000 !important;
+  border-bottom: 3px solid #14532d !important;
+  box-shadow: 0 4px 20px rgba(20, 83, 45, 0.5) !important;
+}
+
+/* Поиск */
+html.springtrap-nightmare-active input[type="search"],
+html.springtrap-nightmare-active input[type="text"],
+html.springtrap-nightmare-active .search-input {
+  background: #000 !important;
+  border: 2px solid #14532d !important;
+  border-radius: 0 !important;
+  color: #22c55e !important;
+  font-family: 'VT323', monospace !important;
+  font-size: 1.2rem !important;
+  padding: 8px 12px 8px 40px !important;
+  transition: all 0.3s ease !important;
+}
+
+/* Иконка поиска */
+html.springtrap-nightmare-active input[type="search"] + svg,
+html.springtrap-nightmare-active input[type="text"] + svg,
+html.springtrap-nightmare-active .search-input + svg {
+  color: #22c55e !important;
+  filter: drop-shadow(0 0 5px #22c55e);
+}
+
+html.springtrap-nightmare-active input[type="search"]::placeholder,
+html.springtrap-nightmare-active input[type="text"]::placeholder,
+html.springtrap-nightmare-active .search-input::placeholder {
+  color: #166534 !important;
+  opacity: 0.7 !important;
+}
+
+html.springtrap-nightmare-active input[type="search"]:focus,
+html.springtrap-nightmare-active input[type="text"]:focus,
+html.springtrap-nightmare-active .search-input:focus {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 15px rgba(220, 38, 38, 0.5) !important;
+  outline: none !important;
+}
+
+html.springtrap-nightmare-active input[type="search"]:focus::placeholder,
+html.springtrap-nightmare-active input[type="text"]:focus::placeholder,
+html.springtrap-nightmare-active .search-input:focus::placeholder {
+  content: '> ВВЕДИТЕ КОД ДОСТУПА..._' !important;
+}
+
+/* ── 5. ПАРАНОЙЯ "ОНО ЖИВОЕ" ── */
+html.springtrap-nightmare-active body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9998;
+  background-image: url('/Horror_design/scratches.png');
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  animation: paranoidFlash 6s steps(1) infinite;
+  mix-blend-mode: multiply;
+}
+
+@keyframes paranoidFlash {
+  0%, 95%, 100% { opacity: 0; }
+  96% { opacity: 0.15; }
+  97% { opacity: 0; }
+  98% { opacity: 0.2; }
+  99% { opacity: 0; }
+}
+
+/* ── 6. SHAKE ЭФФЕКТ ПРИ КЛИКЕ ── */
+html.springtrap-nightmare-active.site-shake {
+  animation: siteShake 0.3s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes siteShake {
+  0%, 100% { transform: translateX(0); }
+  10% { transform: translateX(-3px); }
+  20% { transform: translateX(3px); }
+  30% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  50% { transform: translateX(-2px); }
+  60% { transform: translateX(2px); }
+  70% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+  90% { transform: translateX(-1px); }
+}
+
+/* ── 7. ДОПОЛНИТЕЛЬНЫЕ ЭЛЕМЕНТЫ ИНТЕРФЕЙСА ── */
+/* Кнопки */
+html.springtrap-nightmare-active button,
+html.springtrap-nightmare-active .btn {
+  background: #000 !important;
+  border: 2px solid #22c55e !important;
+  color: #22c55e !important;
+  border-radius: 0 !important;
+  text-shadow: 0 0 5px #22c55e !important;
+  transition: all 0.2s ease !important;
+}
+
+html.springtrap-nightmare-active button:hover,
+html.springtrap-nightmare-active .btn:hover {
+  background: rgba(34, 197, 94, 0.1) !important;
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.3) !important;
+}
+
+/* Текст */
+html.springtrap-nightmare-active h1,
+html.springtrap-nightmare-active h2,
+html.springtrap-nightmare-active h3,
+html.springtrap-nightmare-active h4,
+html.springtrap-nightmare-active h5,
+html.springtrap-nightmare-active h6 {
+  color: #22c55e !important;
+  text-shadow: 0 0 8px rgba(34, 197, 94, 0.5) !important;
+}
+
+html.springtrap-nightmare-active p,
+html.springtrap-nightmare-active span,
+html.springtrap-nightmare-active div {
+  color: #86efac !important;
+}
+
+/* Ссылки */
+html.springtrap-nightmare-active a {
+  color: #22c55e !important;
+  text-decoration: none !important;
+}
+
+html.springtrap-nightmare-active a:hover {
+  color: #4ade80 !important;
+  text-shadow: 0 0 10px #22c55e !important;
+}
+
+/* Mobile: уменьшаем root@springmanga */
+@media (max-width: 768px) {
+  html.springtrap-nightmare-active span[class*="text-[10px]"].shrink-0 {
+    font-size: 6px !important;
+  }
+
+  /* Уменьшаем terminal input */
+  html.springtrap-nightmare-active .terminal-input,
+  html.springtrap-nightmare-active input[placeholder*="команд"] {
+    font-size: 7px !important;
+    min-width: 0 !important;
+  }
+
+  /* Уменьшаем кнопку EXECUTE */
+  html.springtrap-nightmare-active button.shrink-0 {
+    font-size: 5px !important;
+    padding: 1px 3px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    letter-spacing: 0 !important;
+  }
+
+  /* Меняем текст кнопки на короткий */
+  html.springtrap-nightmare-active button.shrink-0::before {
+    content: '[>]' !important;
+  }
+
+  html.springtrap-nightmare-active button.shrink-0 {
+    font-size: 0 !important;
+  }
+
+  html.springtrap-nightmare-active button.shrink-0::before {
+    font-size: 8px !important;
+  }
+
+  /* Уменьшаем контейнер терминала */
+  html.springtrap-nightmare-active div[class*="bg-[#0a0a0a]"] {
+    padding: 3px 4px !important;
+    gap: 3px !important;
+  }
+}
+
+@keyframes nightmareFilter {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.95; }
+}
+
+@keyframes nightmareFilter {
+  0% { opacity: 1; }
+  50% { opacity: 0.95; }
+  100% { opacity: 1; }
+}
+
+/* ── Camera HUD (FNAF 3 Style) ── */
+.fnaf-camera-hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  pointer-events: none;
+  font-family: 'VCR OSD Mono', 'JetBrains Mono', 'Courier New', monospace;
+  color: #00FF00;
+  font-size: 14px;
+  text-shadow: 0 0 8px #00FF00;
+  overflow: hidden;
+}
+
+/* REC indicator (top-left) */
+.fnaf-rec-indicator {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: bold;
+  letter-spacing: 2px;
+}
+
+.fnaf-rec-dot {
+  color: #FF0000;
+  font-size: 20px;
+  animation: recBlink 1s steps(2) infinite;
+  text-shadow: 0 0 10px #FF0000, 0 0 20px #FF0000;
+}
+
+@keyframes recBlink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Camera label (top-right) */
+.fnaf-cam-label {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  padding: 4px 12px;
+  border: 2px solid #00FF00;
+  background: rgba(0, 0, 0, 0.7);
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+}
+
+/* Timestamp (bottom-left) */
+.fnaf-timestamp {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Scanlines */
+.fnaf-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.15) 2px,
+    rgba(0, 0, 0, 0.15) 4px
+  );
+  animation: scanlinesMove 8s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes scanlinesMove {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(4px); }
+}
+
+/* VHS Noise */
+body:has(.fnaf-vhs-noise) .fnaf-vhs-noise {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background-image: url('/Horror_design/vhs-broken.gif');
+  background-size: cover;
+  background-position: center;
+  background-repeat: repeat;
+  opacity: 0.08;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  animation: vhsNoiseFlicker 0.15s steps(3) infinite;
+  z-index: 9999;
+}
+
+@keyframes vhsNoiseFlicker {
+  0% { opacity: 0.08; transform: translate(0); }
+  33% { opacity: 0.12; transform: translate(-2px, 1px); }
+  66% { opacity: 0.06; transform: translate(2px, -1px); }
+  100% { opacity: 0.08; transform: translate(0); }
+}
+
+/* ── Phantom Springtrap — поверх всех элементов ── */
+.phantom-springtrap {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10001;
+  pointer-events: none;
+  background-image: url('/Horror_design/head_springtrap.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0;
+  animation: phantomFlicker 4s steps(1) infinite;
+  filter: grayscale(0.8) contrast(1.5);
+}
+
+@keyframes phantomFlicker {
+  0%, 85%, 100% { opacity: 0; }
+  86% { opacity: 0.15; transform: scale(1.02) translate(-10px, 5px); }
+  87% { opacity: 0; }
+  88% { opacity: 0.12; transform: scale(0.98) translate(8px, -3px); }
+  89% { opacity: 0; }
+  90% { opacity: 0.18; transform: scale(1.01) translate(-5px, -5px); }
+  91% { opacity: 0.08; transform: scale(1) translate(3px, 4px); }
+  92%, 100% { opacity: 0; }
+}
+
+/* ── Reboot Button ── */
+.fnaf-reboot-btn {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  pointer-events: auto;
+
+  font-family: 'VCR OSD Mono', 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 16px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: #A9FF00;
+
+  background: rgba(20, 20, 20, 0.95);
+  border: 3px solid #A9FF00;
+  padding: 12px 32px;
+
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  box-shadow:
+    0 0 20px rgba(169, 255, 0, 0.3),
+    inset 0 0 10px rgba(169, 255, 0, 0.1);
+
+  text-shadow: 0 0 10px #A9FF00;
+
+  animation: rebootPulse 2s ease-in-out infinite;
+}
+
+/* Mobile version */
+@media (max-width: 768px) {
+  .fnaf-reboot-btn {
+    bottom: 74px;
+    font-size: 11px;
+    padding: 8px 20px;
+    letter-spacing: 1px;
+    border-width: 2px;
+    z-index: 200;
+  }
+}
+
+.fnaf-reboot-btn:hover {
+  background: rgba(169, 255, 0, 0.15);
+  border-color: #DFFF00;
+  color: #DFFF00;
+  box-shadow:
+    0 0 30px rgba(169, 255, 0, 0.5),
+    inset 0 0 20px rgba(169, 255, 0, 0.2);
+  transform: translateX(-50%) scale(1.05);
+}
+
+.fnaf-reboot-btn:active {
+  transform: translateX(-50%) scale(0.98);
+}
+
+@keyframes rebootPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 15px rgba(169, 255, 0, 0.2),
+      inset 0 0 8px rgba(169, 255, 0, 0.1);
+  }
+  50% {
+    box-shadow:
+      0 0 30px rgba(169, 255, 0, 0.4),
+      inset 0 0 15px rgba(169, 255, 0, 0.15);
+  }
+}
+
+.fnaf-reboot-bracket {
+  color: #8B5E3C;
+  font-size: 20px;
+}
+
+/* ── TV Shutdown Effect ── */
+body.tv-shutdown {
+  animation: tvShutdownSmooth 2s ease-out forwards;
+}
+
+body.tv-shutdown * {
+  animation: fadeOutSmooth 2s ease-out forwards;
+}
+
+@keyframes tvShutdownSmooth {
+  0% {
+    filter: brightness(1);
+    opacity: 1;
+  }
+  70% {
+    filter: brightness(0.8);
+    opacity: 0.6;
+  }
+  100% {
+    filter: brightness(0);
+    opacity: 0;
+  }
+}
+
+@keyframes fadeOutSmooth {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

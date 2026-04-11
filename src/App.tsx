@@ -34,6 +34,10 @@ import UserBookmarksPage from './pages/UserBookmarksPage';
 import MessagesPage from './pages/MessagesPage';
 import QuizPage from './pages/QuizPage';
 import CardsPage from './pages/CardsPage';
+import ShopPage from './pages/ShopPage';
+import SettingsPage from './pages/SettingsPage';
+import NotificationsPage from './pages/NotificationsPage';
+import SpringtrapNightmare from './components/SpringtrapNightmare';
 
 const DetailPageWrapper: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -138,6 +142,9 @@ const AppRoutes: React.FC = () => {
             <Route path="/messages/:userId" element={<ProtectedRoute><PageTransition><MessagesPage /></PageTransition></ProtectedRoute>} />
             <Route path="/quiz" element={<PageTransition><QuizPage /></PageTransition>} />
             <Route path="/cards" element={<ProtectedRoute><PageTransition><CardsPage /></PageTransition></ProtectedRoute>} />
+            <Route path="/shop" element={<ProtectedRoute><PageTransition><ShopPage /></PageTransition></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><PageTransition><SettingsPage /></PageTransition></ProtectedRoute>} />
+            <Route path="/notifications" element={<ProtectedRoute><PageTransition><NotificationsPage /></PageTransition></ProtectedRoute>} />
 
             <Route path="/manga/:id/chapter/:chapterId" element={<ReaderPageWrapper />} />
             <Route path="/manga/:id/suggest-edit" element={<ProtectedRoute><SuggestEditPageWrapper /></ProtectedRoute>} />
@@ -162,14 +169,15 @@ const AppContent: React.FC = () => {
   const isReaderPage = location.pathname.includes('/chapter/');
   const isProfilePage = location.pathname === '/profile' || location.pathname.startsWith('/user/');
   const isMessagesPage = location.pathname.startsWith('/messages');
-  
+
   return (
-    <div className={`min-h-screen flex flex-col overflow-x-hidden ${isMessagesPage ? 'overflow-hidden' : ''} ${isProfilePage ? '' : 'bg-base'}`}>
+    <div className={`min-h-screen flex flex-col overflow-x-hidden ${isMessagesPage ? 'overflow-hidden h-screen' : ''} ${isProfilePage ? '' : 'bg-base'}`}>
       {!isReaderPage && <Header />}
-      <main className={`${isReaderPage ? 'flex-grow' : isMessagesPage ? '' : 'flex-grow container mx-auto px-4 md:px-8 py-6 pb-20 md:pb-6'}`}>
+      <main className={`${isReaderPage ? 'flex-grow' : isMessagesPage ? 'flex-grow overflow-hidden' : 'flex-grow container mx-auto px-4 md:px-8 py-6 pb-20 md:pb-6'}`}>
         <AppRoutes />
       </main>
       <AuthModal />
+      <SpringtrapNightmare />
     </div>
   );
 };

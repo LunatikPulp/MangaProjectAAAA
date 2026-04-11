@@ -412,6 +412,9 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             m.id === mangaId ? { ...m, rating: data.average, ratingInfo: { average: data.average, total: data.total, distribution: data.distribution, user_rating: rating } } : m
           ));
         }
+        if (data.scrap_earned > 0) {
+          window.dispatchEvent(new CustomEvent('scrap-earned', { detail: { amount: data.scrap_earned, reason: 'оценку манги' } }));
+        }
       }).catch(err => console.error("Ошибка сохранения оценки:", err));
     }
   }, []);

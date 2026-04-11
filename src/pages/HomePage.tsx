@@ -6,13 +6,10 @@ import { MangaContext } from '../contexts/MangaContext';
 import { useHistory } from '../hooks/useHistory';
 import ArrowUpRightIcon from '../components/icons/ArrowUpRightIcon';
 
-import { Manga, AIRecommendation, Chapter, typeDisplayNames } from '../types';
+import { Manga, Chapter, typeDisplayNames } from '../types';
 import HeroCarousel from '../components/HeroCarousel';
 import MangaCardSkeleton from '../components/skeletons/MangaCardSkeleton';
-import { AuthContext } from '../contexts/AuthContext';
 import { useBookmarks } from '../hooks/useBookmarks';
-import { isGeminiAvailable, generatePersonalizedRecommendations } from '../services/geminiService';
-import AIRecommendationCard from '../components/AIRecommendationCard';
 import { API_BASE } from '../services/externalApiService';
 
 /* ───── helpers ───── */
@@ -138,49 +135,6 @@ const GridSkeleton: React.FC<{ count: number }> = ({ count }) => (
     </div>
 );
 
-/* ───── ForYou (AI) ───── */
-
-const ForYouCarousel: React.FC = () => {
-    const { user } = useContext(AuthContext);
-    const { mangaList } = useContext(MangaContext);
-    const { bookmarks } = useBookmarks();
-    const [recommendations, setRecommendations] = useState<AIRecommendation[]>([]);
-    const [loadingRecs, setLoadingRecs] = useState(false);
-
-    useEffect(() => {
-        const fetchRecommendations = async () => {
-            if (user && bookmarks.length > 0 && isGeminiAvailable()) {
-                const cacheKey = `gemini-foryou-recs-${user.email}`;
-                try {
-                    const cachedRecs = sessionStorage.getItem(cacheKey);
-                    if (cachedRecs) { setRecommendations(JSON.parse(cachedRecs)); return; }
-                } catch (e) { sessionStorage.removeItem(cacheKey); }
-
-                setLoadingRecs(true);
-                const bookmarkedManga = bookmarks.slice(0, 3).map(b => mangaList.find(m => m.id === b.mangaId)).filter((m): m is Manga => !!m);
-                if (bookmarkedManga.length > 0) {
-                    const recs = await generatePersonalizedRecommendations(bookmarkedManga);
-                    const matchedRecs = recs.map(rec => ({ ...rec, manga: mangaList.find(m => m.title.toLowerCase() === rec.title.toLowerCase()) })).filter(rec => rec.manga);
-                    if (matchedRecs.length > 0) { setRecommendations(matchedRecs); sessionStorage.setItem(cacheKey, JSON.stringify(matchedRecs)); }
-                }
-                setLoadingRecs(false);
-            }
-        };
-        if (mangaList.length > 0) fetchRecommendations();
-    }, [user, bookmarks, mangaList]);
-
-    if (!user || (!loadingRecs && recommendations.length === 0)) return null;
-    if (loadingRecs) return (
-        <Carousel title="✨ Для вас">
-            {Array.from({ length: 5 }).map((_, i) => <div key={i} className="flex-shrink-0 w-40 md:w-48"><MangaCardSkeleton /></div>)}
-        </Carousel>
-    );
-    return (
-        <Carousel title="✨ Для вас">
-            {recommendations.map((rec) => <div key={rec.manga!.id} className="flex-shrink-0 w-40 md:w-48"><AIRecommendationCard recommendation={rec} /></div>)}
-        </Carousel>
-    );
-};
 
 /* ═══════════════════════════════════════════
    LatestUpdatesSection  — "Последние обновления"
@@ -405,8 +359,6 @@ const HomePage: React.FC = () => {
             <HeroCarousel featuredManga={featuredManga} />
 
             <div className="space-y-16">
-                <ForYouCarousel />
-
                 {/* Горячие новинки */}
                 <Carousel title="Горячие новинки" viewAllLink="/list/hot">
                     {hotUpdates.map(manga => (

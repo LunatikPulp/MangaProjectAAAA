@@ -1,14 +1,14 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
-import { NavLink, Link, useLocation } from 'react-router-dom';
+import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuthContext } from '../contexts/AuthContext';
 import { MangaContext } from '../contexts/MangaContext';
+import { NotificationContext } from '../contexts/NotificationContext';
 import { typeDisplayNames } from '../types';
 import { Manga } from '../types';
 import FramedAvatar from './FramedAvatar';
-import NotificationBell from './NotificationBell';
 import Logo from './icons/Logo';
-import { useTheme } from '../contexts/ThemeContext';
+
 import { API_BASE } from '../services/externalApiService';
 
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -56,13 +56,49 @@ const NavItem: React.FC<{ to: string, children: React.ReactNode }> = ({ to, chil
   </NavLink>
 );
 
-/** Mobile bottom tab item */
-const MobileTabItem: React.FC<{ to: string; label: string; children: React.ReactNode }> = ({ to, label, children }) => {
+/** Protected Nav Item - opens auth modal if not logged in */
+const ProtectedNavItem: React.FC<{ to: string, children: React.ReactNode, requireAuth: boolean }> = ({ to, children, requireAuth }) => {
+  const { user, openAuthModal } = useContext(AuthContext);
   const location = useLocation();
   const isActive = location.pathname === to || location.pathname.startsWith(to + '/');
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (requireAuth && !user) {
+      e.preventDefault();
+      openAuthModal('login');
+    }
+  };
+
   return (
-    <NavLink to={to} className="flex flex-col items-center gap-0.5 min-w-0 flex-1">
+    <NavLink
+      to={to}
+      onClick={handleClick}
+      className={`px-4 py-2 rounded-none border-b-2 transition-all font-mono text-sm tracking-wide uppercase ${
+        isActive
+          ? 'border-brand-accent text-brand-accent bg-brand-accent-5'
+          : 'border-transparent text-text-secondary hover:text-brand-accent hover:border-brand-30'
+      }`}
+    >
+      {children}
+    </NavLink>
+  );
+};
+
+/** Mobile bottom tab item */
+const MobileTabItem: React.FC<{ to: string; label: string; children: React.ReactNode; requireAuth?: boolean }> = ({ to, label, children, requireAuth = false }) => {
+  const { user, openAuthModal } = useContext(AuthContext);
+  const location = useLocation();
+  const isActive = location.pathname === to || location.pathname.startsWith(to + '/');
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (requireAuth && !user) {
+      e.preventDefault();
+      openAuthModal('login');
+    }
+  };
+
+  return (
+    <NavLink to={to} onClick={handleClick} className="flex flex-col items-center gap-0.5 min-w-0 flex-1">
       <span className={`transition-colors ${isActive ? 'text-brand-accent' : 'text-muted'}`}>
         {children}
       </span>
@@ -74,18 +110,23 @@ const MobileTabItem: React.FC<{ to: string; label: string; children: React.React
 const Header: React.FC = () => {
   const { user, logout, openAuthModal } = useContext(AuthContext);
   const { mangaList, searchMangas } = useContext(MangaContext);
-  const { theme, toggleTheme } = useTheme();
+  const { unreadCount } = useContext(NotificationContext);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isMessagesPage = location.pathname.startsWith('/messages');
   const [isProfileOpen, setProfileOpen] = useState(false);
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Manga[]>([]);
+  const [userResults, setUserResults] = useState<{ id: number; username: string; avatar_url: string; avatar_frame: string; level: number }[]>([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [scrapBalance, setScrapBalance] = useState<number | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  // Poll unread messages count
+  // Poll unread messages count + scrap balance
   useEffect(() => {
-    if (!user) { setUnreadMessages(0); return; }
+    if (!user) { setUnreadMessages(0); setScrapBalance(null); return; }
     const token = localStorage.getItem('backend_token');
     if (!token) return;
     const fetchUnread = async () => {
@@ -94,18 +135,35 @@ const Header: React.FC = () => {
         if (res.ok) { const data = await res.json(); setUnreadMessages(data.count || 0); }
       } catch {}
     };
+    const fetchScrap = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/profile-full`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) {
+          const data = await res.json();
+          setScrapBalance((data.gamification?.scrap || 0) + (data.gamification?.donated_scrap || 0));
+        }
+      } catch {}
+    };
     fetchUnread();
+    fetchScrap();
     const interval = setInterval(fetchUnread, 15000);
     return () => clearInterval(interval);
   }, [user]);
 
   useEffect(() => {
-    if (searchQuery.trim() === '') { setSearchResults([]); return; }
+    if (searchQuery.trim() === '') { setSearchResults([]); setUserResults([]); return; }
     const local = mangaList.filter(manga => manga.title.toLowerCase().includes(searchQuery.toLowerCase()));
-    if (local.length >= 5) { setSearchResults(local.slice(0, 5)); return; }
+    if (local.length >= 5) { setSearchResults(local.slice(0, 5)); }
     const timer = setTimeout(async () => {
+      // Search manga
       try { const results = await searchMangas(searchQuery); setSearchResults(results.slice(0, 5)); }
       catch { setSearchResults(local.slice(0, 5)); }
+      // Search users
+      try {
+        const res = await fetch(`${API_BASE}/users?q=${encodeURIComponent(searchQuery)}&limit=3`);
+        if (res.ok) { const data = await res.json(); setUserResults(data.users || []); }
+        else setUserResults([]);
+      } catch { setUserResults([]); }
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery, mangaList, searchMangas]);
@@ -137,7 +195,7 @@ const Header: React.FC = () => {
 
             {/* Left: Logo + Desktop Nav */}
             <div className="hidden md:flex items-center space-x-8">
-              <NavLink to="/" className="flex items-center space-x-2.5 group">
+              <NavLink to="/" className="flex items-center space-x-2.5 group" data-spring-logo>
                 <div className="transition-transform duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_8px_rgba(169,255,0,0.3)]">
                   <Logo />
                 </div>
@@ -151,9 +209,9 @@ const Header: React.FC = () => {
               <nav className="flex items-center space-x-1">
                 <NavItem to="/catalog">Каталог</NavItem>
                 <NavItem to="/tops">Топы</NavItem>
-                <NavItem to="/history">История</NavItem>
-                <NavItem to="/quiz">Викторина</NavItem>
-                <NavItem to="/cards">Карточки</NavItem>
+                <ProtectedNavItem to="/history" requireAuth={true}>История</ProtectedNavItem>
+                <ProtectedNavItem to="/quiz" requireAuth={true}>Викторина</ProtectedNavItem>
+                <ProtectedNavItem to="/cards" requireAuth={true}>Карточки</ProtectedNavItem>
               </nav>
             </div>
 
@@ -164,29 +222,64 @@ const Header: React.FC = () => {
                 <input
                   type="text"
                   placeholder="[ПОИСК] ..."
-                  className="w-full bg-surface border border-overlay rounded-none pl-10 pr-4 py-2 text-sm font-mono text-text-primary placeholder-muted focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent-30 focus:bg-surface-hover transition-all duration-300"
+                  className="w-full bg-surface border border-overlay rounded-none pl-10 pr-4 py-2 text-base sm:text-sm font-mono text-text-primary placeholder-muted focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent-30 focus:bg-surface-hover transition-all duration-300"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
-                {searchResults.length > 0 && (
-                  <div className="absolute top-full mt-1 w-full bg-surface border border-overlay shadow-2xl shadow-rust-20 overflow-hidden z-50 animate-fade-in">
-                    <ul>
-                      {searchResults.map(manga => (
-                        <li key={manga.id}>
-                          <Link
-                            to={`/manga/${manga.id}`}
-                            onClick={() => setSearchQuery('')}
-                            className="flex items-center gap-3 p-3 hover:bg-brand-10 border-b border-overlay-30 transition-colors group/item"
-                          >
-                            <img src={manga.cover} alt={manga.title} className="w-10 h-14 object-cover shadow-sm group-hover/item:scale-105 transition-transform" />
-                            <div>
-                              <span className="font-medium text-sm block text-text-primary group-hover/item:text-brand-accent transition-colors">{manga.title}</span>
-                              <span className="text-xs font-mono text-muted">{manga.year} • {typeDisplayNames[manga.type]}</span>
-                            </div>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
+                {(searchResults.length > 0 || userResults.length > 0) && (
+                  <div className="absolute top-full mt-1 w-full bg-surface border border-overlay shadow-2xl shadow-rust-20 overflow-hidden z-50 animate-fade-in max-h-[70vh] overflow-y-auto">
+                    {/* Manga results */}
+                    {searchResults.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 text-[10px] font-mono text-muted uppercase tracking-widest bg-surface-hover border-b border-overlay-30">Тайтлы</div>
+                        <ul>
+                          {searchResults.map(manga => (
+                            <li key={manga.id}>
+                              <Link
+                                to={`/manga/${manga.id}`}
+                                onClick={() => setSearchQuery('')}
+                                className="flex items-center gap-3 p-3 hover:bg-brand-10 border-b border-overlay-30 transition-colors group/item"
+                              >
+                                <img src={manga.cover} alt={manga.title} className="w-10 h-14 object-cover shadow-sm group-hover/item:scale-105 transition-transform" />
+                                <div>
+                                  <span className="font-medium text-sm block text-text-primary group-hover/item:text-brand-accent transition-colors">{manga.title}</span>
+                                  <span className="text-xs font-mono text-muted">{manga.year} • {typeDisplayNames[manga.type]}</span>
+                                </div>
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                        <button
+                          onClick={() => { navigate(`/catalog?search=${encodeURIComponent(searchQuery)}`); setSearchQuery(''); }}
+                          className="w-full py-2 text-center text-xs font-mono text-brand-accent hover:bg-brand-10 border-b border-overlay transition-colors"
+                        >
+                          Все результаты по тайтлам
+                        </button>
+                      </>
+                    )}
+                    {/* User results */}
+                    {userResults.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 text-[10px] font-mono text-muted uppercase tracking-widest bg-surface-hover border-b border-overlay-30">Пользователи</div>
+                        <ul>
+                          {userResults.map(u => (
+                            <li key={u.id}>
+                              <Link
+                                to={`/user/${u.id}`}
+                                onClick={() => setSearchQuery('')}
+                                className="flex items-center gap-3 p-3 hover:bg-brand-10 border-b border-overlay-30 transition-colors group/item"
+                              >
+                                <FramedAvatar avatarUrl={u.avatar_url ? (u.avatar_url.startsWith('http') ? u.avatar_url : `${API_BASE}${u.avatar_url}`) : ''} frameKey={u.avatar_frame || 'none'} username={u.username} size={36} />
+                                <div>
+                                  <span className="font-medium text-sm block text-text-primary group-hover/item:text-brand-accent transition-colors">{u.username}</span>
+                                  <span className="text-xs font-mono text-muted">Уровень {u.level}</span>
+                                </div>
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -194,17 +287,41 @@ const Header: React.FC = () => {
 
             {/* Right: Desktop actions */}
             <div className="hidden md:flex items-center space-x-3 ml-6">
-              <NavLink to="/bookmarks" className="p-2 text-muted hover:text-brand-accent hover:bg-brand-accent-5 transition-all relative group" aria-label="Закладки">
+              <button
+                onClick={(e) => {
+                  if (!user) {
+                    e.preventDefault();
+                    openAuthModal('login');
+                  } else {
+                    navigate('/bookmarks');
+                  }
+                }}
+                className="p-2 text-muted hover:text-brand-accent hover:bg-brand-accent-5 transition-all relative group"
+                aria-label="Закладки"
+              >
                 <BookmarkIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
-              </NavLink>
-              <button onClick={toggleTheme} className="p-2 text-muted hover:text-brand-accent hover:bg-brand-accent-5 transition-all" aria-label="Переключить тему">
-                {theme === 'dark' ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
-                )}
               </button>
-              <NotificationBell />
+              <button
+                onClick={(e) => {
+                  if (!user) {
+                    e.preventDefault();
+                    openAuthModal('login');
+                  } else {
+                    navigate('/notifications');
+                  }
+                }}
+                className="p-2 text-muted hover:text-brand-accent hover:bg-brand-accent-5 transition-all relative group"
+                aria-label="Уведомления"
+              >
+                <div className="relative">
+                  <BellIcon className="w-6 h-6 transition-transform group-hover:scale-110" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-bold ring-2 ring-base">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </div>
+              </button>
 
               {user ? (
                 <div className="relative" ref={profileRef}>
@@ -226,7 +343,12 @@ const Header: React.FC = () => {
                       className="absolute right-0 mt-2 w-56 bg-surface border border-overlay shadow-2xl shadow-rust-20 py-2 overflow-hidden"
                     >
                       <div className="px-4 py-3 border-b border-overlay mb-1 spring-rust">
-                        <p className="text-sm font-bold text-text-primary font-mono">{user.username}</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-bold text-text-primary font-mono">{user.username}</p>
+                          {scrapBalance !== null && (
+                            <span className="text-[12px] font-mono font-bold text-yellow-400 inline-flex items-center gap-0.5">{scrapBalance}<img src="/money/scrap.png" alt="scrap" className="inline-block w-3.5 h-3.5" /></span>
+                          )}
+                        </div>
                         <p className="text-xs text-muted truncate">{user.email}</p>
                       </div>
                       <Link to="/profile" className="block px-4 py-2 text-sm text-text-primary hover:bg-brand-10 hover:text-brand-accent transition-colors font-mono" onClick={() => setProfileOpen(false)}>{'>'} Профиль</Link>
@@ -239,6 +361,8 @@ const Header: React.FC = () => {
                         )}
                       </Link>
                       <Link to="/profile/friends" className="block px-4 py-2 text-sm text-text-primary hover:bg-brand-10 hover:text-brand-accent transition-colors font-mono" onClick={() => setProfileOpen(false)}>{'>'} Друзья</Link>
+                      <Link to="/shop" className="block px-4 py-2 text-sm text-text-primary hover:bg-brand-10 hover:text-brand-accent transition-colors font-mono" onClick={() => setProfileOpen(false)}>{'>'} Магазин</Link>
+                      <Link to="/settings" className="block px-4 py-2 text-sm text-text-primary hover:bg-brand-10 hover:text-brand-accent transition-colors font-mono" onClick={() => setProfileOpen(false)}>{'>'} Настройки</Link>
                       {user.role === 'admin' && (
                         <>
                           <Link to="/admin" className="block px-4 py-2 text-sm text-text-primary hover:bg-brand-10 hover:text-brand-accent transition-colors font-mono" onClick={() => setProfileOpen(false)}>{'>'} Админ панель</Link>
@@ -267,10 +391,10 @@ const Header: React.FC = () => {
       </header>
 
       {/* ===== Mobile Bottom Tab Bar ===== */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-base-95 backdrop-blur-xl border-t border-overlay shadow-[0_-2px_10px_rgba(0,0,0,0.3)]">
-        <div className="flex items-center justify-around h-16 px-2 py-2 pb-[env(safe-area-inset-bottom)]">
+      {!isMessagesPage && <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-base-95 backdrop-blur-xl border-t border-overlay shadow-[0_-2px_10px_rgba(0,0,0,0.3)]" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="flex items-center justify-around h-16 px-2">
           <MobileTabItem to="/" label="Главная"><HomeIcon className="w-6 h-6" /></MobileTabItem>
-          <MobileTabItem to="/bookmarks" label="Закладки"><BookmarkIcon className="w-6 h-6" /></MobileTabItem>
+          <MobileTabItem to="/bookmarks" label="Закладки" requireAuth={true}><BookmarkIcon className="w-6 h-6" /></MobileTabItem>
 
           {/* Центр — Логотип */}
           <NavLink to="/" className="flex flex-col items-center justify-center flex-1">
@@ -279,14 +403,23 @@ const Header: React.FC = () => {
             </div>
           </NavLink>
 
-          <MobileTabItem to="/notifications" label="Уведом."><BellIcon className="w-6 h-6" /></MobileTabItem>
+          <MobileTabItem to="/notifications" label="Уведом." requireAuth={true}>
+            <div className="relative">
+              <BellIcon className="w-6 h-6" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-mono font-bold ring-2 ring-base">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </div>
+          </MobileTabItem>
 
           <button onClick={() => setMobileMenuOpen(!isMobileMenuOpen)} className="flex flex-col items-center gap-0.5 min-w-0 flex-1">
             <span className={`transition-colors ${isMobileMenuOpen ? 'text-brand-accent' : 'text-muted'}`}><MenuDotsIcon className="w-6 h-6" /></span>
             <span className={`text-[10px] leading-none font-mono ${isMobileMenuOpen ? 'text-brand-accent font-medium' : 'text-muted'}`}>Меню</span>
           </button>
         </div>
-      </nav>
+      </nav>}
 
       {/* ===== Mobile Menu Sheet ===== */}
       <AnimatePresence>
@@ -298,17 +431,27 @@ const Header: React.FC = () => {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="fixed bottom-14 left-0 right-0 z-[300] md:hidden bg-surface border-t border-overlay shadow-2xl overflow-hidden"
+              className="fixed bottom-16 left-0 right-0 z-[300] md:hidden bg-surface border-t border-overlay shadow-2xl overflow-hidden max-h-[60vh]"
+              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
             >
-              <div className="p-4 space-y-1">
+              <div className="p-4 space-y-1 overflow-y-auto max-h-[calc(60vh-2rem)]">
                 {user ? (
-                  <div className="flex items-center gap-3 px-4 py-3 mb-2 spring-rust rounded-none border border-overlay">
+                  <Link
+                    to="/profile"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3 mb-2 spring-rust rounded-none border border-overlay hover:border-brand-accent transition-colors cursor-pointer"
+                  >
                     <FramedAvatar avatarUrl={user.avatar_url} username={user.username} size={32} frameKey={user.avatar_frame} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-text-primary font-mono truncate">{user.username}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-bold text-text-primary font-mono truncate">{user.username}</p>
+                        {scrapBalance !== null && (
+                          <span className="text-[12px] font-mono font-bold text-yellow-400 inline-flex items-center gap-0.5">{scrapBalance}<img src="/money/scrap.png" alt="scrap" className="inline-block w-3.5 h-3.5" /></span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted truncate">{user.email}</p>
                     </div>
-                  </div>
+                  </Link>
                 ) : (
                   <div className="flex gap-2 px-4 py-3 mb-2">
                     <button onClick={() => { setMobileMenuOpen(false); openAuthModal('login'); }} className="flex-1 text-center py-2.5 text-sm font-mono text-text-secondary border border-overlay hover:border-brand-accent hover:text-brand-accent transition-colors">[ВХОД]</button>
@@ -323,13 +466,49 @@ const Header: React.FC = () => {
                 <NavLink to="/tops" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}>
                   <span>{'>'}</span> Топы
                 </NavLink>
-                <NavLink to="/history" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}>
+                <NavLink
+                  to="/history"
+                  onClick={(e) => {
+                    if (!user) {
+                      e.preventDefault();
+                      setMobileMenuOpen(false);
+                      openAuthModal('login');
+                    } else {
+                      setMobileMenuOpen(false);
+                    }
+                  }}
+                  className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
+                >
                   <span>{'>'}</span> История
                 </NavLink>
-                <NavLink to="/quiz" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}>
+                <NavLink
+                  to="/quiz"
+                  onClick={(e) => {
+                    if (!user) {
+                      e.preventDefault();
+                      setMobileMenuOpen(false);
+                      openAuthModal('login');
+                    } else {
+                      setMobileMenuOpen(false);
+                    }
+                  }}
+                  className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
+                >
                   <span>{'>'}</span> 🧩 Викторина
                 </NavLink>
-                <NavLink to="/cards" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}>
+                <NavLink
+                  to="/cards"
+                  onClick={(e) => {
+                    if (!user) {
+                      e.preventDefault();
+                      setMobileMenuOpen(false);
+                      openAuthModal('login');
+                    } else {
+                      setMobileMenuOpen(false);
+                    }
+                  }}
+                  className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
+                >
                   <span>{'>'}</span> 🃏 Карточки
                 </NavLink>
 
@@ -337,7 +516,6 @@ const Header: React.FC = () => {
 
                 {user && (
                   <>
-                    <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 font-mono text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors">{'>'} Профиль</Link>
                     <Link to="/messages" onClick={() => setMobileMenuOpen(false)} className="flex items-center justify-between px-4 py-3 font-mono text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors">
                       <span className="flex items-center gap-3">{'>'} Сообщения</span>
                       {unreadMessages > 0 && (
@@ -346,6 +524,7 @@ const Header: React.FC = () => {
                         </span>
                       )}
                     </Link>
+                    <Link to="/shop" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 font-mono text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors">{'>'} Магазин</Link>
                     {user.role === 'admin' && (
                       <>
                         <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 font-mono text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors">{'>'} Админ панель</Link>
@@ -359,9 +538,9 @@ const Header: React.FC = () => {
                   </>
                 )}
 
-                <button onClick={() => { toggleTheme(); setMobileMenuOpen(false); }} className="flex items-center gap-3 px-4 py-3 font-mono text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors w-full">
-                  {theme === 'dark' ? '☀' : '☾'} {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-                </button>
+                {user && (
+                  <Link to="/settings" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 font-mono text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors">{'>'} Настройки</Link>
+                )}
 
                 {user && (
                   <button onClick={() => { logout(); setMobileMenuOpen(false); }} className="flex items-center gap-3 px-4 py-3 font-mono text-sm text-brand-accent hover:bg-brand-accent-10 transition-colors w-full">

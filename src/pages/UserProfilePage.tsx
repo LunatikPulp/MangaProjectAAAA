@@ -6,30 +6,34 @@ import { ToasterContext } from '../contexts/ToasterContext';
 import FramedAvatar from '../components/FramedAvatar';
 import RankBadge from '../components/RankBadge';
 import { motion, AnimatePresence } from 'framer-motion';
+import { createPortal } from 'react-dom';
 
 /* Achievement registry (same as ProfilePage) */
-interface Achievement { icon: string; title: string; description: string; rarity: 'common' | 'rare' | 'epic' | 'legendary'; secret?: boolean; }
+interface Achievement { icon: string; title: string; description: string; flavorText: string; rarity: 'common' | 'rare' | 'epic' | 'legendary'; secret?: boolean; }
 const ACHIEVEMENTS: Record<string, Achievement> = {
-    first_login:  { icon: '/Achievement Icons/first_login.png',  title: 'Первый вход',      description: 'Добро пожаловать в SPRINGMANGA',       rarity: 'common' },
-    reader_10:    { icon: '/Achievement Icons/reader_10.png',     title: 'Читатель',          description: 'Прочитано 10 глав',                    rarity: 'common' },
-    reader_50:    { icon: '/Achievement Icons/reader_50.png',     title: 'Книжный червь',     description: 'Прочитано 50 глав',                    rarity: 'rare' },
-    reader_100:   { icon: '/Achievement Icons/reader_100.png',    title: 'Мастер чтения',     description: 'Прочитано 100 глав',                   rarity: 'epic' },
-    reader_500:   { icon: '/Achievement Icons/reader_500.png',    title: 'Легенда',           description: 'Прочитано 500 глав',                   rarity: 'legendary' },
-    bookworm:     { icon: '/Achievement Icons/bookworm.png',      title: 'Коллекционер',      description: '10 манг в закладках',                  rarity: 'rare' },
-    collector:    { icon: '/Achievement Icons/collector.png',      title: 'Собиратель',         description: '50 манг в закладках',                  rarity: 'epic' },
-    critic:       { icon: '/Achievement Icons/critic.png',         title: 'Критик',            description: 'Оценено 5 манг',                       rarity: 'rare' },
-    judge:        { icon: '/Achievement Icons/judge.png',          title: 'Верховный судья',   description: 'Оценено 20 манг',                      rarity: 'epic' },
-    social:       { icon: '/Achievement Icons/social.png',         title: 'Социальный',        description: 'Заполнил биографию',                   rarity: 'common' },
-    stylist:      { icon: '/Achievement Icons/stylist.png',        title: 'Стилист',           description: 'Изменил тему профиля',                 rarity: 'epic' },
-    decorator:    { icon: '/Achievement Icons/decorator.png',      title: 'Декоратор',         description: 'Загрузил баннер профиля',              rarity: 'rare' },
-    night_guard:  { icon: '/Achievement Icons/night_guard.png',    title: 'Ночной охранник',   description: 'Зашёл на сайт между 00:00 и 05:00',   rarity: 'legendary', secret: true },
-    five_nights:  { icon: '/Achievement Icons/five_nights.png',    title: 'Пять ночей',        description: 'Читал мангу в 5 разных дней',          rarity: 'epic', secret: true },
-    marathon:     { icon: '/Achievement Icons/marathon.png',       title: 'Марафонщик',        description: '20+ глав за один день',                rarity: 'epic', secret: true },
-    early_bird:   { icon: '/Achievement Icons/early_bird.png',     title: 'Ранняя пташка',     description: 'Зашёл с 5:00 до 7:00 утра',           rarity: 'rare', secret: true },
-    halloween:    { icon: '/Achievement Icons/halloween.png',      title: 'Хэллоуинский дух',  description: 'Зашёл 31 октября',                     rarity: 'legendary', secret: true },
-    new_year:     { icon: '/Achievement Icons/new_year.png',       title: 'Новогоднее чудо',   description: 'Зашёл в новогоднюю ночь',              rarity: 'legendary', secret: true },
+    first_login:  { icon: '/Achievement Icons/first_login.png',  title: 'Первый вход',      description: 'Добро пожаловать в SPRINGMANGA', flavorText: 'Первый шаг в мир, где страницы оживают. Добро пожаловать, читатель.', rarity: 'common' },
+    reader_10:    { icon: '/Achievement Icons/reader_10.png',     title: 'Читатель',          description: 'Прочитано 10 глав', flavorText: 'Путешествие начинается с первых страниц. Ты только начал свой путь.', rarity: 'common' },
+    reader_50:    { icon: '/Achievement Icons/reader_50.png',     title: 'Книжный червь',     description: 'Прочитано 50 глав', flavorText: 'Страницы шелестят под твоими пальцами. История поглощает тебя всё глубже.', rarity: 'rare' },
+    reader_100:   { icon: '/Achievement Icons/reader_100.png',    title: 'Мастер чтения',     description: 'Прочитано 100 глав', flavorText: 'Сотни историй прошли через твой разум. Ты стал частью этих миров.', rarity: 'epic' },
+    reader_500:   { icon: '/Achievement Icons/reader_500.png',    title: 'Легенда',           description: 'Прочитано 500 глав', flavorText: 'Твоё имя эхом разносится по библиотекам вечности. Ты — живая легенда.', rarity: 'legendary' },
+    bookworm:     { icon: '/Achievement Icons/bookworm.png',      title: 'Коллекционер',      description: '10 манг в закладках', flavorText: 'Твоя коллекция растёт. Каждая история — драгоценный артефакт.', rarity: 'rare' },
+    collector:    { icon: '/Achievement Icons/collector.png',      title: 'Собиратель',         description: '50 манг в закладках', flavorText: 'Твоя библиотека превратилась в лабиринт миров и судеб.', rarity: 'epic' },
+    critic:       { icon: '/Achievement Icons/critic.png',         title: 'Критик',            description: 'Оценено 5 манг', flavorText: 'Твоё мнение имеет вес. Ты начинаешь видеть то, что скрыто от других.', rarity: 'rare' },
+    judge:        { icon: '/Achievement Icons/judge.png',          title: 'Верховный судья',   description: 'Оценено 20 манг', flavorText: 'Твой вердикт безапелляционен. Ты видишь суть каждой истории.', rarity: 'epic' },
+    social:       { icon: '/Achievement Icons/social.png',         title: 'Социальный',        description: 'Заполнил биографию', flavorText: 'Ты открыл миру частичку себя. Теперь другие знают, кто ты.', rarity: 'common' },
+    stylist:      { icon: '/Achievement Icons/stylist.png',        title: 'Стилист',           description: 'Изменил тему профиля', flavorText: 'Реальность подчиняется твоей воле. Ты создаёшь свой мир.', rarity: 'epic' },
+    decorator:    { icon: '/Achievement Icons/decorator.png',      title: 'Декоратор',         description: 'Загрузил баннер профиля', flavorText: 'Твоё пространство обрело лицо. Каждый, кто войдёт, увидит твою душу.', rarity: 'rare' },
+    night_guard:  { icon: '/Achievement Icons/night_guard.png',    title: 'Ночной охранник',   description: 'Зашёл на сайт между 00:00 и 05:00', flavorText: 'В глубокой тьме ночи ты не спишь. Тени шепчут тебе истории.', rarity: 'legendary', secret: true },
+    five_nights:  { icon: '/Achievement Icons/five_nights.png',    title: 'Пять ночей',        description: 'Читал мангу в 5 разных дней', flavorText: 'Пять ночей, пять миров. Ты выжил там, где другие сломались.', rarity: 'epic', secret: true },
+    marathon:     { icon: '/Achievement Icons/marathon.png',       title: 'Марафонщик',        description: '20+ глав за один день', flavorText: 'Время потеряло смысл. Ты погрузился в бездну историй и не можешь остановиться.', rarity: 'epic', secret: true },
+    early_bird:   { icon: '/Achievement Icons/early_bird.png',     title: 'Ранняя пташка',     description: 'Зашёл с 5:00 до 7:00 утра', flavorText: 'Рассвет застал тебя за чтением. Первые лучи солнца освещают страницы.', rarity: 'rare', secret: true },
+    halloween:    { icon: '/Achievement Icons/halloween.png',      title: 'Хэллоуинский дух',  description: 'Зашёл 31 октября', flavorText: 'В ночь, когда грань между мирами тонка, ты пришёл сюда. Что ты ищешь?', rarity: 'legendary', secret: true },
+    new_year:     { icon: '/Achievement Icons/new_year.png',       title: 'Новогоднее чудо',   description: 'Зашёл в новогоднюю ночь', flavorText: 'Когда мир празднует, ты выбрал истории. Новый год начинается с новой главы.', rarity: 'legendary', secret: true },
+    konami_master: { icon: '/Achievement Icons/Konami_code.png', title: 'Konami Master',     description: 'Ввёл легендарный код Konami', flavorText: '↑↑↓↓←→←→BA — древний шифр открыл тебе путь. Ты знаешь секреты старых богов.', rarity: 'legendary', secret: true },
+    horror_discoverer: { icon: '/Achievement Icons/horror_mode.png', title: 'Кошмарный исследователь', description: 'Обнаружил Horror Mode', flavorText: 'Ты заглянул за завесу реальности и увидел то, что не должен был видеть.', rarity: 'legendary', secret: true },
 };
-const RARITY_GLOW: Record<string, string> = { common: '', rare: 'badge-glow-rare', epic: 'badge-glow-epic', legendary: 'badge-glow-legendary' };
+const RARITY_GLOW: Record<string, string> = { common: 'badge-glow-common', rare: 'badge-glow-rare', epic: 'badge-glow-epic', legendary: 'badge-glow-legendary' };
+const RARITY_LABEL: Record<string, { text: string; color: string }> = { common: { text: 'ОБЫЧНОЕ', color: '#888' }, rare: { text: 'РЕДКОЕ', color: '#4A9EFF' }, epic: { text: 'ЭПИЧЕСКОЕ', color: '#A855F7' }, legendary: { text: 'ЛЕГЕНДАРНОЕ', color: '#FFD700' } };
 
 function heatmapColor(count: number): string {
     if (count === 0) return 'rgba(255,255,255,0.06)';
@@ -89,8 +93,22 @@ const UserProfilePage: React.FC = () => {
     // Heatmap tooltip
     const [hoveredDay, setHoveredDay] = useState<{ day: string; count: number; x: number; y: number } | null>(null);
     const [hoveredBadge, setHoveredBadge] = useState<string | null>(null);
+    const [selectedBadge, setSelectedBadge] = useState<string | null>(null);
     const [bannerImgError, setBannerImgError] = useState(false);
 
+    // Wall pagination
+    const [wallOffset, setWallOffset] = useState(0);
+    const [wallTotal, setWallTotal] = useState(0);
+    const [hasMoreWall, setHasMoreWall] = useState(false);
+
+    // Compatibility
+    const [compatibility, setCompatibility] = useState<{ compatibility: number; common: number; total: number } | null>(null);
+    // @ts-ignore - used in useEffect
+    const [compatLoading, setCompatLoading] = useState(true);
+    const [compatTyped, setCompatTyped] = useState('');
+
+    // Skin data for nickname effects
+    const [shopSkins, setShopSkins] = useState<any[]>([]);
 
     const heatmapDays = useMemo(() => generateHeatmapDays(), []);
 
@@ -112,6 +130,25 @@ const UserProfilePage: React.FC = () => {
             .finally(() => setLoading(false));
     }, [userId]);
 
+    // Load shop skins for effect lookup + Google Font
+    useEffect(() => {
+        fetch(`${API_BASE}/shop/items`)
+            .then(r => r.json())
+            .then(data => setShopSkins(data.filter((i: any) => i.category === 'skin')))
+            .catch(() => {});
+    }, []);
+
+    useEffect(() => {
+        if (!profile?.nickname_font) return;
+        const fontLink = document.createElement('link');
+        fontLink.rel = 'stylesheet';
+        fontLink.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(profile.nickname_font)}&display=swap`;
+        fontLink.id = 'nickname-font-link-user';
+        const existing = document.getElementById('nickname-font-link-user');
+        if (existing) existing.remove();
+        document.head.appendChild(fontLink);
+    }, [profile?.nickname_font]);
+
     // Check friendship & block
     useEffect(() => {
         if (!token || !userId) return;
@@ -121,14 +158,25 @@ const UserProfilePage: React.FC = () => {
             .then(r => r.json()).then(d => { setIBlocked(d.i_blocked); setTheyBlocked(d.they_blocked); }).catch(() => {});
     }, [token, userId]);
 
-    // Load wall comments with replies
-    useEffect(() => {
+    // Load wall comments with replies (paginated)
+    const loadWallComments = React.useCallback((offset = 0, append = false) => {
         if (!userId) return;
-        fetch(`${API_BASE}/auth/wall-comments/${userId}/with-replies`)
+        fetch(`${API_BASE}/auth/wall-comments/${userId}/with-replies?offset=${offset}&limit=10`)
             .then(r => r.json())
-            .then(data => { if (Array.isArray(data)) setWallComments(data); })
+            .then(data => {
+                if (data && data.comments) {
+                    setWallComments(prev => append ? [...prev, ...data.comments] : data.comments);
+                    setWallTotal(data.total);
+                    setHasMoreWall(data.has_more);
+                    setWallOffset(offset + (data.comments?.length || 0));
+                } else if (Array.isArray(data)) {
+                    setWallComments(data);
+                }
+            })
             .catch(() => {});
     }, [userId]);
+
+    useEffect(() => { loadWallComments(0); }, [loadWallComments]);
 
     const toggleFriend = async () => {
         if (!token || !userId) return;
@@ -164,6 +212,7 @@ const UserProfilePage: React.FC = () => {
                 const c = await res.json();
                 setWallComments(prev => [{ ...c, replies: [] }, ...prev]);
                 setWallInput('');
+                if (c.scrap_earned > 0) showToaster(`+${c.scrap_earned} за комментарий!`);
             }
         } catch {}
         setWallLoading(false);
@@ -201,11 +250,88 @@ const UserProfilePage: React.FC = () => {
         } catch {}
     };
 
-    const bannerSrcEarly = profile?.profile_banner_url ? (profile.profile_banner_url.startsWith('http') ? profile.profile_banner_url : `${API_BASE}${profile.profile_banner_url}`) : '';
+    // Load compatibility
+    useEffect(() => {
+        if (!token || !userId || isOwnProfile) { setCompatLoading(false); return; }
+        setCompatLoading(true);
+        fetch(`${API_BASE}/users/${userId}/compatibility`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (data) {
+                    setCompatibility(data);
+                    // Typewriter effect for compatibility text
+                    const text = `> СИНХРОНИЗАЦИЯ БАЗ ДАННЫХ... Совпадение вкусов: ${data.compatibility}%`;
+                    let i = 0;
+                    setCompatTyped('');
+                    const timer = setInterval(() => {
+                        i++;
+                        setCompatTyped(text.slice(0, i));
+                        if (i >= text.length) clearInterval(timer);
+                    }, 30);
+                    return () => clearInterval(timer);
+                }
+            })
+            .catch(() => {})
+            .finally(() => setCompatLoading(false));
+    }, [token, userId, isOwnProfile]);
+
+    // Nickname effects for viewed user
+    const nicknameEffectClass = useMemo(() => {
+        if (!profile) return '';
+        const themeKey = profile.profile_theme || 'base';
+        const skin = shopSkins.find((s: any) => s.key === `skin_${themeKey}`);
+        if (!skin || !skin.nickname_effect || skin.nickname_effect === 'none') return '';
+        // Generic effects
+        if (skin.nickname_effect === 'gradient-pulse') return 'nickname-gradient-pulse';
+        if (skin.nickname_effect === 'toxic-glitch') return 'nickname-toxic-glitch';
+        // Skin-specific effects
+        return `nickname-${skin.nickname_effect}`;
+    }, [profile, shopSkins]);
+
+    const blockStyleClass = useMemo(() => {
+        if (!profile) return '';
+        const themeKey = profile.profile_theme || 'base';
+        const skin = shopSkins.find((s: any) => s.key === `skin_${themeKey}`);
+        if (!skin || !skin.block_style || skin.block_style === 'none') return '';
+        return `skin-block-${skin.block_style}`;
+    }, [profile, shopSkins]);
+
+    const overlayClass = useMemo(() => {
+        if (!profile) return '';
+        const themeKey = profile.profile_theme || 'base';
+        const skin = shopSkins.find((s: any) => s.key === `skin_${themeKey}`);
+        if (!skin) return '';
+        // Skin-specific overlays
+        if (themeKey === 'biohazard') return 'skin-overlay-biohazard';
+        if (themeKey === 'golden-era') return 'skin-overlay-golden-era';
+        if (themeKey === 'phantom') return 'skin-overlay-phantom';
+        // Legacy generic overlays
+        if (skin.nickname_effect === 'toxic-glitch') return 'skin-overlay-scanlines';
+        if (skin.block_style === 'rusted-metal-bg') return 'skin-overlay-embers';
+        return '';
+    }, [profile, shopSkins]);
+
+    const nicknameCustomStyle = useMemo(() => {
+        const style: React.CSSProperties = {};
+        const themeKey = profile?.profile_theme || 'base';
+        const skin = shopSkins.find((s: any) => s.key === `skin_${themeKey}`);
+        const isMythic = skin?.rarity === 'mythic';
+        // Only apply user's custom color/font if their skin is mythic
+        if (isMythic) {
+            if (profile?.nickname_color) style.color = profile.nickname_color;
+            if (profile?.nickname_font) style.fontFamily = `'${profile.nickname_font}', monospace`;
+        }
+        // Skin-specific font always overrides
+        if (skin?.font_family) style.fontFamily = `'${skin.font_family}', monospace`;
+        return style;
+    }, [profile, shopSkins]);
+
+    const bgUrl = profile?.profile_background_url || '';
+    const backgroundSrcEarly = bgUrl ? (bgUrl.startsWith('http') ? bgUrl : `${API_BASE}${bgUrl}`) : '';
 
     // Set body background from user's banner (exact same logic as ProfilePage)
     useEffect(() => {
-        if (!profile || !bannerSrcEarly) return;
+        if (!profile || !backgroundSrcEarly) return;
         const root = document.getElementById('root');
         const origHtmlBgImage = document.documentElement.style.backgroundImage;
         const origHtmlBgSize = document.documentElement.style.backgroundSize;
@@ -223,14 +349,14 @@ const UserProfilePage: React.FC = () => {
         document.body.style.backgroundColor = 'transparent';
         if (root) root.style.backgroundColor = 'transparent';
 
-        const isVid = /\.(mp4|webm|ogg|mov)(\?|$)/i.test(bannerSrcEarly);
+        const isVid = /\.(mp4|webm|ogg|mov)(\?|$)/i.test(backgroundSrcEarly);
 
         if (!isVid) {
             document.body.style.backgroundImage = 'none';
             document.body.style.backgroundRepeat = 'no-repeat';
             document.body.style.backgroundSize = 'cover';
             document.body.style.backgroundPosition = 'center';
-            document.documentElement.style.backgroundImage = `linear-gradient(rgba(18,18,18,0.72), rgba(18,18,18,0.72)), url(${bannerSrcEarly})`;
+            document.documentElement.style.backgroundImage = `linear-gradient(rgba(18,18,18,0.72), rgba(18,18,18,0.72)), url(${backgroundSrcEarly})`;
             document.documentElement.style.backgroundSize = 'cover';
             document.documentElement.style.backgroundPosition = 'center';
             document.documentElement.style.backgroundAttachment = 'fixed';
@@ -253,7 +379,7 @@ const UserProfilePage: React.FC = () => {
             videoBg.id = 'profile-video-bg';
             videoBg.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;overflow:hidden;pointer-events:none;';
             videoBg.innerHTML = `
-                <video src="${bannerSrcEarly}" autoplay loop muted playsinline style="width:100%;height:100%;object-fit:cover;"></video>
+                <video src="${backgroundSrcEarly}" autoplay loop muted playsinline style="width:100%;height:100%;object-fit:cover;"></video>
                 <div style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(18,18,18,0.72);pointer-events:none;"></div>
             `;
             document.body.insertBefore(videoBg, document.body.firstChild);
@@ -283,7 +409,16 @@ const UserProfilePage: React.FC = () => {
             const vid = document.getElementById('profile-video-bg');
             if (vid) vid.remove();
         };
-    }, [profile, bannerSrcEarly]);
+    }, [profile, backgroundSrcEarly]);
+
+    const glowOverride = useMemo(() => {
+        const color = profile?.nickname_color;
+        if ((profile?.profile_theme || 'base') !== 'phantom' || !color || !color.startsWith('#') || color.length < 7) return {};
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        return { '--profile-glow': color, '--profile-glow-rgb': `${r}, ${g}, ${b}` } as React.CSSProperties;
+    }, [profile?.profile_theme, profile?.nickname_color]);
 
     if (loading) return <div className="max-w-6xl mx-auto px-4 py-16 text-center"><div className="animate-pulse text-muted font-mono">Загрузка...</div></div>;
     if (!profile) return <div className="max-w-6xl mx-auto px-4 py-16 text-center"><p className="text-muted font-mono">Пользователь не найден</p><Link to="/" className="text-brand-accent text-sm font-mono mt-4 inline-block">← На главную</Link></div>;
@@ -306,7 +441,7 @@ const UserProfilePage: React.FC = () => {
     const isPrivate = profile.private_profile && !isOwnProfile;
 
     return (
-        <div data-profile-theme={profile.profile_theme || 'base'}>
+        <div data-profile-theme={profile.profile_theme || 'base'} style={Object.keys(glowOverride).length > 0 ? glowOverride : undefined}>
             <div className="max-w-6xl mx-auto px-2 sm:px-4 relative z-[1]">
 
             {/* Back button */}
@@ -315,18 +450,22 @@ const UserProfilePage: React.FC = () => {
             </div>
 
             {/* HEADER CARD */}
-            <div className="relative z-[1] mb-6 border profile-border bg-surface/60 backdrop-blur-md overflow-visible">
-                {/* Banner */}
-                {bannerSrc && !/\.(mp4|webm|ogg|mov)(\?|$)/i.test(bannerSrc) && !bannerImgError && (
-                    <div className="relative h-32 sm:h-44 overflow-hidden profile-scanlines">
-                        <img src={bannerSrc} alt="" className="w-full h-full object-cover" onError={() => setBannerImgError(true)} />
-                        <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/50 to-transparent" />
+            <div className={`relative z-[1] mb-6 border profile-border bg-surface/60 backdrop-blur-md overflow-hidden min-h-[250px] ${!(bannerSrc && !bannerImgError) ? `${blockStyleClass} ${overlayClass}` : ''}`}>
+                {/* Banner — абсолютно на весь контейнер */}
+                {bannerSrc && !bannerImgError && (
+                    <div className="absolute inset-0 z-0">
+                        {/\.(mp4|webm|ogg|mov)(\?|$)/i.test(bannerSrc) ? (
+                            <video src={bannerSrc} autoPlay loop muted playsInline className="w-full h-full object-cover" onError={() => setBannerImgError(true)} />
+                        ) : (
+                            <img src={bannerSrc} alt="" className="w-full h-full object-cover" onError={() => setBannerImgError(true)} />
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/110 via-black/50 to-black/30" />
                     </div>
                 )}
-                <div className="relative z-[4] px-4 sm:px-8 py-6 sm:py-8">
+                <div className="relative z-[4] px-4 sm:px-8 pt-24 sm:pt-32 pb-6 sm:pb-8">
                     <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6">
                         {/* Avatar */}
-                        <div className="shrink-0 glitch-avatar" style={{ marginTop: bannerSrc && !/\.(mp4|webm|ogg|mov)(\?|$)/i.test(bannerSrc) && !bannerImgError ? '-3rem' : undefined }}>
+                        <div className="shrink-0 glitch-avatar">
                             <FramedAvatar
                                 avatarUrl={avatarSrc}
                                 username={profile.username}
@@ -338,7 +477,7 @@ const UserProfilePage: React.FC = () => {
                         {/* Name & meta */}
                         <div className="flex-1 text-center sm:text-left min-w-0">
                             <div className="flex items-center justify-center sm:justify-start gap-2 mb-1 flex-wrap">
-                                <h1 className="text-2xl sm:text-3xl font-display font-bold text-text-primary spring-glitch truncate">{profile.username}</h1>
+                                <h1 className={`text-2xl sm:text-3xl font-display font-bold text-text-primary spring-glitch truncate ${nicknameEffectClass}`} style={nicknameCustomStyle} data-text={profile.username}>{profile.username}</h1>
                                 <RankBadge chaptersRead={profile.stats?.chapters_read || 0} size="md" />
                                 <span className={`text-[10px] font-mono font-bold px-2 py-0.5 shrink-0 ${
                                     profile.role === 'admin' ? 'bg-brand-accent/20 text-brand-accent' :
@@ -347,12 +486,17 @@ const UserProfilePage: React.FC = () => {
                                 }`}>
                                     {profile.role === 'admin' ? 'ADMIN' : profile.role === 'moderator' ? 'MOD' : `LVL ${level}`}
                                 </span>
+                                {profile.subscription_active && profile.role !== 'admin' && (
+                                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-yellow-400 border border-yellow-500/30 shrink-0">
+                                        PRO
+                                    </span>
+                                )}
                             </div>
                             {/* XP bar */}
                             <div className="flex items-center gap-3 mb-2 max-w-md mx-auto sm:mx-0">
                                 <div className="flex-1 h-5 bg-base border border-overlay relative overflow-hidden">
                                     <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(xpProgress, 100)}%` }} transition={{ duration: 1.2, ease: 'easeOut' }}
-                                        className="h-full relative" style={{ background: 'linear-gradient(90deg, rgba(169,255,0,0.3), rgba(169,255,0,0.8))' }}>
+                                        className="h-full relative xp-bar-fill" style={{ background: 'linear-gradient(90deg, rgba(169,255,0,0.3), rgba(169,255,0,0.8))' }}>
                                         <div className="absolute inset-0" style={{ backgroundImage: 'repeating-linear-gradient(90deg, transparent 0px, transparent 3px, rgba(0,0,0,0.15) 3px, rgba(0,0,0,0.15) 4px)' }} />
                                     </motion.div>
                                     <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-bold text-text-primary mix-blend-difference">{xp} / {xpNextLevel} XP</span>
@@ -403,6 +547,15 @@ const UserProfilePage: React.FC = () => {
                                         <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-base border-r border-b border-overlay rotate-45 -mt-1" />
                                     </div>
                                 </div>
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(window.location.href);
+                                        showToaster('Ссылка скопирована!');
+                                    }}
+                                    className="w-10 h-10 flex items-center justify-center text-lg transition-all border rounded border-overlay text-muted hover:text-brand-accent hover:border-brand-accent/30"
+                                    title="Поделиться профилем">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                                </button>
                             </div>
                         )}
                     </div>
@@ -422,7 +575,7 @@ const UserProfilePage: React.FC = () => {
                 {/* LEFT COLUMN */}
                 <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4">
                     {/* System Data */}
-                    <div className="profile-surface-bg border profile-border p-4">
+                    <div className={`profile-surface-bg border profile-border p-4 ${blockStyleClass}`}>
                         <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted mb-3 flex items-center gap-1.5">
                             <span className="profile-glow-text">■</span> СИСТЕМНЫЕ ДАННЫЕ
                         </h3>
@@ -438,7 +591,7 @@ const UserProfilePage: React.FC = () => {
                     </div>
 
                     {/* Friends */}
-                    <div className="profile-surface-bg border profile-border p-4">
+                    <div className={`profile-surface-bg border profile-border p-4 ${blockStyleClass}`}>
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted flex items-center gap-1.5">
                                 <span className="profile-glow-text">■</span> ДРУЗЬЯ
@@ -461,7 +614,7 @@ const UserProfilePage: React.FC = () => {
 
                     {/* Bookmark status breakdown */}
                     {(profile.bookmarks || []).length > 0 && (
-                        <div className="profile-surface-bg border profile-border p-4">
+                        <div className={`profile-surface-bg border profile-border p-4 ${blockStyleClass}`}>
                             <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted mb-3 flex items-center gap-1.5">
                                 <span className="profile-glow-text">■</span> СТАТУСЫ ЗАКЛАДОК
                             </h3>
@@ -479,7 +632,7 @@ const UserProfilePage: React.FC = () => {
                     )}
 
                     {/* Recent comments */}
-                    <div className="profile-surface-bg border profile-border p-4">
+                    <div className={`profile-surface-bg border profile-border p-4 ${blockStyleClass}`}>
                         <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted mb-3 flex items-center gap-1.5">
                             <span className="profile-glow-text">■</span> КОММЕНТАРИИ
                             <span className="ml-1 text-[9px] text-muted">{profile.stats?.comments || 0}</span>
@@ -503,7 +656,7 @@ const UserProfilePage: React.FC = () => {
                 <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6">
 
                     {/* Activity heatmap */}
-                    <div className="profile-surface-bg border profile-border p-4 sm:p-5">
+                    <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
                         <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary mb-4 flex items-center gap-2">
                             <span className="profile-glow-text">⚡</span>Активность чтения
                         </h3>
@@ -529,7 +682,7 @@ const UserProfilePage: React.FC = () => {
 
                     {/* Bookmarks */}
                     {(profile.bookmarks || []).length > 0 && (
-                        <div className="profile-surface-bg border profile-border p-4 sm:p-5">
+                        <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary flex items-center gap-2">
                                     <span className="profile-glow-text">🔖</span>Закладки
@@ -565,21 +718,22 @@ const UserProfilePage: React.FC = () => {
                     )}
 
                     {/* Achievements */}
-                    <div className="profile-surface-bg border profile-border p-5 sm:p-6">
+                    <div className={`profile-surface-bg border profile-border p-5 sm:p-6 overflow-visible ${blockStyleClass}`}>
                         <div className="flex items-center justify-between mb-5">
                             <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary flex items-center gap-2">
                                 <span className="profile-glow-text">🔓</span>Достижения
                             </h3>
                             <span className="text-[10px] text-muted font-mono">{badges.length}/{Object.keys(ACHIEVEMENTS).length}</span>
                         </div>
-                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 gap-3">
+                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 gap-3 overflow-visible">
                             {badges.map((badgeId, idx) => {
                                 const ach = ACHIEVEMENTS[badgeId];
                                 if (!ach) return null;
                                 return (
-                                    <div key={badgeId} className={`relative group cursor-default flex flex-col items-center gap-1.5 achievement-glitch-in achievement-delay-${Math.min(idx, 9)}`}
+                                    <div key={badgeId} className={`relative group cursor-pointer flex flex-col items-center gap-1.5 achievement-glitch-in achievement-delay-${Math.min(idx, 9)}`}
+                                        onClick={() => setSelectedBadge(badgeId)}
                                         onMouseEnter={() => setHoveredBadge(badgeId)} onMouseLeave={() => setHoveredBadge(null)}>
-                                        <div className={`w-16 h-16 sm:w-[72px] sm:h-[72px] overflow-hidden broken-frame-sm ${RARITY_GLOW[ach.rarity]} border profile-border transition-all duration-200 group-hover:scale-110 group-hover:-translate-y-1`}>
+                                        <div className={`w-16 h-16 sm:w-[72px] sm:h-[72px] broken-frame-sm ${RARITY_GLOW[ach.rarity]} border profile-border transition-all duration-200 group-hover:scale-110 group-hover:-translate-y-1`}>
                                             <img src={ach.icon} alt={ach.title} className="w-full h-full object-cover" />
                                         </div>
                                         <span className="text-[9px] font-mono text-text-secondary text-center truncate w-full">{ach.title}</span>
@@ -590,8 +744,16 @@ const UserProfilePage: React.FC = () => {
                             {Object.entries(ACHIEVEMENTS).filter(([id]) => !badges.includes(id)).map(([id, ach]) => (
                                 <div key={id} className="relative group cursor-default flex flex-col items-center gap-1.5"
                                     onMouseEnter={() => setHoveredBadge(id)} onMouseLeave={() => setHoveredBadge(null)}>
-                                    <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] overflow-hidden broken-frame-sm border profile-border bg-base/30 opacity-25 grayscale transition-all duration-200 group-hover:opacity-40 flex items-center justify-center">
-                                        {ach.secret ? <span className="text-2xl">❓</span> : <img src={ach.icon} alt={ach.title} className="w-full h-full object-cover" />}
+                                    <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] overflow-hidden broken-frame-sm border profile-border bg-base/30 opacity-30 grayscale transition-all duration-200 group-hover:opacity-40 flex items-center justify-center">
+                                        {ach.secret ? (
+                                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#665544" strokeWidth="1.5" opacity="0.5">
+                                                <circle cx="12" cy="12" r="9" /><path d="M12 7v0M9.5 9.5l5 5M14.5 9.5l-5 5"/><circle cx="12" cy="12" r="3" strokeDasharray="2 2"/>
+                                            </svg>
+                                        ) : (
+                                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.5" opacity="0.4">
+                                                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                            </svg>
+                                        )}
                                     </div>
                                     <span className="text-[9px] font-mono text-muted/40 text-center truncate w-full">{ach.secret ? '???' : ach.title}</span>
                                     <BadgeTooltip show={hoveredBadge === id} ach={ach} locked secret={ach.secret} />
@@ -600,8 +762,76 @@ const UserProfilePage: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Achievement detail modal */}
+                    {selectedBadge && ACHIEVEMENTS[selectedBadge] && createPortal(
+                        (() => {
+                            const ach = ACHIEVEMENTS[selectedBadge];
+                            const rarity = RARITY_LABEL[ach.rarity];
+                            return (
+                                <AnimatePresence>
+                                    <motion.div
+                                        key="badge-modal"
+                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                        className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+                                        onClick={() => setSelectedBadge(null)}
+                                    >
+                                        <motion.div
+                                            initial={{ scale: 0.5, opacity: 0, y: -50 }}
+                                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                                            exit={{ scale: 0.5, opacity: 0, y: -50 }}
+                                            transition={{ type: "spring", damping: 20, stiffness: 300 }}
+                                            className="bg-surface border-2 border-overlay p-6 sm:p-10 max-w-lg w-full text-center relative shadow-2xl"
+                                            onClick={e => e.stopPropagation()}
+                                            style={{
+                                                boxShadow: `0 0 40px ${rarity.color}40, 0 20px 60px rgba(0,0,0,0.5)`,
+                                                maxHeight: '90vh',
+                                                overflowY: 'auto'
+                                            }}
+                                        >
+                                            {/* Close button in top RIGHT corner */}
+                                            <button
+                                                onClick={() => setSelectedBadge(null)}
+                                                className="absolute top-3 right-3 w-10 h-10 text-muted hover:text-text-primary transition-all flex items-center justify-center text-3xl font-bold z-10"
+                                            >
+                                                &times;
+                                            </button>
+
+                                            {/* Icon with glow */}
+                                            <div className={`w-32 h-32 mx-auto mb-6 ${RARITY_GLOW[ach.rarity]} border-2 profile-border relative`}>
+                                                <img src={ach.icon} alt={ach.title} className="w-full h-full object-cover" />
+                                            </div>
+
+                                            {/* Title */}
+                                            <h3 className="text-2xl font-display font-bold text-text-primary mb-2">{ach.title}</h3>
+
+                                            {/* Rarity badge */}
+                                            <div className="flex items-center justify-center gap-2 mb-4">
+                                                <div className="h-px flex-1 bg-gradient-to-r from-transparent to-overlay"></div>
+                                                <p className="text-xs font-mono font-bold px-3 py-1 border border-overlay" style={{ color: rarity.color, backgroundColor: `${rarity.color}10` }}>
+                                                    {rarity.text}
+                                                </p>
+                                                <div className="h-px flex-1 bg-gradient-to-l from-transparent to-overlay"></div>
+                                            </div>
+
+                                            {/* Secret badge */}
+                                            {ach.secret && (
+                                                <span className="text-[10px] font-mono font-bold text-brand-accent bg-brand-accent/10 px-2 py-1 mb-3 inline-block border border-brand-accent/30">
+                                                    🔒 SECRET ACHIEVEMENT
+                                                </span>
+                                            )}
+
+                                            {/* Only description - NO flavor text for other users */}
+                                            <p className="text-base text-text-primary leading-relaxed">{ach.description}</p>
+                                        </motion.div>
+                                    </motion.div>
+                                </AnimatePresence>
+                            );
+                        })(),
+                        document.body
+                    )}
+
                     {/* Corruption Level */}
-                    <div className="profile-surface-bg border profile-border p-4 sm:p-5">
+                    <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
                         <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary mb-4 flex items-center gap-2">
                             <span className="profile-glow-text">☣</span>УРОВЕНЬ ЗАРАЖЕНИЯ
                         </h3>
@@ -611,9 +841,9 @@ const UserProfilePage: React.FC = () => {
                                 <span className={`text-xs font-mono font-bold ${corruption >= 50 ? 'corruption-pulse' : ''}`} style={{ color: corruptionColor }}>{corruptionLabel}</span>
                                 <span className="text-[10px] font-mono text-muted">100%</span>
                             </div>
-                            <div className="h-6 bg-base border border-overlay relative overflow-hidden">
+                            <div className={`h-6 bg-base border border-overlay relative overflow-hidden ${corruption >= 70 ? 'corruption-critical' : ''}`}>
                                 <motion.div initial={{ width: 0 }} animate={{ width: `${corruption}%` }} transition={{ duration: 1.5, ease: 'easeOut' }}
-                                    className="h-full relative" style={{ background: `linear-gradient(90deg, rgba(0,255,100,0.3), ${corruptionColor}90)`, boxShadow: corruption >= 50 ? `0 0 15px ${corruptionColor}40` : 'none' }}>
+                                    className="h-full relative corruption-barberpole" style={{ background: `linear-gradient(90deg, rgba(0,255,100,0.3), ${corruptionColor}90)`, boxShadow: corruption >= 50 ? `0 0 15px ${corruptionColor}40` : 'none' }}>
                                     <div className="absolute inset-0" style={{ backgroundImage: 'repeating-linear-gradient(90deg, transparent 0px, transparent 3px, rgba(0,0,0,0.2) 3px, rgba(0,0,0,0.2) 4px)' }} />
                                 </motion.div>
                                 <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-bold text-white mix-blend-difference">{corruption}%</span>
@@ -621,26 +851,50 @@ const UserProfilePage: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Compatibility Block */}
+                    {currentUser && !isOwnProfile && compatibility && compatibility.compatibility > 0 && (
+                        <div className={`profile-surface-bg border border-[#00FF64]/20 p-4 sm:p-5 ${blockStyleClass}`}>
+                            <div className="font-mono text-[#00FF64] text-xs">
+                                <span className="typewriter-cursor">{compatTyped}</span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-3">
+                                <div className="flex-1 h-3 bg-base border border-[#00FF64]/20 relative overflow-hidden">
+                                    <motion.div
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${compatibility.compatibility}%` }}
+                                        transition={{ duration: 1.5, ease: 'easeOut', delay: 1 }}
+                                        className="h-full bg-[#00FF64]/40"
+                                    />
+                                </div>
+                                <span className="text-[#00FF64] font-mono text-xs font-bold">{compatibility.compatibility}%</span>
+                            </div>
+                            <p className="text-[9px] font-mono text-muted mt-2">Общих тайтлов: {compatibility.common} / Всего: {compatibility.total}</p>
+                        </div>
+                    )}
+
                     {/* Profile Wall */}
-                    <div className="profile-surface-bg border profile-border p-4 sm:p-5">
+                    <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
                         <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary mb-4 flex items-center gap-2">
                             <span className="profile-glow-text">💬</span>Стена профиля
                         </h3>
-                        {/* Write comment */}
+                        {/* Write comment — terminal style */}
                         {currentUser && !iBlocked && !theyBlocked && (
-                            <div className="flex gap-2 mb-4">
+                            <div className="flex items-center gap-1 sm:gap-2 mb-4 bg-[#0a0a0a] border border-[#00FF64]/30 px-2 sm:px-3 py-2 min-w-0">
+                                <span className="text-[#00FF64] text-[10px] font-mono font-bold shrink-0 select-none hidden sm:inline">root@springmanga:~#</span>
+                                <span className="text-[#00FF64] text-[10px] font-mono font-bold shrink-0 select-none sm:hidden">~#</span>
                                 <input type="text" value={wallInput} onChange={e => setWallInput(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleWallComment()}
-                                    placeholder="Написать на стене..."
-                                    className="flex-1 bg-base border border-overlay px-3 py-2 text-xs text-text-primary font-mono placeholder:text-muted/50 focus:outline-none focus:border-brand-accent/50 transition-colors" />
+                                    placeholder="Ввод команды..."
+                                    className="flex-1 min-w-0 bg-transparent border-none px-0 py-0 text-xs text-[#00FF64] font-mono placeholder:text-[#00FF64]/30 focus:outline-none"
+                                    style={{ background: 'transparent', border: 'none' }} />
                                 <button onClick={handleWallComment} disabled={!wallInput.trim() || wallLoading}
-                                    className="px-4 py-2 bg-brand text-white text-xs font-mono font-bold hover:bg-brand-hover disabled:opacity-30 transition-all shrink-0">
-                                    {wallLoading ? '...' : '▸'}
+                                    className="px-2 sm:px-3 py-1 bg-[#00FF64]/10 text-[#00FF64] text-[10px] font-mono font-bold border border-[#00FF64]/30 hover:bg-[#00FF64]/20 disabled:opacity-30 transition-all shrink-0 whitespace-nowrap">
+                                    {wallLoading ? '...' : '[ EXECUTE ]'}
                                 </button>
                             </div>
                         )}
                         {wallComments.length > 0 ? (
-                            <div className="space-y-3 max-h-96 overflow-y-auto scrollbar-hide">
+                            <div className="space-y-3">
                                 {wallComments.map(c => (
                                     <div key={c.id} className="bg-base/50 border profile-border">
                                         <div className="flex items-start gap-2.5 p-2.5 group">
@@ -701,6 +955,14 @@ const UserProfilePage: React.FC = () => {
                                         )}
                                     </div>
                                 ))}
+                                {hasMoreWall && (
+                                    <button
+                                        onClick={() => loadWallComments(wallOffset, true)}
+                                        className="w-full py-2 text-[10px] font-mono font-bold text-[#00FF64]/70 bg-[#0a0a0a] border border-[#00FF64]/20 hover:bg-[#00FF64]/10 transition-all mt-2"
+                                    >
+                                        [ ЗАГРУЗИТЬ СТАРЫЕ ЛОГИ ] ({wallTotal - wallOffset} ост.)
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div className="text-center py-6 font-mono text-[10px]">

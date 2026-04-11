@@ -1,22 +1,4 @@
 import { Manga, ReadingProgress, Comment, User } from '../types';
-import { v4 as uuidv4 } from 'uuid';
-
-const generateChapters = (count: number, mangaTitle: string, hasContent: boolean = false) => {
-    return Array.from({ length: count }, (_, i) => {
-        const chapterNum = count - i;
-        const date = new Date();
-        date.setDate(date.getDate() - i * 7); // Assume weekly release
-        
-        return {
-            id: uuidv4(),
-            chapterNumber: String(chapterNum),
-            title: `Том ${Math.floor(chapterNum / 50) + 1} Глава ${chapterNum}`,
-            date: date.toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric'}),
-            views: 10000 + Math.floor(Math.random() * 50000),
-            content: hasContent ? Array.from({ length: Math.floor(Math.random() * 25) + 15 }, (_, i) => `https://picsum.photos/seed/${mangaTitle}${chapterNum}${i}/800/1200`) : [],
-        };
-    });
-};
 
 export const mangaData: Manga[] = [
     {

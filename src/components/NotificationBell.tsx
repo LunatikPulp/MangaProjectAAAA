@@ -2,6 +2,7 @@ import React, { useState, useContext, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NotificationContext } from '../contexts/NotificationContext';
+import { AuthContext } from '../contexts/AuthContext';
 import { NotificationCategory } from '../types';
 
 const BellIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -20,11 +21,12 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 const NotificationBell: React.FC = () => {
+    const { user, openAuthModal } = useContext(AuthContext);
     const { notifications, markAsRead, clearNotifications, unreadCount, unreadByCategory } = useContext(NotificationContext);
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<TabKey>('all');
     const notificationRef = useRef<HTMLDivElement>(null);
-    
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
@@ -36,6 +38,10 @@ const NotificationBell: React.FC = () => {
     }, []);
 
     const handleToggle = () => {
+        if (!user) {
+            openAuthModal('login');
+            return;
+        }
         setIsOpen(!isOpen);
         if(!isOpen) {
             markAsRead();

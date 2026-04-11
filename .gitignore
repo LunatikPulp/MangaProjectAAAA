@@ -32,3 +32,4 @@ __pycache__/
 *.pyc
 backend/manga_app.db
 backend/manga/
+*.db

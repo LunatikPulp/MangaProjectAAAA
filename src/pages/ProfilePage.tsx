@@ -1,4 +1,5 @@
 import React, { useContext, useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { AuthContext } from '../contexts/AuthContext';
 import { useBookmarks } from '../hooks/useBookmarks';
 import { useHistory } from '../hooks/useHistory';
@@ -6,7 +7,6 @@ import { MangaContext } from '../contexts/MangaContext';
 import { Link, useNavigate } from 'react-router-dom';
 import Avatar from '../components/Avatar';
 import FramedAvatar from '../components/FramedAvatar';
-import Modal from '../components/Modal';
 import { ToasterContext } from '../contexts/ToasterContext';
 import RankBadge from '../components/RankBadge';
 import ProfilePageSkeleton from '../components/skeletons/ProfilePageSkeleton';
@@ -14,6 +14,26 @@ import { BookmarkStatus } from '../types';
 import { API_BASE } from '../services/externalApiService';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AVATAR_FRAMES } from '../config/avatarFrames';
+import ShopModal from '../components/ShopModal';
+import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
+
+/** Crop helper — returns a Blob from the cropped pixel area */
+function getCroppedBlob(image: HTMLImageElement, pixelCrop: PixelCrop): Promise<Blob> {
+    const canvas = document.createElement('canvas');
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    canvas.width = pixelCrop.width * scaleX;
+    canvas.height = pixelCrop.height * scaleY;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(
+        image,
+        pixelCrop.x * scaleX, pixelCrop.y * scaleY,
+        pixelCrop.width * scaleX, pixelCrop.height * scaleY,
+        0, 0, canvas.width, canvas.height,
+    );
+    return new Promise((res, rej) => canvas.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/jpeg', 0.92));
+}
 
 type EditTab = 'profile' | 'security' | 'notifications' | 'content' | 'appearance';
 
@@ -24,36 +44,174 @@ interface Achievement {
     icon: string;
     title: string;
     description: string;
+    flavorText: string;
     rarity: 'common' | 'rare' | 'epic' | 'legendary';
     secret?: boolean;
 }
 
 const ACHIEVEMENTS: Record<string, Achievement> = {
-    first_login:  { icon: '/Achievement Icons/first_login.png',  title: 'Первый вход',      description: 'Добро пожаловать в SPRINGMANGA',       rarity: 'common' },
-    reader_10:    { icon: '/Achievement Icons/reader_10.png',     title: 'Читатель',          description: 'Прочитано 10 глав',                    rarity: 'common' },
-    reader_50:    { icon: '/Achievement Icons/reader_50.png',     title: 'Книжный червь',     description: 'Прочитано 50 глав',                    rarity: 'rare' },
-    reader_100:   { icon: '/Achievement Icons/reader_100.png',    title: 'Мастер чтения',     description: 'Прочитано 100 глав',                   rarity: 'epic' },
-    reader_500:   { icon: '/Achievement Icons/reader_500.png',    title: 'Легенда',           description: 'Прочитано 500 глав',                   rarity: 'legendary' },
-    bookworm:     { icon: '/Achievement Icons/bookworm.png',      title: 'Коллекционер',      description: '10 манг в закладках',                  rarity: 'rare' },
-    collector:    { icon: '/Achievement Icons/collector.png',      title: 'Собиратель',         description: '50 манг в закладках',                  rarity: 'epic' },
-    critic:       { icon: '/Achievement Icons/critic.png',         title: 'Критик',            description: 'Оценено 5 манг',                       rarity: 'rare' },
-    judge:        { icon: '/Achievement Icons/judge.png',          title: 'Верховный судья',   description: 'Оценено 20 манг',                      rarity: 'epic' },
-    social:       { icon: '/Achievement Icons/social.png',         title: 'Социальный',        description: 'Заполнил биографию',                   rarity: 'common' },
-    stylist:      { icon: '/Achievement Icons/stylist.png',        title: 'Стилист',           description: 'Изменил тему профиля',                 rarity: 'epic' },
-    decorator:    { icon: '/Achievement Icons/decorator.png',      title: 'Декоратор',         description: 'Загрузил баннер профиля',              rarity: 'rare' },
-    night_guard:  { icon: '/Achievement Icons/night_guard.png',    title: 'Ночной охранник',   description: 'Зашёл на сайт между 00:00 и 05:00',   rarity: 'legendary', secret: true },
-    five_nights:  { icon: '/Achievement Icons/five_nights.png',    title: 'Пять ночей',        description: 'Читал мангу в 5 разных дней',          rarity: 'epic', secret: true },
-    marathon:     { icon: '/Achievement Icons/marathon.png',       title: 'Марафонщик',        description: '20+ глав за один день',                rarity: 'epic', secret: true },
-    early_bird:   { icon: '/Achievement Icons/early_bird.png',     title: 'Ранняя пташка',     description: 'Зашёл с 5:00 до 7:00 утра',           rarity: 'rare', secret: true },
-    halloween:    { icon: '/Achievement Icons/halloween.png',      title: 'Хэллоуинский дух',  description: 'Зашёл 31 октября',                     rarity: 'legendary', secret: true },
-    new_year:     { icon: '/Achievement Icons/new_year.png',       title: 'Новогоднее чудо',   description: 'Зашёл в новогоднюю ночь',              rarity: 'legendary', secret: true },
+    first_login:  {
+        icon: '/Achievement Icons/first_login.png',
+        title: 'Первый вход',
+        description: 'Добро пожаловать в SPRINGMANGA',
+        flavorText: 'Первый шаг в мир, где страницы оживают. Добро пожаловать, читатель.',
+        rarity: 'common'
+    },
+    reader_10:    {
+        icon: '/Achievement Icons/reader_10.png',
+        title: 'Читатель',
+        description: 'Прочитано 10 глав',
+        flavorText: 'Путешествие начинается с первых страниц. Ты только начал свой путь.',
+        rarity: 'common'
+    },
+    reader_50:    {
+        icon: '/Achievement Icons/reader_50.png',
+        title: 'Книжный червь',
+        description: 'Прочитано 50 глав',
+        flavorText: 'Страницы шелестят под твоими пальцами. История поглощает тебя всё глубже.',
+        rarity: 'rare'
+    },
+    reader_100:   {
+        icon: '/Achievement Icons/reader_100.png',
+        title: 'Мастер чтения',
+        description: 'Прочитано 100 глав',
+        flavorText: 'Сотни историй прошли через твой разум. Ты стал частью этих миров.',
+        rarity: 'epic'
+    },
+    reader_500:   {
+        icon: '/Achievement Icons/reader_500.png',
+        title: 'Легенда',
+        description: 'Прочитано 500 глав',
+        flavorText: 'Твоё имя эхом разносится по библиотекам вечности. Ты — живая легенда.',
+        rarity: 'legendary'
+    },
+    bookworm:     {
+        icon: '/Achievement Icons/bookworm.png',
+        title: 'Коллекционер',
+        description: '10 манг в закладках',
+        flavorText: 'Твоя коллекция растёт. Каждая история — драгоценный артефакт.',
+        rarity: 'rare'
+    },
+    collector:    {
+        icon: '/Achievement Icons/collector.png',
+        title: 'Собиратель',
+        description: '50 манг в закладках',
+        flavorText: 'Твоя библиотека превратилась в лабиринт миров и судеб.',
+        rarity: 'epic'
+    },
+    critic:       {
+        icon: '/Achievement Icons/critic.png',
+        title: 'Критик',
+        description: 'Оценено 5 манг',
+        flavorText: 'Твоё мнение имеет вес. Ты начинаешь видеть то, что скрыто от других.',
+        rarity: 'rare'
+    },
+    judge:        {
+        icon: '/Achievement Icons/judge.png',
+        title: 'Верховный судья',
+        description: 'Оценено 20 манг',
+        flavorText: 'Твой вердикт безапелляционен. Ты видишь суть каждой истории.',
+        rarity: 'epic'
+    },
+    social:       {
+        icon: '/Achievement Icons/social.png',
+        title: 'Социальный',
+        description: 'Заполнил биографию',
+        flavorText: 'Ты открыл миру частичку себя. Теперь другие знают, кто ты.',
+        rarity: 'common'
+    },
+    stylist:      {
+        icon: '/Achievement Icons/stylist.png',
+        title: 'Стилист',
+        description: 'Изменил тему профиля',
+        flavorText: 'Реальность подчиняется твоей воле. Ты создаёшь свой мир.',
+        rarity: 'epic'
+    },
+    decorator:    {
+        icon: '/Achievement Icons/decorator.png',
+        title: 'Декоратор',
+        description: 'Загрузил баннер профиля',
+        flavorText: 'Твоё пространство обрело лицо. Каждый, кто войдёт, увидит твою душу.',
+        rarity: 'rare'
+    },
+    night_guard:  {
+        icon: '/Achievement Icons/night_guard.png',
+        title: 'Ночной охранник',
+        description: 'Зашёл на сайт между 00:00 и 05:00',
+        flavorText: 'В глубокой тьме ночи ты не спишь. Тени шепчут тебе истории.',
+        rarity: 'legendary',
+        secret: true
+    },
+    five_nights:  {
+        icon: '/Achievement Icons/five_nights.png',
+        title: 'Пять ночей',
+        description: 'Читал мангу в 5 разных дней',
+        flavorText: 'Пять ночей, пять миров. Ты выжил там, где другие сломались.',
+        rarity: 'epic',
+        secret: true
+    },
+    marathon:     {
+        icon: '/Achievement Icons/marathon.png',
+        title: 'Марафонщик',
+        description: '20+ глав за один день',
+        flavorText: 'Время потеряло смысл. Ты погрузился в бездну историй и не можешь остановиться.',
+        rarity: 'epic',
+        secret: true
+    },
+    early_bird:   {
+        icon: '/Achievement Icons/early_bird.png',
+        title: 'Ранняя пташка',
+        description: 'Зашёл с 5:00 до 7:00 утра',
+        flavorText: 'Рассвет застал тебя за чтением. Первые лучи солнца освещают страницы.',
+        rarity: 'rare',
+        secret: true
+    },
+    halloween:    {
+        icon: '/Achievement Icons/halloween.png',
+        title: 'Хэллоуинский дух',
+        description: 'Зашёл 31 октября',
+        flavorText: 'В ночь, когда грань между мирами тонка, ты пришёл сюда. Что ты ищешь?',
+        rarity: 'legendary',
+        secret: true
+    },
+    new_year:     {
+        icon: '/Achievement Icons/new_year.png',
+        title: 'Новогоднее чудо',
+        description: 'Зашёл в новогоднюю ночь',
+        flavorText: 'Когда мир празднует, ты выбрал истории. Новый год начинается с новой главы.',
+        rarity: 'legendary',
+        secret: true
+    },
+    konami_master: {
+        icon: '/Achievement Icons/Konami_code.png',
+        title: 'Konami Master',
+        description: 'Ввёл легендарный код Konami',
+        flavorText: '↑↑↓↓←→←→BA — древний шифр открыл тебе путь. Ты знаешь секреты старых богов.',
+        rarity: 'legendary',
+        secret: true
+    },
+    horror_discoverer: {
+        icon: '/Achievement Icons/horror_mode.png',
+        title: 'Кошмарный исследователь',
+        description: 'Обнаружил Horror Mode',
+        flavorText: 'Ты заглянул за занавеску реальности и увидел то, что не должен был видеть.',
+        rarity: 'legendary',
+        secret: true
+    },
 };
 
 const RARITY_GLOW_CLASS: Record<string, string> = {
-    common: '',
+    common: 'badge-glow-common',
     rare: 'badge-glow-rare',
     epic: 'badge-glow-epic',
     legendary: 'badge-glow-legendary',
+};
+
+const RARITY_LABEL: Record<string, { text: string; color: string }> = {
+    common: { text: 'ОБЫЧНОЕ', color: '#888' },
+    rare: { text: 'РЕДКОЕ', color: '#4A9EFF' },
+    epic: { text: 'ЭПИЧЕСКОЕ', color: '#A855F7' },
+    legendary: { text: 'ЛЕГЕНДАРНОЕ', color: '#FFD700' },
 };
 
 /* AVATAR_FRAMES — imported from ../config/avatarFrames */
@@ -61,36 +219,12 @@ const RARITY_GLOW_CLASS: Record<string, string> = {
 /* ═══════════════════════════════════════════════════════════════
    THEME CONFIG (CSS variables in index.css do the heavy lifting)
    ═══════════════════════════════════════════════════════════════ */
-const PROFILE_THEMES = {
-    base: {
-        name: 'Base',
-        subtitle: 'Стандартная тема «Springtrap»',
-        description: 'Классическая палитра заброшенной пиццерии',
-        bannerGradient: 'from-brand/30 via-brand/10 to-brand-accent/20',
-        previewColors: ['#7A8755', '#A9FF00', '#121212'],
-    },
-    neon: {
-        name: 'Neon',
-        subtitle: 'Токсичное свечение',
-        description: 'Кислотный неон повреждённых систем',
-        bannerGradient: 'from-[#A9FF00]/30 via-[#A9FF00]/5 to-brand/20',
-        previewColors: ['#A9FF00', '#7FFF00', '#141814'],
-    },
-    corroded: {
-        name: 'Corroded',
-        subtitle: 'Ржавый распад',
-        description: 'Коррозия и распад — тёмная сторона',
-        bannerGradient: 'from-[#8B5E3C]/40 via-[#8B5E3C]/15 to-[#3D2B1F]/30',
-        previewColors: ['#8B5E3C', '#C17A4A', '#171311'],
-    },
-};
-
 /* ═══════════════════════════════════════════════════════════════
    HEATMAP HELPERS
    ═══════════════════════════════════════════════════════════════ */
 function isVideo(url: string): boolean {
-    const lower = url.toLowerCase();
-    return lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.ogg') || lower.includes('video');
+    const clean = url.split('?')[0].toLowerCase();
+    return clean.endsWith('.mp4') || clean.endsWith('.webm') || clean.endsWith('.ogg');
 }
 
 function generateHeatmapDays(): string[] {
@@ -116,7 +250,7 @@ function heatmapColor(count: number): string {
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════ */
 const ProfilePage: React.FC = () => {
-    const { user, updateUser, deleteAccount, loading: authLoading } = useContext(AuthContext);
+    const { user, updateUser, refreshUser, loading: authLoading } = useContext(AuthContext);
     const { bookmarks } = useBookmarks();
     const { history } = useHistory();
     const { getMangaById, mangaList, fetchMangaById, loading: mangaLoading } = useContext(MangaContext);
@@ -124,59 +258,84 @@ const ProfilePage: React.FC = () => {
     const navigate = useNavigate();
 
     // UI state
-    const [isEditOpen, setEditOpen] = useState(false);
-    const [editTab, setEditTab] = useState<EditTab>('profile');
-    const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [isEditOpen] = useState(false);
+    const [editTab] = useState<EditTab>('profile');
     const [hoveredBadge, setHoveredBadge] = useState<string | null>(null);
+    const [selectedBadge, setSelectedBadge] = useState<string | null>(null);
     const [hoveredHeatmapDay, setHoveredHeatmapDay] = useState<{ day: string; count: number; x: number; y: number } | null>(null);
 
     // Profile form
-    const [newUsername, setNewUsername] = useState('');
-    const [newAbout, setNewAbout] = useState('');
-    const [newBio, setNewBio] = useState('');
-    const [newBirthday, setNewBirthday] = useState('');
-    const [newGender, setNewGender] = useState('');
-    const [previewTheme, setPreviewTheme] = useState<'base' | 'neon' | 'corroded'>('base');
-    const [previewFrame, setPreviewFrame] = useState('none');
-
-    // Security
-    const [oldPassword, setOldPassword] = useState('');
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [passwordLoading, setPasswordLoading] = useState(false);
-    const [newEmail, setNewEmail] = useState('');
-    const [emailPassword, setEmailPassword] = useState('');
-    const [emailLoading, setEmailLoading] = useState(false);
-
-    // Content/privacy
-    const [newEroticFilter, setNewEroticFilter] = useState('hide');
-    const [newPrivateProfile, setNewPrivateProfile] = useState(false);
-    const [newAllowTrades, setNewAllowTrades] = useState(true);
-
-    // Notifications
-    const [newNotifyEmail, setNewNotifyEmail] = useState(true);
-    const [newNotifyVk, setNewNotifyVk] = useState(false);
-    const [newNotifyTelegram, setNewNotifyTelegram] = useState(false);
+    const [previewTheme, setPreviewTheme] = useState<string>('base');
+    const [previewFrame] = useState('none');
 
 
+
+    const [allShopItems, setAllShopItems] = useState<any[]>([]);
+
+    // Shop modal
+    const [shopModalOpen, setShopModalOpen] = useState(false);
+    const [previewBgUrl, setPreviewBgUrl] = useState<string | null>(null);
+    const [previewFrameKey, setPreviewFrameKey] = useState<string | null>(null);
+
+    // Skin system
+    const [myPurchases, setMyPurchases] = useState<string[]>([]);
+    const [shopSkins, setShopSkins] = useState<any[]>([]);
+    const [previewSkinKey, setPreviewSkinKey] = useState<string | null>(null);
+    const [isPreviewingLocked, setIsPreviewingLocked] = useState(false);
+    const [previewCssVars, setPreviewCssVars] = useState<Record<string, string>>({});
+    // Mythic controls
+    const [, setEditNicknameColor] = useState('');
+    const [editNicknameFont, setEditNicknameFont] = useState('');
+
+    // Avatar crop
+    const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+    const [crop, setCrop] = useState<Crop>();
+    const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+    const cropImgRef = useRef<HTMLImageElement>(null);
+
+    // Lock body scroll when modal is open
+    useEffect(() => {
+        if (selectedBadge) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [selectedBadge]);
 
     // Loadings
     const [avatarLoading, setAvatarLoading] = useState(false);
     const [bannerLoading, setBannerLoading] = useState(false);
-    const [profileSaving, setProfileSaving] = useState(false);
+    const [backgroundLoading, setBackgroundLoading] = useState(false);
+
+    // Cache-buster for banner/background (forces browser to re-fetch after upload)
+    const [mediaCacheBuster, setMediaCacheBuster] = useState(Date.now());
 
     // Rich profile data from /auth/profile-full
     const [profileData, setProfileData] = useState<any>(null);
     const [badges, setBadges] = useState<string[]>([]);
+    const badgesRef = useRef<string[]>([]);
 
-    // Easter egg: avatar click counter for glitch
-    const [_avatarClicks, setAvatarClicks] = useState(0);
-    const avatarClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [showGlitchOverlay, setShowGlitchOverlay] = useState(false);
+    // Debug badges state
+    useEffect(() => {
+        console.log('[DEBUG] badges state updated:', badges);
+        console.log('[DEBUG] badges array content:', JSON.stringify(badges));
+        badges.forEach((badgeId, idx) => {
+            const ach = ACHIEVEMENTS[badgeId];
+            if (ach) {
+                console.log(`[DEBUG] Badge ${idx}: ${badgeId} - rarity: ${ach.rarity} - glow class: ${RARITY_GLOW_CLASS[ach.rarity]}`);
+            } else {
+                console.log(`[DEBUG] Badge ${idx}: ${badgeId} - NOT FOUND IN ACHIEVEMENTS`);
+            }
+        });
+    }, [badges]);
+
+    useEffect(() => { badgesRef.current = badges; }, [badges]);
 
     // Konami code easter egg
     const [, setKonamiProgress] = useState(0);
-    const [konamiUnlocked, setKonamiUnlocked] = useState(false);
     const KONAMI_CODE = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
 
     // Typewriter ref (kept for potential future use)
@@ -207,7 +366,9 @@ const ProfilePage: React.FC = () => {
             if (manga) manga.genres.forEach(g => { acc[g] = (acc[g] || 0) + 1; });
             return acc;
         }, {} as Record<string, number>);
-        return Object.entries(genreCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]);
+        const sorted = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]);
+        const maxCount = sorted[0]?.[1] || 1;
+        return sorted.slice(0, 6).map(([name, count]) => ({ name, count, pct: Math.round((count / maxCount) * 100) }));
     }, [bookmarks, getMangaById]);
 
     // Corruption Level — based on genres read
@@ -262,14 +423,25 @@ const ProfilePage: React.FC = () => {
     const [wallReplyingTo, setWallReplyingTo] = useState<number | null>(null);
     const [wallReplyText, setWallReplyText] = useState('');
 
-    // Load wall comments from backend with replies
-    useEffect(() => {
+    // Load wall comments from backend with replies (paginated)
+    const loadWallComments = useCallback((offset = 0, append = false) => {
         if (!user?.id) return;
-        fetch(`${API_BASE}/auth/wall-comments/${user.id}/with-replies`)
+        fetch(`${API_BASE}/auth/wall-comments/${user.id}/with-replies?offset=${offset}&limit=10`)
             .then(r => r.json())
-            .then(data => { if (Array.isArray(data)) setWallComments(data); })
+            .then(data => {
+                if (data && data.comments) {
+                    setWallComments(prev => append ? [...prev, ...data.comments] : data.comments);
+                    setWallTotal(data.total);
+                    setHasMoreWall(data.has_more);
+                    setWallOffset(offset + (data.comments?.length || 0));
+                } else if (Array.isArray(data)) {
+                    setWallComments(data);
+                }
+            })
             .catch(() => {});
     }, [user?.id]);
+
+    useEffect(() => { loadWallComments(0); }, [loadWallComments]);
 
     const handleWallComment = async () => {
         if (!wallInput.trim() || !user?.id) return;
@@ -286,6 +458,7 @@ const ProfilePage: React.FC = () => {
                 setWallComments(prev => [newComment, ...prev]);
                 setWallInput('');
                 showToaster('Комментарий добавлен!');
+                if (newComment.scrap_earned > 0) showToaster(`+${newComment.scrap_earned} за комментарий!`);
             } else {
                 showToaster('Ошибка отправки');
             }
@@ -336,6 +509,17 @@ const ProfilePage: React.FC = () => {
     // XP tooltip
     const [showXpTooltip, setShowXpTooltip] = useState(false);
 
+    // Wall pagination
+    const [wallOffset, setWallOffset] = useState(0);
+    const [wallTotal, setWallTotal] = useState(0);
+    const [hasMoreWall, setHasMoreWall] = useState(false);
+
+    // Shop & Scrap (removed shopItems/myPurchases — no longer needed for titles)
+
+    // Sound
+    const [soundEnabled, setSoundEnabled] = useState(false);
+
+
     // User comments from server
     const [userComments, setUserComments] = useState<{ text: string; mangaId: string; mangaTitle: string; cover: string; timestamp: string }[]>([]);
     useEffect(() => {
@@ -370,11 +554,22 @@ const ProfilePage: React.FC = () => {
 
     // Theme keys
     const currentThemeKey = user?.profile_theme || 'base';
-    const activeThemeKey = isEditOpen && editTab === 'appearance' ? previewTheme : currentThemeKey;
+    const activeThemeKey = previewSkinKey ? previewSkinKey : (isEditOpen && previewTheme !== currentThemeKey ? previewTheme : currentThemeKey);
 
-    // Current frame
+    const glowOverride = useMemo(() => {
+        const color = profileData?.nickname_color;
+        if (activeThemeKey !== 'phantom' || !color || !color.startsWith('#') || color.length < 7) return {};
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        return { '--profile-glow': color, '--profile-glow-rgb': `${r}, ${g}, ${b}` } as React.CSSProperties;
+    }, [activeThemeKey, profileData?.nickname_color]);
+
+    const canUploadBanner = user?.role === 'admin' || !!profileData?.subscription_active;
+
+    // Current frame (shop modal preview takes priority)
     const currentFrame = user?.avatar_frame || 'none';
-    const activeFrame = isEditOpen && editTab === 'appearance' ? previewFrame : currentFrame;
+    const activeFrame = previewFrameKey || (isEditOpen && editTab === 'appearance' ? previewFrame : currentFrame);
     const frameImage = AVATAR_FRAMES[activeFrame]?.image || null;
 
     // Heatmap data
@@ -405,7 +600,16 @@ const ProfilePage: React.FC = () => {
             .then(data => {
                 setProfileData(data);
                 if (data.user?.badge_ids) setBadges(data.user.badge_ids);
-
+                // Load Google Font for nickname if needed
+                if (data?.nickname_font) {
+                    const fontLink = document.createElement('link');
+                    fontLink.rel = 'stylesheet';
+                    fontLink.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(data.nickname_font)}&display=swap`;
+                    fontLink.id = 'nickname-font-link';
+                    const existing = document.getElementById('nickname-font-link');
+                    if (existing) existing.remove();
+                    document.head.appendChild(fontLink);
+                }
             })
             .catch(() => {});
 
@@ -416,9 +620,12 @@ const ProfilePage: React.FC = () => {
         })
             .then(r => r.json())
             .then(data => {
+                console.log('[DEBUG] check-achievements response:', data);
                 if (data.badges) setBadges(data.badges);
                 if (data.new_badges?.length > 0) {
+                    const manualAchievements = ['konami_master', 'horror_discoverer'];
                     data.new_badges.forEach((b: string) => {
+                        if (manualAchievements.includes(b)) return;
                         const ach = ACHIEVEMENTS[b];
                         if (ach) showToaster(`🎉 Новая ачивка: ${ach.title}!`);
                     });
@@ -432,19 +639,60 @@ const ProfilePage: React.FC = () => {
             headers: { 'Authorization': `Bearer ${token}` },
         }).then(r => r.json()).then(data => {
             if (data.level_up) showToaster(`⚡ Уровень повышен! Теперь вы ${data.level} ур.`);
+            if (data.daily_scrap > 0) showToaster(`+${data.daily_scrap} за ежедневный вход!`);
+            if (data.level_scrap > 0) showToaster(`+${data.level_scrap} за повышение уровня!`);
         }).catch(() => {});
+
+        // Load purchases and shop skins
+        fetch(`${API_BASE}/auth/my-purchases`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : [])
+            .then(data => setMyPurchases(data))
+            .catch(() => {});
+        fetch(`${API_BASE}/shop/items`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(data => {
+                setAllShopItems(data);
+                setShopSkins(data.filter((i: any) => i.category === 'skin'));
+            })
+            .catch(() => {});
     }, [user?.id]);
+
+    // Listen for real-time achievement unlocks from other components (e.g. SpringtrapNightmare)
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const id = (e as CustomEvent).detail as string;
+            if (id && !badgesRef.current.includes(id)) {
+                setBadges(prev => [...prev, id]);
+            }
+        };
+        window.addEventListener('achievement-unlocked', handler);
+        return () => window.removeEventListener('achievement-unlocked', handler);
+    }, []);
 
     // Konami code listener
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (badgesRef.current.includes('konami_master')) return;
             setKonamiProgress(prev => {
                 const expected = KONAMI_CODE[prev];
                 if (e.code === expected) {
                     const next = prev + 1;
                     if (next === KONAMI_CODE.length) {
-                        setKonamiUnlocked(true);
-                        showToaster('🎮 СЕКРЕТНАЯ АЧИВКА РАЗБЛОКИРОВАНА: Konami Master!');
+                        const token = localStorage.getItem('backend_token');
+                        if (token) {
+                            fetch(`${API_BASE}/auth/unlock-achievement?achievement_id=konami_master`, {
+                                method: 'POST',
+                                headers: { 'Authorization': `Bearer ${token}` },
+                            })
+                                .then(r => r.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        setBadges(prev => [...prev, 'konami_master']);
+                                        showToaster('🎮 СЕКРЕТНАЯ АЧИВКА РАЗБЛОКИРОВАНА: Konami Master!');
+                                    }
+                                })
+                                .catch(() => {});
+                        }
                         return 0;
                     }
                     return next;
@@ -456,126 +704,302 @@ const ProfilePage: React.FC = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    // Avatar 5-click glitch
+    // Avatar click glitch — Springtrap horror effect
+    const [avatarGlitching, setAvatarGlitching] = useState(false);
     const handleAvatarClick = useCallback(() => {
-        setAvatarClicks(prev => {
-            const next = prev + 1;
-            if (avatarClickTimer.current) clearTimeout(avatarClickTimer.current);
-            avatarClickTimer.current = setTimeout(() => setAvatarClicks(0), 1500);
-            if (next >= 5) {
-                setShowGlitchOverlay(true);
-                setTimeout(() => setShowGlitchOverlay(false), 500);
-                return 0;
-            }
-            return next;
-        });
-    }, []);
+        if (avatarGlitching) return;
+        setAvatarGlitching(true);
+        setTimeout(() => setAvatarGlitching(false), 600);
+    }, [avatarGlitching]);
 
     // Cleanup typewriter timer on unmount
     useEffect(() => () => { if (typewriterTimer.current) clearTimeout(typewriterTimer.current); }, []);
 
+    // Sound effect helper (Web Audio API — no files)
+    const playBeep = useCallback(() => {
+        if (!soundEnabled) return;
+        try {
+            const ctx = new AudioContext();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.value = 880;
+            gain.gain.value = 0.08;
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+            osc.connect(gain).connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.1);
+        } catch {}
+    }, [soundEnabled]);
 
+
+    // Load sound_enabled from profile data
+    useEffect(() => {
+        if (profileData) {
+            setSoundEnabled(profileData.sound_enabled || false);
+        }
+    }, [profileData]);
+
+    // Load Google Font dynamically for nickname preview in edit modal
+    useEffect(() => {
+        if (!editNicknameFont) return;
+        const fontLink = document.createElement('link');
+        fontLink.rel = 'stylesheet';
+        fontLink.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(editNicknameFont)}&display=swap`;
+        fontLink.id = 'nickname-font-link-preview';
+        const existing = document.getElementById('nickname-font-link-preview');
+        if (existing) existing.remove();
+        document.head.appendChild(fontLink);
+    }, [editNicknameFont]);
 
     if (authLoading || mangaLoading) return <ProfilePageSkeleton />;
     if (!user) return <div className="text-center p-8 font-mono text-muted">[ ПОЛЬЗОВАТЕЛЬ НЕ НАЙДЕН ]</div>;
 
     const avatarSrc = user.avatar_url ? (user.avatar_url.startsWith('http') ? user.avatar_url : `${API_BASE}${user.avatar_url}`) : '';
-    const bannerSrc = user.profile_banner_url ? (user.profile_banner_url.startsWith('http') ? user.profile_banner_url : `${API_BASE}${user.profile_banner_url}`) : '';
-    
-    console.log('=== PROFILE PAGE DEBUG ===');
-    console.log('user:', user);
-    console.log('user.profile_banner_url:', user.profile_banner_url);
-    console.log('bannerSrc:', bannerSrc);
-    console.log('API_BASE:', API_BASE);
+    const cacheSuffix = mediaCacheBuster ? `?v=${mediaCacheBuster}` : '';
+    const bannerRaw = user.profile_banner_url ? (user.profile_banner_url.startsWith('http') ? user.profile_banner_url : `${API_BASE}${user.profile_banner_url}`) : '';
+    const bannerSrc = bannerRaw ? `${bannerRaw}${cacheSuffix}` : '';
+    const profileBgUrl = profileData?.profile_background_url || (user as any).profile_background_url || '';
+    const bgRaw = profileBgUrl ? (profileBgUrl.startsWith('http') ? profileBgUrl : `${API_BASE}${profileBgUrl}`) : '';
+    const backgroundSrcBase = bgRaw ? `${bgRaw}${cacheSuffix}` : '';
+    const backgroundSrc = previewBgUrl || backgroundSrcBase;
 
-    const openEdit = (tab: EditTab = 'profile') => {
-        setNewUsername(user.username);
-        setNewAbout(user.about || '');
-        setNewBio(user.bio || '');
-        setNewBirthday(user.birthday || '');
-        setNewGender(user.gender || '');
-        setNewEroticFilter(user.erotic_filter || 'hide');
-        setNewPrivateProfile(user.private_profile || false);
-        setNewAllowTrades(user.allow_trades !== false);
-        setNewNotifyEmail(user.notify_email !== false);
-        setNewNotifyVk(user.notify_vk || false);
-        setNewNotifyTelegram(user.notify_telegram || false);
-        setPreviewTheme((user.profile_theme || 'base') as 'base' | 'neon' | 'corroded');
-        setPreviewFrame(user.avatar_frame || 'none');
-        setOldPassword(''); setNewPassword(''); setConfirmPassword('');
-        setNewEmail(''); setEmailPassword('');
-        setEditTab(tab);
-        setEditOpen(true);
+    // Skin preview helpers
+    const FREE_SKINS: Record<string, { name: string; subtitle: string; previewColors: string[]; bannerGradient: string }> = {
+        base: { name: 'Base', subtitle: 'Стандартная тема', previewColors: ['#7A8755', '#A9FF00', '#121212'], bannerGradient: 'from-brand/30 via-brand/10 to-brand-accent/20' },
+        neon: { name: 'Neon', subtitle: 'Токсичное свечение', previewColors: ['#A9FF00', '#7FFF00', '#141814'], bannerGradient: 'from-[#A9FF00]/30 via-[#A9FF00]/5 to-brand/20' },
+        corroded: { name: 'Corroded', subtitle: 'Ржавый распад', previewColors: ['#8B5E3C', '#C17A4A', '#171311'], bannerGradient: 'from-[#8B5E3C]/40 via-[#8B5E3C]/15 to-[#3D2B1F]/30' },
     };
 
-    const handleSaveProfile = async () => {
-        if (!newUsername.trim()) return;
-        setProfileSaving(true);
-        await updateUser({
-            username: newUsername, about: newAbout, birthday: newBirthday,
-            gender: newGender, erotic_filter: newEroticFilter as any,
-            private_profile: newPrivateProfile, allow_trades: newAllowTrades,
-            notify_email: newNotifyEmail, notify_vk: newNotifyVk, notify_telegram: newNotifyTelegram,
-            bio: newBio,
+    const allSkins = useMemo(() => {
+        const free = Object.entries(FREE_SKINS).map(([key, s]) => ({
+            key, name: s.name, subtitle: s.subtitle, previewColors: s.previewColors,
+            price: 0, rarity: 'common' as string, owned: true, isFree: true,
+            css_variables: '{}', block_style: 'none', nickname_effect: 'none', font_family: '',
+        }));
+        const paid = shopSkins.map(s => ({
+            key: s.key.replace('skin_', ''),
+            name: s.name,
+            subtitle: s.description,
+            previewColors: [s.preview, s.preview + '88', '#0a0a0a'],
+            price: s.price,
+            rarity: s.rarity || 'common',
+            owned: myPurchases.includes(s.key),
+            isFree: false,
+            css_variables: s.css_variables || '{}',
+            block_style: s.block_style || 'none',
+            nickname_effect: s.nickname_effect || 'none',
+            font_family: s.font_family || '',
+        }));
+        return [...free, ...paid];
+    }, [shopSkins, myPurchases]);
+
+    // @ts-ignore - unused but kept for potential future use
+    const handleSkinPreview = (skin: typeof allSkins[0]) => {
+        setPreviewTheme(skin.key as string);
+        setPreviewSkinKey(skin.key);
+        setIsPreviewingLocked(!skin.owned);
+        if (skin.rarity !== 'mythic') {
+            setEditNicknameColor('');
+            setEditNicknameFont('');
+        }
+        try {
+            const vars = JSON.parse(skin.css_variables);
+            setPreviewCssVars(vars);
+        } catch { setPreviewCssVars({}); }
+    };
+
+    // @ts-ignore - unused but kept for potential future use
+    const handleSkinBuy = async (skin: typeof allSkins[0]) => {
+        const token = localStorage.getItem('backend_token');
+        if (!token) return;
+        try {
+            const res = await fetch(`${API_BASE}/shop/buy/skin_${skin.key}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setMyPurchases(prev => [...prev, `skin_${skin.key}`]);
+                if (profileData) {
+                    setProfileData({ ...profileData, gamification: { ...profileData.gamification, scrap: data.scrap } });
+                }
+                setIsPreviewingLocked(false);
+                // Auto-equip
+                setPreviewTheme(skin.key as string);
+                showToaster(`Скин "${skin.name}" разблокирован!`);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                showToaster(err.detail || 'Ошибка покупки');
+            }
+        } catch { showToaster('Ошибка сети'); }
+    };
+
+    // @ts-ignore - unused but kept for potential future use
+    const getActiveSkinData = () => allSkins.find(s => s.key === (previewSkinKey || currentThemeKey));
+    const currentScrap = (profileData?.gamification?.scrap ?? 0) + (profileData?.gamification?.donated_scrap ?? 0);
+
+    // Handlers for CustomizationDrawer
+    // @ts-ignore - unused but kept for potential future use
+    const handleDrawerEquip = async (itemKey: string, category: string) => {
+        const token = localStorage.getItem('backend_token');
+        if (!token) return;
+        if (category === 'skin') {
+            // For free skins, use profile_theme directly; for shop skins, use activate endpoint
+            const isFree = ['base', 'neon', 'corroded'].includes(itemKey) || ['base', 'neon', 'corroded'].includes(itemKey.replace('skin_', ''));
+            if (isFree) {
+                const themeKey = itemKey.replace('skin_', '');
+                await updateUser({ profile_theme: themeKey } as any);
+                showToaster('Скин применён!');
+                return;
+            }
+            const activateKey = itemKey.startsWith('skin_') ? itemKey : `skin_${itemKey}`;
+            const res = await fetch(`${API_BASE}/shop/activate/${activateKey}`, {
+                method: 'POST', headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) showToaster('Скин применён!');
+            else showToaster('Ошибка применения');
+        } else if (category === 'frame') {
+            await updateUser({ avatar_frame: itemKey } as any);
+            showToaster('Рамка применена!');
+        } else {
+            const res = await fetch(`${API_BASE}/shop/activate/${itemKey}`, {
+                method: 'POST', headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) showToaster('Предмет применён!');
+            else showToaster('Ошибка применения');
+        }
+        // Refresh profile data
+        const pfRes = await fetch(`${API_BASE}/auth/profile-full`, { headers: { Authorization: `Bearer ${token}` } });
+        if (pfRes.ok) setProfileData(await pfRes.json());
+    };
+
+    // @ts-ignore - unused but kept for potential future use
+    const handleDrawerBuy = async (itemKey: string): Promise<boolean> => {
+        const token = localStorage.getItem('backend_token');
+        if (!token) return false;
+        const res = await fetch(`${API_BASE}/shop/buy/${itemKey}`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}` },
         });
-        setProfileSaving(false);
-        setEditOpen(false);
-        showToaster('Профиль обновлен!');
+        if (res.ok) {
+            const data = await res.json();
+            setMyPurchases(prev => [...prev, itemKey]);
+            if (profileData) {
+                setProfileData({
+                    ...profileData,
+                    gamification: {
+                        ...profileData.gamification,
+                        scrap: data.earned_scrap ?? data.scrap ?? profileData.gamification.scrap,
+                        donated_scrap: data.donated_scrap ?? profileData.gamification.donated_scrap,
+                    },
+                });
+            }
+            showToaster('Куплено!');
+            return true;
+        }
+        const err = await res.json().catch(() => ({}));
+        showToaster(err.detail || 'Ошибка покупки');
+        return false;
     };
 
-    const handleSaveAppearance = async () => {
-        setProfileSaving(true);
-        await updateUser({ profile_theme: previewTheme, avatar_frame: previewFrame } as any);
-        setProfileSaving(false);
-        setEditOpen(false);
-        showToaster('Внешний вид обновлен!');
-    };
+    // Compute nickname effect class for the active (or previewed) skin
+    const nicknameEffectClass = useMemo(() => {
+        const skin = allSkins.find(s => s.key === activeThemeKey);
+        if (!skin || skin.nickname_effect === 'none') return '';
+        if (skin.nickname_effect === 'gradient-pulse') return 'nickname-gradient-pulse';
+        if (skin.nickname_effect === 'toxic-glitch') return 'nickname-toxic-glitch';
+        return `nickname-${skin.nickname_effect}`;
+    }, [activeThemeKey, allSkins]);
 
-    const handlePasswordChange = async () => {
-        if (!oldPassword || !newPassword) return;
-        if (newPassword.length < 6) { showToaster('Минимум 6 символов'); return; }
-        if (newPassword !== confirmPassword) { showToaster('Пароли не совпадают'); return; }
-        setPasswordLoading(true);
-        try {
-            const token = localStorage.getItem('backend_token');
-            const res = await fetch(`${API_BASE}/auth/password`, {
-                method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
-            });
-            if (res.ok) { showToaster('Пароль изменен!'); setOldPassword(''); setNewPassword(''); setConfirmPassword(''); }
-            else { const err = await res.json().catch(() => ({})); showToaster(err.detail || 'Ошибка'); }
-        } catch { showToaster('Ошибка сети'); }
-        finally { setPasswordLoading(false); }
-    };
+    // Block style class for the active (or previewed) skin
+    const blockStyleClass = useMemo(() => {
+        const skin = allSkins.find(s => s.key === activeThemeKey);
+        if (!skin || skin.block_style === 'none') return '';
+        return `skin-block-${skin.block_style}`;
+    }, [activeThemeKey, allSkins]);
 
-    const handleEmailChange = async () => {
-        if (!newEmail || !emailPassword) return;
-        setEmailLoading(true);
-        try {
-            const token = localStorage.getItem('backend_token');
-            const res = await fetch(`${API_BASE}/auth/email`, {
-                method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: emailPassword, new_email: newEmail }),
-            });
-            if (res.ok) { showToaster('Email изменен!'); updateUser({ email: newEmail }); setNewEmail(''); setEmailPassword(''); }
-            else { const err = await res.json().catch(() => ({})); showToaster(err.detail || 'Ошибка'); }
-        } catch { showToaster('Ошибка сети'); }
-        finally { setEmailLoading(false); }
-    };
+    // Overlay class for the active (or previewed) skin
+    const overlayClass = useMemo(() => {
+        const skin = allSkins.find(s => s.key === activeThemeKey);
+        if (!skin) return '';
+        const key = skin.key;
+        if (key === 'biohazard') return 'skin-overlay-biohazard';
+        if (key === 'golden-era') return 'skin-overlay-golden-era';
+        if (key === 'phantom') return 'skin-overlay-phantom';
+        if (skin.nickname_effect === 'toxic-glitch') return 'skin-overlay-scanlines';
+        if (skin.block_style === 'rusted-metal-bg') return 'skin-overlay-embers';
+        return '';
+    }, [activeThemeKey, allSkins]);
 
-    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    // Nickname custom style for mythic (includes preview skin font)
+    const nicknameCustomStyle = useMemo(() => {
+        const style: React.CSSProperties = {};
+        const skin = allSkins.find(s => s.key === activeThemeKey);
+        const isMythic = skin?.rarity === 'mythic';
+
+        // Skin-specific font (for non-mythic skins)
+        if (skin?.font_family && !isMythic) {
+            style.fontFamily = `'${skin.font_family}', monospace`;
+        }
+
+        // User's custom color/font for mythic skins (has priority)
+        if (isMythic) {
+            const nc = profileData?.nickname_color;
+            const nf = profileData?.nickname_font;
+            if (nc) style.color = nc;
+            if (nf) style.fontFamily = `'${nf}', monospace`;
+        }
+
+        return style;
+    }, [profileData, activeThemeKey, allSkins]);
+
+    const onCropImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+        const { width, height } = e.currentTarget;
+        const size = Math.min(width, height, 300);
+        const x = (width - size) / 2;
+        const y = (height - size) / 2;
+        setCrop({ unit: 'px', x, y, width: size, height: size });
+    }, []);
+
+    const handleCropConfirm = async () => {
+        if (!cropImgRef.current || !completedCrop) return;
         setAvatarLoading(true);
         try {
+            const blob = await getCroppedBlob(cropImgRef.current, completedCrop);
             const token = localStorage.getItem('backend_token');
-            const formData = new FormData(); formData.append('file', file);
+            const formData = new FormData();
+            formData.append('file', blob, 'avatar.jpg');
             const res = await fetch(`${API_BASE}/auth/avatar`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
-            if (res.ok) { const data = await res.json(); updateUser({ avatar_url: data.avatar_url, avatar: data.avatar_url }); showToaster('Аватарка обновлена!'); }
-            else { showToaster('Ошибка загрузки'); }
+            if (res.ok) {
+                await refreshUser();
+                setMediaCacheBuster(Date.now());
+                showToaster('Аватарка обновлена!');
+                setCropImageSrc(null);
+            } else { showToaster('Ошибка загрузки'); }
         } catch { showToaster('Ошибка сети'); }
         finally { setAvatarLoading(false); }
     };
+
+    // Refresh profile & user data from backend
+    const refreshProfileAndUser = useCallback(async () => {
+        const token = localStorage.getItem('backend_token');
+        if (!token) return;
+        const [profileRes] = await Promise.all([
+            fetch(`${API_BASE}/auth/profile-full`, { headers: { Authorization: `Bearer ${token}` } }),
+            refreshUser(),
+        ]);
+        if (profileRes.ok) {
+            const data = await profileRes.json();
+            setProfileData(data);
+            // Update purchases list from profile data
+            if (data.purchases) setMyPurchases(data.purchases);
+        }
+        // Also refresh purchases separately in case profile-full doesn't include them
+        fetch(`${API_BASE}/auth/my-purchases`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : [])
+            .then(data => setMyPurchases(data))
+            .catch(() => {});
+    }, [refreshUser]);
 
     const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -585,18 +1009,120 @@ const ProfilePage: React.FC = () => {
             const token = localStorage.getItem('backend_token');
             const formData = new FormData(); formData.append('file', file);
             const res = await fetch(`${API_BASE}/auth/banner`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
-            if (res.ok) { 
-                const data = await res.json(); 
-                await updateUser({ profile_banner_url: data.banner_url } as any); 
-                showToaster('Баннер обновлен!'); 
+            if (res.ok) {
+                await refreshProfileAndUser();
+                setMediaCacheBuster(Date.now());
+                showToaster('Баннер обновлен!');
             }
-            else { showToaster('Ошибка загрузки'); }
-        } catch (err) { 
+            else {
+                const err = await res.json().catch(() => ({}));
+                showToaster(err.detail || 'Ошибка загрузки');
+            }
+        } catch (err) {
             console.error('Banner upload error:', err);
-            showToaster('Ошибка сети'); 
+            showToaster('Ошибка сети');
         }
         finally { setBannerLoading(false); }
     };
+
+    const handleBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setBackgroundLoading(true);
+        try {
+            const token = localStorage.getItem('backend_token');
+            const formData = new FormData(); formData.append('file', file);
+            const res = await fetch(`${API_BASE}/auth/background`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+            if (res.ok) {
+                await refreshProfileAndUser();
+                setMediaCacheBuster(Date.now());
+                showToaster('Фон обновлен!');
+            }
+            else {
+                const err = await res.json().catch(() => ({}));
+                showToaster(err.detail || 'Ошибка загрузки');
+            }
+        } catch (err) {
+            console.error('Background upload error:', err);
+            showToaster('Ошибка сети');
+        }
+        finally { setBackgroundLoading(false); }
+    };
+
+    const handleShopBuy = useCallback(async (itemKey: string): Promise<boolean> => {
+        const token = localStorage.getItem('backend_token');
+        if (!token) return false;
+        try {
+            const res = await fetch(`${API_BASE}/shop/buy/${itemKey}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                showToaster('Куплено!');
+                await refreshProfileAndUser();
+                return true;
+            }
+            const err = await res.json().catch(() => ({}));
+            showToaster(err.detail || 'Ошибка покупки');
+            return false;
+        } catch {
+            showToaster('Ошибка сети');
+            return false;
+        }
+    }, [showToaster, refreshProfileAndUser]);
+
+    const handleShopEquip = useCallback(async (itemKey: string) => {
+        const token = localStorage.getItem('backend_token');
+        if (!token) return;
+        // Free skins: update profile_theme directly instead of calling /shop/activate
+        const FREE_SKIN_KEYS = ['skin_base', 'skin_neon', 'skin_corroded'];
+        if (FREE_SKIN_KEYS.includes(itemKey)) {
+            const themeVal = itemKey.replace('skin_', '');
+            try {
+                await updateUser({ profile_theme: themeVal } as any);
+                showToaster('Применено!');
+                setPreviewCssVars({});
+                setPreviewSkinKey(null);
+                setIsPreviewingLocked(false);
+            } catch { showToaster('Ошибка'); }
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/shop/activate/${itemKey}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                showToaster('Применено!');
+                await refreshProfileAndUser();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                showToaster(err.detail || 'Ошибка применения');
+            }
+        } catch {
+            showToaster('Ошибка сети');
+        }
+    }, [showToaster, refreshProfileAndUser, updateUser]);
+
+    const handleShopPreview = useCallback((cssVars: Record<string, string> | null, themeKey: string | null) => {
+        if (cssVars === null) {
+            setPreviewCssVars({});
+            setPreviewSkinKey(null);
+            setIsPreviewingLocked(false);
+        } else {
+            setPreviewCssVars(cssVars);
+            setPreviewSkinKey(themeKey);
+            setIsPreviewingLocked(!myPurchases.includes(`skin_${themeKey}`) && !['base','neon','corroded'].includes(themeKey || ''));
+        }
+    }, [myPurchases]);
+
+    const handleBackgroundPreview = useCallback((url: string | null) => {
+        setPreviewBgUrl(url);
+    }, []);
+
+    const handleFramePreview = useCallback((frameKey: string | null) => {
+        setPreviewFrameKey(frameKey);
+    }, []);
 
     const genderLabel = (g: string) => g === 'male' ? 'Мужской' : g === 'female' ? 'Женский' : '';
     const formatBirthday = (b: string) => { if (!b) return ''; try { return new Date(b).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }); } catch { return b; } };
@@ -618,20 +1144,13 @@ const ProfilePage: React.FC = () => {
         }).filter(Boolean) as any[];
     }, [history, getMangaById]);
 
-    const tabs: { key: EditTab; label: string; icon: string }[] = [
-        { key: 'profile', label: 'Профиль', icon: '👤' },
-        { key: 'appearance', label: 'Стиль', icon: '🎨' },
-        { key: 'security', label: 'Безопасность', icon: '🔒' },
-        { key: 'content', label: 'Контент', icon: '⚙️' },
-        { key: 'notifications', label: 'Уведомления', icon: '🔔' },
-    ];
-
     /* ═══════════════════════════════════════════════════════════
        RENDER
        ═══════════════════════════════════════════════════════════ */
     // Set body background image/video — cleanup on unmount
     useEffect(() => {
         const root = document.getElementById('root');
+        let cancelled = false;
 
         const origBodyBg = document.body.style.backgroundColor;
         const origBodyBgImage = document.body.style.backgroundImage;
@@ -646,21 +1165,22 @@ const ProfilePage: React.FC = () => {
         const origHtmlBgColor = document.documentElement.style.backgroundColor;
         const origRootBg = root?.style.backgroundColor || '';
 
-        document.body.style.backgroundColor = 'transparent';
-        if (root) root.style.backgroundColor = 'transparent';
-
-        if (bannerSrc && !isVideo(bannerSrc)) {
+        const applyImageBg = (src: string) => {
+            document.body.style.backgroundColor = 'transparent';
+            if (root) root.style.backgroundColor = 'transparent';
             document.body.style.backgroundImage = 'none';
             document.body.style.backgroundRepeat = 'no-repeat';
             document.body.style.backgroundSize = 'cover';
             document.body.style.backgroundPosition = 'center';
-            document.documentElement.style.backgroundImage = `linear-gradient(rgba(18,18,18,0.72), rgba(18,18,18,0.72)), url(${bannerSrc})`;
+            document.documentElement.style.backgroundImage = `linear-gradient(rgba(18,18,18,0.72), rgba(18,18,18,0.72)), url(${src})`;
             document.documentElement.style.backgroundSize = 'cover';
             document.documentElement.style.backgroundPosition = 'center';
             document.documentElement.style.backgroundAttachment = 'fixed';
             document.documentElement.style.backgroundRepeat = 'no-repeat';
             document.documentElement.style.backgroundColor = '#121212';
-        } else if (!bannerSrc) {
+        };
+
+        const restoreOrig = () => {
             document.documentElement.style.backgroundImage = origHtmlBgImage;
             document.documentElement.style.backgroundSize = origHtmlBgSize;
             document.documentElement.style.backgroundPosition = origHtmlBgPosition;
@@ -673,11 +1193,32 @@ const ProfilePage: React.FC = () => {
             document.body.style.backgroundPosition = origBodyBgPosition;
             document.body.style.backgroundColor = origBodyBg;
             if (root) root.style.backgroundColor = origRootBg;
+        };
+
+        if (backgroundSrc && !isVideo(backgroundSrc)) {
+            // Set dark bg immediately to avoid white flash while image loads
+            document.documentElement.style.backgroundColor = '#121212';
+            document.body.style.backgroundColor = '#121212';
+            if (root) root.style.backgroundColor = 'transparent';
+            // Preload image before applying as background
+            const img = new Image();
+            img.onload = () => {
+                if (!cancelled) applyImageBg(backgroundSrc);
+            };
+            img.onerror = () => {
+                if (!cancelled) applyImageBg(backgroundSrc);
+            };
+            img.src = backgroundSrc;
+        } else if (!backgroundSrc) {
+            restoreOrig();
         }
 
         // For video — inject a fixed video element behind #root
         let videoBg: HTMLDivElement | null = null;
-        if (bannerSrc && isVideo(bannerSrc)) {
+        if (backgroundSrc && isVideo(backgroundSrc)) {
+            document.documentElement.style.backgroundColor = '#121212';
+            document.body.style.backgroundColor = 'transparent';
+            if (root) root.style.backgroundColor = 'transparent';
             document.body.style.backgroundImage = 'none';
             document.body.style.backgroundRepeat = 'no-repeat';
             document.body.style.backgroundSize = 'cover';
@@ -685,16 +1226,21 @@ const ProfilePage: React.FC = () => {
 
             const existing = document.getElementById('profile-video-bg');
             if (existing) existing.remove();
-            
+
             videoBg = document.createElement('div');
             videoBg.id = 'profile-video-bg';
             videoBg.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;overflow:hidden;pointer-events:none;';
             videoBg.innerHTML = `
-                <video src="${bannerSrc}" autoplay loop muted playsinline style="width:100%;height:100%;object-fit:cover;"></video>
+                <video src="${backgroundSrc}" autoplay loop muted playsinline preload="auto" style="width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease;"></video>
                 <div style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(18,18,18,0.72);pointer-events:none;"></div>
             `;
             document.body.insertBefore(videoBg, document.body.firstChild);
-            
+            // Fade in video once it has enough data to play
+            const videoEl = videoBg.querySelector('video');
+            if (videoEl) {
+                videoEl.addEventListener('canplay', () => { videoEl.style.opacity = '1'; }, { once: true });
+            }
+
             // Make sure body and root are transparent and positioned correctly
             document.body.style.position = 'relative';
             document.body.style.backgroundColor = 'transparent';
@@ -703,50 +1249,48 @@ const ProfilePage: React.FC = () => {
                 root.style.zIndex = '1';
                 root.style.backgroundColor = 'transparent';
             }
-            
+
         }
 
         return () => {
-            document.documentElement.style.backgroundImage = origHtmlBgImage;
-            document.documentElement.style.backgroundSize = origHtmlBgSize;
-            document.documentElement.style.backgroundPosition = origHtmlBgPosition;
-            document.documentElement.style.backgroundAttachment = origHtmlBgAttachment;
-            document.documentElement.style.backgroundRepeat = origHtmlBgRepeat;
-            document.documentElement.style.backgroundColor = origHtmlBgColor;
-            document.body.style.backgroundImage = origBodyBgImage;
-            document.body.style.backgroundRepeat = origBodyBgRepeat;
-            document.body.style.backgroundSize = origBodyBgSize;
-            document.body.style.backgroundPosition = origBodyBgPosition;
-            document.body.style.backgroundColor = origBodyBg;
-            if (root) root.style.backgroundColor = origRootBg;
+            cancelled = true;
+            restoreOrig();
             const vid = document.getElementById('profile-video-bg');
             if (vid) vid.remove();
         };
-    }, [bannerSrc]);
+    }, [backgroundSrc]);
 
     return (
-        <div data-profile-theme={activeThemeKey}>
+        <>
+        <div data-profile-theme={activeThemeKey} style={{ ...glowOverride, ...(Object.keys(previewCssVars).length > 0 ? previewCssVars : {}) } as React.CSSProperties} className={isPreviewingLocked ? 'preview-watermark' : ''}>
 
-            {/* Background upload button (floating) */}
-            <div className="fixed top-20 right-4 z-[50] group">
-                <label className="bg-black/60 backdrop-blur-sm text-white text-xs font-mono px-3 py-2 cursor-pointer opacity-0 group-hover:opacity-100 transition-all hover:bg-black/80 flex items-center gap-1.5">
-                    📷 {bannerLoading ? '...' : 'Фон / Видео'}
-                    <input type="file" accept="image/*,video/mp4,video/webm,video/ogg" className="hidden" onChange={handleBannerUpload} disabled={bannerLoading} />
-                </label>
-            </div>
 
             {/* ═══ MAIN CONTENT ═══ */}
             <div className="max-w-6xl mx-auto px-2 sm:px-4 relative z-[1]">
 
             {/* ═══ HEADER CARD (over fixed background) ═══ */}
-            <div className="relative z-[1] mb-6 border profile-border bg-surface/60 backdrop-blur-md">
+            <div className={`relative z-[1] mb-6 overflow-hidden ${!bannerSrc ? `border profile-border profile-surface-bg ${blockStyleClass} ${overlayClass}` : ''}`} style={{ minHeight: '250px' }} {...(bannerSrc ? { 'data-profile-theme': 'base' } : {})}>
+
+                {/* Cover banner — абсолютно на весь контейнер */}
+                {bannerSrc ? (
+                    <div className="absolute inset-0 z-0">
+                        {isVideo(bannerSrc) ? (
+                            <video src={bannerSrc} autoPlay loop muted playsInline preload="auto" className="w-full h-full object-cover" />
+                        ) : (
+                            <img src={bannerSrc} alt="" className="w-full h-full object-cover" />
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/110 via-black/50 to-black/20" />
+                    </div>
+                ) : (
+                    <div className="absolute inset-0 z-0 profile-surface-bg" />
+                )}
 
                 {/* Profile info */}
-                <div className="relative z-[4] px-4 sm:px-8 py-6 sm:py-8">
+                <div className="relative z-[4] px-4 sm:px-8 pt-24 sm:pt-32 pb-8 sm:pb-10">
                     <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6">
 
                         {/* Avatar with frame + glitch */}
-                        <div className="relative group shrink-0 glitch-avatar overflow-visible" style={{ width: frameImage ? '10rem' : undefined, height: frameImage ? '10rem' : undefined }} onClick={handleAvatarClick}>
+                        <div className={`spring-avatar relative group shrink-0 overflow-visible cursor-pointer ${avatarGlitching ? 'springtrap-glitch' : ''}`} style={{ width: frameImage ? '10rem' : undefined, height: frameImage ? '10rem' : undefined }} onClick={handleAvatarClick}>
                             <div className="rounded-full overflow-hidden border-4 border-surface transition-all duration-500" style={frameImage ? { position: 'absolute', top: '50%', left: '50%', width: '70%', height: '70%', transform: 'translate(-50%, -50%)' } : { width: '7rem', height: '7rem' }}>
                                 {avatarSrc ? (
                                     <img src={avatarSrc} alt={user.username} className="w-full h-full object-cover" />
@@ -757,10 +1301,6 @@ const ProfilePage: React.FC = () => {
                             {frameImage && (
                                 <img src={frameImage} alt="frame" className="absolute inset-0 w-full h-full pointer-events-none z-[5] transition-all duration-1000" style={{ objectFit: 'fill' }} />
                             )}
-                            <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-all z-10" onClick={e => e.stopPropagation()}>
-                                <span className="text-white text-xs font-mono">{avatarLoading ? '...' : '📷'}</span>
-                                <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={avatarLoading} />
-                            </label>
                             {/* Online dot */}
                             <div className="absolute bottom-1 right-1 w-4 h-4 bg-brand-accent rounded-full border-2 border-surface z-10" />
                         </div>
@@ -768,7 +1308,7 @@ const ProfilePage: React.FC = () => {
                         {/* Name + Level + Meta */}
                         <div className="flex-1 text-center sm:text-left min-w-0">
                             <div className="flex items-center justify-center sm:justify-start gap-2 mb-1 flex-wrap">
-                                <h1 className="text-2xl sm:text-3xl md:text-4xl font-display font-bold text-text-primary spring-glitch truncate max-w-[300px] sm:max-w-none">{user.username}</h1>
+                                <h1 className={`text-2xl sm:text-3xl md:text-4xl font-display font-bold text-text-primary spring-glitch truncate max-w-[300px] sm:max-w-none ${nicknameEffectClass}`} style={nicknameCustomStyle} data-text={user.username}>{user.username}</h1>
                                 <RankBadge chaptersRead={profileData?.stats?.chapters_read ?? totalChaptersRead} size="md" />
                                 <span className={`text-[10px] font-mono font-bold px-2 py-0.5 shrink-0 ${
                                     user.role === 'admin' ? 'bg-brand-accent/20 text-brand-accent' :
@@ -777,6 +1317,11 @@ const ProfilePage: React.FC = () => {
                                 }`}>
                                     {user.role === 'admin' ? 'ADMIN' : user.role === 'moderator' ? 'MOD' : `LVL ${level}`}
                                 </span>
+                                {profileData?.subscription_active && user.role !== 'admin' && (
+                                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-yellow-400 border border-yellow-500/30 shrink-0">
+                                        PRO
+                                    </span>
+                                )}
                             </div>
 
                             {/* XP Progress Bar — "System Battery" */}
@@ -808,7 +1353,7 @@ const ProfilePage: React.FC = () => {
                                         initial={{ width: 0 }}
                                         animate={{ width: `${Math.min(xpProgress, 100)}%` }}
                                         transition={{ duration: 1.2, ease: 'easeOut' }}
-                                        className="h-full relative"
+                                        className="h-full relative xp-bar-fill"
                                         style={{ background: 'linear-gradient(90deg, rgba(169,255,0,0.3), rgba(169,255,0,0.8))' }}
                                     >
                                         {/* Scanline effect on bar */}
@@ -835,15 +1380,32 @@ const ProfilePage: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Action buttons — "industrial metal switches" */}
-                        <div className="flex items-center gap-2 shrink-0">
-                            <button onClick={() => openEdit('profile')}
-                                className="px-4 py-2.5 text-xs font-mono font-bold bg-brand text-white hover:bg-brand-hover transition-all active:scale-95 border border-brand-hover shadow-[inset_0_1px_0_rgba(255,255,255,0.1),inset_0_-2px_0_rgba(0,0,0,0.2)]">
-                                ⚙ НАСТРОЙКИ
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center sm:justify-end">
+                            {canUploadBanner && (
+                                <label className="px-2 py-1.5 text-[10px] font-mono font-bold bg-white/10 text-white hover:bg-white/20 transition-all active:scale-95 cursor-pointer flex items-center gap-1 backdrop-blur-sm">
+                                    📷 {bannerLoading ? '...' : 'Обложка'}
+                                    <input type="file" accept="image/*,video/mp4,video/webm,.gif" className="hidden" onChange={handleBannerUpload} disabled={bannerLoading} />
+                                </label>
+                            )}
+                            {user.role === 'admin' && (
+                                <label className="px-2 py-1.5 text-[10px] font-mono font-bold bg-white/10 text-white hover:bg-white/20 transition-all active:scale-95 cursor-pointer flex items-center gap-1 backdrop-blur-sm">
+                                    🖼 {backgroundLoading ? '...' : 'Фон'}
+                                    <input type="file" accept="image/*,video/mp4,video/webm,.gif" className="hidden" onChange={handleBackgroundUpload} disabled={backgroundLoading} />
+                                </label>
+                            )}
+                            <button onClick={() => setShopModalOpen(true)}
+                                className="px-2 py-1.5 text-[10px] font-mono font-bold bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-all active:scale-95"
+                                title="Магазин">
+                                🛒
+                            </button>
+                            <button onClick={() => navigate('/settings')}
+                                className="px-2.5 py-1.5 text-[10px] font-mono font-bold bg-brand text-white hover:bg-brand-hover transition-all active:scale-95">
+                                ⚙
                             </button>
                             {(user.role === 'admin' || user.role === 'moderator') && (
                                 <Link to={user.role === 'admin' ? '/admin' : '/moderator'}
-                                    className="px-4 py-2.5 text-xs font-mono font-bold bg-overlay text-text-primary hover:bg-surface-hover transition-all border border-overlay shadow-[inset_0_1px_0_rgba(255,255,255,0.05),inset_0_-2px_0_rgba(0,0,0,0.2)]">
+                                    className="px-2.5 py-1.5 text-[10px] font-mono font-bold bg-overlay text-text-primary hover:bg-surface-hover transition-all border border-overlay">
                                     ПАНЕЛЬ
                                 </Link>
                             )}
@@ -859,7 +1421,7 @@ const ProfilePage: React.FC = () => {
                 <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4">
 
                     {/* Quick Stats */}
-                    <div className="profile-surface-bg border profile-border p-4">
+                    <div className={`profile-surface-bg border profile-border p-4 ${blockStyleClass}`}>
                         <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted mb-3 flex items-center gap-1.5">
                             <span className="profile-glow-text">■</span> СИСТЕМНЫЕ ДАННЫЕ
                         </h3>
@@ -875,7 +1437,7 @@ const ProfilePage: React.FC = () => {
                     </div>
 
                     {/* Friends — horizontal scroll, swipeable */}
-                    <div className="profile-surface-bg border profile-border p-4">
+                    <div className={`profile-surface-bg border profile-border p-4 ${blockStyleClass}`}>
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted flex items-center gap-1.5">
                                 <span className="profile-glow-text">■</span> ДРУЗЬЯ
@@ -915,7 +1477,7 @@ const ProfilePage: React.FC = () => {
 
                     {/* Bookmark breakdown */}
                     {Object.keys(bookmarkStats).length > 0 && (
-                        <div className="profile-surface-bg border profile-border p-4">
+                        <div className={`profile-surface-bg border profile-border p-4 ${blockStyleClass}`}>
                             <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted mb-3 flex items-center gap-1.5">
                                 <span className="profile-glow-text">■</span> СТАТУСЫ ЗАКЛАДОК
                             </h3>
@@ -930,22 +1492,62 @@ const ProfilePage: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Favorite Genres */}
+                    {/* Favorite Genres — Spider Chart */}
                     {favoriteGenres.length > 0 && (
-                        <div className="profile-surface-bg border profile-border p-4">
+                        <div className={`profile-surface-bg border profile-border p-4 ${blockStyleClass}`}>
                             <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted mb-3 flex items-center gap-1.5">
-                                <span className="profile-glow-text">■</span> ЛЮБИМЫЕ ЖАНРЫ
+                                <span className="profile-glow-text">■</span> РАДАР ЖАНРОВ
                             </h3>
-                            <div className="flex flex-wrap gap-1.5">
-                                {favoriteGenres.map(g => (
-                                    <span key={g} className="text-[10px] font-mono px-2 py-1 profile-badge-bg border profile-border text-text-secondary">{g}</span>
-                                ))}
+                            <div className="flex justify-center">
+                                <svg viewBox="0 0 200 200" width="180" height="180">
+                                    {/* Grid levels */}
+                                    {[0.25, 0.5, 0.75, 1].map((scale, si) => {
+                                        const n = Math.max(favoriteGenres.length, 3);
+                                        const pts = Array.from({ length: n }, (_, i) => {
+                                            const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
+                                            return `${100 + Math.cos(angle) * 80 * scale},${100 + Math.sin(angle) * 80 * scale}`;
+                                        }).join(' ');
+                                        return <polygon key={si} points={pts} fill="none" stroke="#00FF64" strokeWidth="0.5" opacity={0.15 + si * 0.05} />;
+                                    })}
+                                    {/* Axis lines */}
+                                    {favoriteGenres.map((_, i) => {
+                                        const n = Math.max(favoriteGenres.length, 3);
+                                        const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
+                                        return <line key={i} x1="100" y1="100" x2={100 + Math.cos(angle) * 80} y2={100 + Math.sin(angle) * 80} stroke="#00FF64" strokeWidth="0.5" opacity="0.2" />;
+                                    })}
+                                    {/* Data polygon */}
+                                    <polygon
+                                        points={favoriteGenres.map((g, i) => {
+                                            const n = Math.max(favoriteGenres.length, 3);
+                                            const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
+                                            const r = (g.pct / 100) * 80;
+                                            return `${100 + Math.cos(angle) * r},${100 + Math.sin(angle) * r}`;
+                                        }).join(' ')}
+                                        fill="rgba(169,255,0,0.15)" stroke="#A9FF00" strokeWidth="1.5"
+                                    />
+                                    {/* Data points + labels */}
+                                    {favoriteGenres.map((g, i) => {
+                                        const n = Math.max(favoriteGenres.length, 3);
+                                        const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
+                                        const r = (g.pct / 100) * 80;
+                                        const lx = 100 + Math.cos(angle) * 92;
+                                        const ly = 100 + Math.sin(angle) * 92;
+                                        return (
+                                            <g key={i}>
+                                                <circle cx={100 + Math.cos(angle) * r} cy={100 + Math.sin(angle) * r} r="3" fill="#A9FF00" />
+                                                <text x={lx} y={ly} fill="#888" fontSize="7" fontFamily="monospace" textAnchor="middle" dominantBaseline="central">
+                                                    {g.name.length > 10 ? g.name.slice(0, 9) + '…' : g.name}
+                                                </text>
+                                            </g>
+                                        );
+                                    })}
+                                </svg>
                             </div>
                         </div>
                     )}
 
                     {/* My Comments — compact sidebar block */}
-                    <div className="profile-surface-bg border profile-border p-4">
+                    <div className={`profile-surface-bg border profile-border p-4 ${blockStyleClass}`}>
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted flex items-center gap-1.5">
                                 <span className="profile-glow-text">■</span> МОИ КОММЕНТАРИИ
@@ -973,7 +1575,7 @@ const ProfilePage: React.FC = () => {
 
                     {/* Section 0: "Continue Reading" — Last Read */}
                     {lastReadItem && (
-                        <div className="profile-surface-bg border profile-border p-4 sm:p-5 relative overflow-hidden group scan-line-effect">
+                        <div className={`profile-surface-bg border profile-border p-4 sm:p-5 relative overflow-hidden group scan-line-effect ${blockStyleClass}`}>
                             <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary mb-4 flex items-center gap-2">
                                 <span className="profile-glow-text">📡</span>ПОСЛЕДНИЙ РАСШИФРОВАННЫЙ ФАЙЛ
                             </h3>
@@ -997,7 +1599,7 @@ const ProfilePage: React.FC = () => {
                     )}
 
                     {/* Section 1: "System Logs" — Activity Heatmap */}
-                    <div className="profile-surface-bg border profile-border p-4 sm:p-5">
+                    <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
                         <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary mb-4 flex items-center gap-2">
                             <span className="profile-glow-text">⚡</span>Активность чтения
                         </h3>
@@ -1038,7 +1640,7 @@ const ProfilePage: React.FC = () => {
                     </div>
 
                     {/* Section 2: Bookmarks (Закладки) */}
-                    <div className="profile-surface-bg border profile-border p-4 sm:p-5">
+                    <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary flex items-center gap-2">
                                 <span className="profile-glow-text">🔖</span>Закладки
@@ -1074,25 +1676,33 @@ const ProfilePage: React.FC = () => {
                     </div>
 
                     {/* Section 3: "Recovered Data" — Achievements (Full Width) */}
-                    <div className="profile-surface-bg border profile-border p-5 sm:p-6">
+                    <div className={`profile-surface-bg border profile-border p-5 sm:p-6 overflow-visible ${blockStyleClass}`}>
                         <div className="flex items-center justify-between mb-5">
                             <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary flex items-center gap-2">
                                 <span className="profile-glow-text">🔓</span>Достижения
                             </h3>
                             <span className="text-[10px] text-muted font-mono">{badges.length}/{Object.keys(ACHIEVEMENTS).length}</span>
                         </div>
-                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 gap-3">
+                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 gap-3 overflow-visible">
                             {/* Unlocked */}
                             {badges.map((badgeId, idx) => {
                                 const ach = ACHIEVEMENTS[badgeId];
                                 if (!ach) return null;
                                 return (
-                                    <div key={badgeId} className={`relative group cursor-default flex flex-col items-center gap-1.5 achievement-glitch-in achievement-delay-${Math.min(idx, 9)}`}
+                                    <div key={badgeId} className={`relative group cursor-pointer flex flex-col items-center gap-1.5 achievement-glitch-in achievement-delay-${Math.min(idx, 9)}`}
+                                        onClick={() => setSelectedBadge(badgeId)}
                                         onMouseEnter={() => setHoveredBadge(badgeId)} onMouseLeave={() => setHoveredBadge(null)}>
-                                        <div className={`w-16 h-16 sm:w-[72px] sm:h-[72px] overflow-hidden
+                                        <div
+                                            className={`w-16 h-16 sm:w-[72px] sm:h-[72px]
                                             broken-frame-sm ${RARITY_GLOW_CLASS[ach.rarity]}
-                                            border profile-border
-                                            transition-all duration-200 group-hover:scale-110 group-hover:-translate-y-1`}>
+                                            transition-all duration-200 group-hover:scale-110 group-hover:-translate-y-1`}
+                                            style={{
+                                                border: ach.rarity === 'common' ? '2px solid rgba(136, 136, 136, 0.4)' :
+                                                        ach.rarity === 'rare' ? '2px solid rgba(74, 158, 255, 0.5)' :
+                                                        ach.rarity === 'epic' ? '2px solid rgba(168, 85, 247, 0.6)' :
+                                                        ach.rarity === 'legendary' ? '2px solid rgba(255, 215, 0, 0.7)' : undefined
+                                            }}
+                                        >
                                             <img src={ach.icon} alt={ach.title} className="w-full h-full object-cover" />
                                         </div>
                                         <span className="text-[9px] font-mono text-text-secondary text-center truncate w-full">{ach.title}</span>
@@ -1105,9 +1715,17 @@ const ProfilePage: React.FC = () => {
                                 <div key={id} className={`relative group cursor-default flex flex-col items-center gap-1.5 achievement-glitch-in achievement-delay-${Math.min(badges.length + idx, 9)}`}
                                     onMouseEnter={() => setHoveredBadge(id)} onMouseLeave={() => setHoveredBadge(null)}>
                                     <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] overflow-hidden
-                                        broken-frame-sm border profile-border bg-base/30 opacity-25 grayscale
+                                        broken-frame-sm border profile-border bg-base/30 opacity-30 grayscale
                                         transition-all duration-200 group-hover:opacity-40 flex items-center justify-center">
-                                        {ach.secret ? <span className="text-2xl">❓</span> : <img src={ach.icon} alt={ach.title} className="w-full h-full object-cover" />}
+                                        {ach.secret ? (
+                                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#665544" strokeWidth="1.5" opacity="0.5">
+                                                <circle cx="12" cy="12" r="9" /><path d="M12 7v0M9.5 9.5l5 5M14.5 9.5l-5 5"/><circle cx="12" cy="12" r="3" strokeDasharray="2 2"/>
+                                            </svg>
+                                        ) : (
+                                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.5" opacity="0.4">
+                                                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                            </svg>
+                                        )}
                                     </div>
                                     <span className="text-[9px] font-mono text-muted/40 text-center truncate w-full">{ach.secret ? '???' : ach.title}</span>
                                     <BadgeTooltip show={hoveredBadge === id} ach={ach} locked secret={ach.secret} />
@@ -1116,8 +1734,81 @@ const ProfilePage: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Achievement detail modal */}
+                    {selectedBadge && ACHIEVEMENTS[selectedBadge] && createPortal(
+                        (() => {
+                            const ach = ACHIEVEMENTS[selectedBadge];
+                            const rarity = RARITY_LABEL[ach.rarity];
+                            return (
+                                <AnimatePresence>
+                                    <motion.div
+                                        key="badge-modal"
+                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                        className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+                                        onClick={() => setSelectedBadge(null)}
+                                    >
+                                        <motion.div
+                                            initial={{ scale: 0.5, opacity: 0, y: -50 }}
+                                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                                            exit={{ scale: 0.5, opacity: 0, y: -50 }}
+                                            transition={{ type: "spring", damping: 20, stiffness: 300 }}
+                                            className="bg-surface border-2 border-overlay p-6 sm:p-10 max-w-lg w-full text-center relative shadow-2xl"
+                                            onClick={e => e.stopPropagation()}
+                                            style={{
+                                                boxShadow: `0 0 40px ${rarity.color}40, 0 20px 60px rgba(0,0,0,0.5)`,
+                                                maxHeight: '90vh',
+                                                overflowY: 'auto'
+                                            }}
+                                        >
+                                        {/* Close button in top RIGHT corner */}
+                                        <button
+                                            onClick={() => setSelectedBadge(null)}
+                                            className="absolute top-3 right-3 w-10 h-10 text-muted hover:text-text-primary transition-all flex items-center justify-center text-3xl font-bold z-10"
+                                        >
+                                            &times;
+                                        </button>
+
+                                        {/* Icon with glow */}
+                                        <div className={`w-32 h-32 mx-auto mb-6 ${RARITY_GLOW_CLASS[ach.rarity]} border-2 profile-border relative`}>
+                                            <img src={ach.icon} alt={ach.title} className="w-full h-full object-cover" />
+                                        </div>
+
+                                        {/* Title */}
+                                        <h3 className="text-2xl font-display font-bold text-text-primary mb-2">{ach.title}</h3>
+
+                                        {/* Rarity badge */}
+                                        <div className="flex items-center justify-center gap-2 mb-4">
+                                            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-overlay"></div>
+                                            <p className="text-xs font-mono font-bold px-3 py-1 border border-overlay" style={{ color: rarity.color, backgroundColor: `${rarity.color}10` }}>
+                                                {rarity.text}
+                                            </p>
+                                            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-overlay"></div>
+                                        </div>
+
+                                        {/* Secret badge */}
+                                        {ach.secret && (
+                                            <span className="text-[10px] font-mono font-bold text-brand-accent bg-brand-accent/10 px-2 py-1 mb-3 inline-block border border-brand-accent/30">
+                                                🔒 SECRET ACHIEVEMENT
+                                            </span>
+                                        )}
+
+                                        {/* Flavor text - main text in center */}
+                                        <p className="text-base text-text-primary leading-relaxed italic mb-4">"{ach.flavorText}"</p>
+
+                                        {/* Description - small text at bottom */}
+                                        <div className="mt-4 pt-4 border-t border-overlay">
+                                            <p className="text-xs text-muted">{ach.description}</p>
+                                        </div>
+                                    </motion.div>
+                                </motion.div>
+                                </AnimatePresence>
+                            );
+                        })(),
+                        document.body
+                    )}
+
                     {/* Corruption Level ☣️ */}
-                    <div className="profile-surface-bg border profile-border p-4 sm:p-5">
+                    <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
                         <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary mb-4 flex items-center gap-2">
                             <span className="profile-glow-text">☣</span>УРОВЕНЬ ЗАРАЖЕНИЯ
                         </h3>
@@ -1130,12 +1821,12 @@ const ProfilePage: React.FC = () => {
                                 </span>
                                 <span className="text-[10px] font-mono text-muted">100%</span>
                             </div>
-                            <div className="h-6 bg-base border border-overlay relative overflow-hidden">
+                            <div className={`h-6 bg-base border border-overlay relative overflow-hidden ${corruptionData.level >= 70 ? 'corruption-critical' : ''}`}>
                                 <motion.div
                                     initial={{ width: 0 }}
                                     animate={{ width: `${corruptionData.level}%` }}
                                     transition={{ duration: 1.5, ease: 'easeOut' }}
-                                    className="h-full relative"
+                                    className="h-full relative corruption-barberpole"
                                     style={{
                                         background: `linear-gradient(90deg, rgba(0,255,100,0.3), ${corruptionData.color}90)`,
                                         boxShadow: corruptionData.level >= 50 ? `0 0 15px ${corruptionData.color}40` : 'none',
@@ -1159,31 +1850,34 @@ const ProfilePage: React.FC = () => {
                     </div>
 
                     {/* Profile Wall — Comments from other users */}
-                    <div className="profile-surface-bg border profile-border p-4 sm:p-5">
+                    <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
                         <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary mb-4 flex items-center gap-2">
                             <span className="profile-glow-text">💬</span>Стена профиля
                         </h3>
-                        {/* Write comment */}
-                        <div className="flex gap-2 mb-4">
+                        {/* Write comment — terminal style */}
+                        <div className="flex items-center gap-1 sm:gap-2 mb-4 bg-[#0a0a0a] border border-[#00FF64]/30 px-2 sm:px-3 py-2 min-w-0">
+                            <span className="text-[#00FF64] text-[10px] font-mono font-bold shrink-0 select-none hidden sm:inline">root@springmanga:~#</span>
+                            <span className="text-[#00FF64] text-[10px] font-mono font-bold shrink-0 select-none sm:hidden">~#</span>
                             <input
                                 type="text"
                                 value={wallInput}
                                 onChange={e => setWallInput(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && handleWallComment()}
-                                placeholder="Написать на стене..."
-                                className="flex-1 bg-base border border-overlay px-3 py-2 text-xs text-text-primary font-mono placeholder:text-muted/50 focus:outline-none focus:border-brand-accent/50 transition-colors"
+                                placeholder="Ввод команды..."
+                                className="flex-1 min-w-0 bg-transparent border-none px-0 py-0 text-xs text-[#00FF64] font-mono placeholder:text-[#00FF64]/30 focus:outline-none terminal-input"
+                                style={{ background: 'transparent', border: 'none' }}
                             />
                             <button
-                                onClick={handleWallComment}
+                                onClick={() => { handleWallComment(); playBeep(); }}
                                 disabled={!wallInput.trim() || wallLoading}
-                                className="px-4 py-2 bg-brand text-white text-xs font-mono font-bold hover:bg-brand-hover disabled:opacity-30 transition-all shrink-0"
+                                className="px-2 sm:px-3 py-1 bg-[#00FF64]/10 text-[#00FF64] text-[10px] font-mono font-bold border border-[#00FF64]/30 hover:bg-[#00FF64]/20 disabled:opacity-30 transition-all shrink-0 whitespace-nowrap"
                             >
-                                {wallLoading ? '...' : '▸'}
+                                {wallLoading ? '...' : '[ EXECUTE ]'}
                             </button>
                         </div>
                         {/* Comments list */}
                         {wallComments.length > 0 ? (
-                            <div className="space-y-3 max-h-96 overflow-y-auto scrollbar-hide">
+                            <div className="space-y-3">
                                 {wallComments.map(c => (
                                     <div key={c.id} className="bg-base/50 border profile-border">
                                         <div className="flex items-start gap-2.5 p-2.5 group">
@@ -1236,6 +1930,14 @@ const ProfilePage: React.FC = () => {
                                         )}
                                     </div>
                                 ))}
+                                {hasMoreWall && (
+                                    <button
+                                        onClick={() => loadWallComments(wallOffset, true)}
+                                        className="w-full py-2 text-[10px] font-mono font-bold text-[#00FF64]/70 bg-[#0a0a0a] border border-[#00FF64]/20 hover:bg-[#00FF64]/10 transition-all mt-2"
+                                    >
+                                        [ ЗАГРУЗИТЬ СТАРЫЕ ЛОГИ ] ({wallTotal - wallOffset} ост.)
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div className="text-center py-6 font-mono text-[10px]">
@@ -1247,7 +1949,7 @@ const ProfilePage: React.FC = () => {
 
                     {/* Recent Activity */}
                     {recentHistory.length > 0 && (
-                        <div className="profile-surface-bg border profile-border p-4 sm:p-5">
+                        <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
                             <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary mb-4 flex items-center gap-2">
                                 <span className="profile-glow-text">▸</span> ПОСЛЕДНЯЯ АКТИВНОСТЬ
                             </h3>
@@ -1293,286 +1995,100 @@ const ProfilePage: React.FC = () => {
                 )}
             </AnimatePresence>
 
-            {/* ═══ EDIT PANEL ═══ */}
-            <AnimatePresence>
-                {isEditOpen && (
-                    <div className="fixed inset-0 z-[11000] flex">
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setEditOpen(false)} />
-                        <motion.div
-                            initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="relative ml-auto w-full max-w-xl bg-surface h-full overflow-y-auto shadow-2xl border-l border-overlay">
-                            {/* Header */}
-                            <div className="sticky top-0 bg-surface/95 backdrop-blur-md z-10 border-b border-overlay px-6 py-4">
-                                <div className="flex items-center justify-between">
-                                    <h2 className="text-sm font-mono font-bold text-text-primary uppercase tracking-widest">⚙ НАСТРОЙКИ</h2>
-                                    <button onClick={() => setEditOpen(false)} className="w-8 h-8 bg-overlay flex items-center justify-center text-muted hover:text-text-primary transition-colors">✕</button>
-                                </div>
-                                <div className="flex gap-1 mt-3 bg-overlay p-1 overflow-x-auto scrollbar-hide">
-                                    {tabs.map(t => (
-                                        <button key={t.key} onClick={() => setEditTab(t.key)}
-                                            className={`flex-shrink-0 text-[10px] font-mono font-medium py-2 px-2 sm:px-3 transition-all ${
-                                                editTab === t.key ? 'bg-surface text-brand-accent shadow-sm' : 'text-muted hover:text-text-secondary'
-                                            }`}>
-                                            {t.icon} {t.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="p-6">
-                                {/* PROFILE TAB */}
-                                {editTab === 'profile' && (
-                                    <div className="space-y-5">
-                                        <SectionTitle>Основная информация</SectionTitle>
-                                        <InputField label="Имя пользователя" value={newUsername} onChange={setNewUsername} />
-                                        <div>
-                                            <label className="text-xs font-mono font-medium text-muted block mb-1.5">Био <span className="text-muted/50">({newBio.length}/500)</span></label>
-                                            <textarea value={newBio} onChange={e => setNewBio(e.target.value.slice(0, 500))} rows={3}
-                                                placeholder="Краткое описание..."
-                                                className="w-full bg-base border border-overlay p-3 text-sm text-text-primary placeholder:text-muted/50 resize-none focus:outline-none focus:ring-2 focus:ring-brand-accent/30 focus:border-brand-accent transition-colors font-mono" />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="text-xs font-mono font-medium text-muted block mb-1.5">Дата рождения</label>
-                                                <input type="date" value={newBirthday} onChange={e => setNewBirthday(e.target.value)}
-                                                    className="w-full bg-base border border-overlay p-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-accent/30 transition-colors" />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-mono font-medium text-muted block mb-1.5">Пол</label>
-                                                <select value={newGender} onChange={e => setNewGender(e.target.value)}
-                                                    className="w-full bg-base border border-overlay p-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-accent/30 transition-colors">
-                                                    <option value="">Не указан</option>
-                                                    <option value="male">Мужской</option>
-                                                    <option value="female">Женский</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <button onClick={handleSaveProfile} disabled={profileSaving}
-                                            className="w-full py-3 bg-brand text-white font-mono font-bold hover:bg-brand-hover disabled:opacity-50 transition-all active:scale-[0.98] shadow-[inset_0_1px_0_rgba(255,255,255,0.1),inset_0_-2px_0_rgba(0,0,0,0.2)]">
-                                            {profileSaving ? '...' : 'СОХРАНИТЬ'}
-                                        </button>
-                                    </div>
-                                )}
-
-                                {/* APPEARANCE TAB */}
-                                {editTab === 'appearance' && (
-                                    <div className="space-y-6">
-                                        <SectionTitle>Тема профиля</SectionTitle>
-                                        <div className="grid grid-cols-1 gap-3">
-                                            {(Object.keys(PROFILE_THEMES) as Array<keyof typeof PROFILE_THEMES>).map(key => {
-                                                const t = PROFILE_THEMES[key];
-                                                const sel = previewTheme === key;
-                                                return (
-                                                    <button key={key} onClick={() => setPreviewTheme(key)}
-                                                        className={`relative p-4 border-2 text-left transition-all ${sel ? 'border-brand-accent bg-brand-accent/5' : 'border-overlay hover:border-muted bg-base'}`}>
-                                                        <div className={`h-10 mb-3 bg-gradient-to-r ${t.bannerGradient} relative overflow-hidden profile-scanlines`}>
-                                                            <div className="absolute bottom-1 right-2 flex gap-1">
-                                                                {t.previewColors.map((c, i) => <div key={i} className="w-4 h-4 border border-white/20" style={{ backgroundColor: c }} />)}
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center justify-between">
-                                                            <div>
-                                                                <p className="text-sm font-mono font-bold text-text-primary">{t.name}</p>
-                                                                <p className="text-[10px] text-muted font-mono">{t.description}</p>
-                                                            </div>
-                                                            {sel && <div className="w-5 h-5 bg-brand-accent flex items-center justify-center shrink-0"><span className="text-black text-xs">✓</span></div>}
-                                                        </div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        <div className="border-t border-overlay pt-4">
-                                            <SectionTitle>Рамка аватара</SectionTitle>
-                                            <p className="text-[10px] text-muted font-mono mb-3">Рамки открываются по мере повышения уровня</p>
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                                {Object.entries(AVATAR_FRAMES).map(([key, frame]) => {
-                                                    const sel = previewFrame === key;
-                                                    const locked = level < frame.requiredLevel;
-                                                    return (
-                                                        <button key={key}
-                                                            onClick={() => !locked && setPreviewFrame(key)}
-                                                            disabled={locked}
-                                                            className={`p-3 border-2 text-center transition-all ${
-                                                                sel ? 'border-brand-accent bg-brand-accent/5' :
-                                                                locked ? 'border-overlay/30 bg-base/30 opacity-40 cursor-not-allowed' :
-                                                                'border-overlay hover:border-muted bg-base'
-                                                            }`}>
-                                                            {/* Mini avatar preview with frame */}
-                                                            {!locked && frame.image ? (
-                                                                <div className="relative mx-auto mb-2" style={{ width: 56, height: 56 }}>
-                                                                    <div className="rounded-full bg-overlay absolute" style={{ width: '70%', height: '70%', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
-                                                                    <img src={frame.image} alt={frame.name} className="absolute inset-0 w-full h-full pointer-events-none" style={{ objectFit: 'fill' }} />
-                                                                </div>
-                                                            ) : (
-                                                                <div className="w-12 h-12 mx-auto rounded-full bg-overlay mb-2" />
-                                                            )}
-                                                            <p className="text-[10px] font-mono font-bold text-text-primary">{frame.name}</p>
-                                                            {locked && <p className="text-[9px] font-mono text-muted">🔒 Ур. {frame.requiredLevel}</p>}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-
-                                        <div className="border-t border-overlay pt-4">
-                                            <SectionTitle>Баннер профиля</SectionTitle>
-                                            <label className="flex items-center justify-center p-6 border-2 border-dashed border-overlay hover:border-brand-accent/50 bg-base cursor-pointer transition-all group mt-3">
-                                                <div className="text-center">
-                                                    <p className="text-2xl mb-1">📷</p>
-                                                    <p className="text-xs text-muted font-mono">{bannerLoading ? 'Загрузка...' : 'Загрузить баннер или видео'}</p>
-                                                    <p className="text-[10px] text-muted/50 font-mono mt-1">JPG, PNG, GIF, WEBP, MP4, WEBM</p>
-                                                </div>
-                                                <input type="file" accept="image/*,video/mp4,video/webm,video/ogg" className="hidden" onChange={handleBannerUpload} disabled={bannerLoading} />
-                                            </label>
-                                        </div>
-
-                                        <button onClick={handleSaveAppearance} disabled={profileSaving}
-                                            className="w-full py-3 bg-brand-accent text-black font-mono font-bold hover:shadow-[0_0_20px_rgba(169,255,0,0.3)] disabled:opacity-50 transition-all active:scale-[0.98]">
-                                            {profileSaving ? '...' : 'ПРИМЕНИТЬ'}
-                                        </button>
-                                    </div>
-                                )}
-
-                                {/* SECURITY TAB */}
-                                {editTab === 'security' && (
-                                    <div className="space-y-6">
-                                        <div>
-                                            <SectionTitle>Сменить email</SectionTitle>
-                                            <p className="text-xs text-muted mb-3 font-mono">Текущий: {user.email}</p>
-                                            <div className="space-y-3">
-                                                <InputField label="Новый email" value={newEmail} onChange={setNewEmail} type="email" />
-                                                <InputField label="Пароль" value={emailPassword} onChange={setEmailPassword} type="password" />
-                                                <button onClick={handleEmailChange} disabled={emailLoading || !newEmail || !emailPassword}
-                                                    className="w-full py-2.5 bg-overlay text-text-primary text-sm font-mono font-medium hover:bg-surface-hover disabled:opacity-50 transition-colors">
-                                                    {emailLoading ? '...' : 'СМЕНИТЬ'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="border-t border-overlay" />
-                                        <div>
-                                            <SectionTitle>Сменить пароль</SectionTitle>
-                                            <div className="space-y-3">
-                                                <InputField label="Текущий" value={oldPassword} onChange={setOldPassword} type="password" />
-                                                <InputField label="Новый" value={newPassword} onChange={setNewPassword} type="password" />
-                                                <InputField label="Повтор" value={confirmPassword} onChange={setConfirmPassword} type="password" />
-                                                <button onClick={handlePasswordChange} disabled={passwordLoading || !oldPassword || !newPassword}
-                                                    className="w-full py-2.5 bg-overlay text-text-primary text-sm font-mono font-medium hover:bg-surface-hover disabled:opacity-50 transition-colors">
-                                                    {passwordLoading ? '...' : 'СМЕНИТЬ'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="border-t border-overlay" />
-                                        <div className="bg-red-500/5 border border-red-500/20 p-4">
-                                            <h3 className="text-[10px] font-mono font-bold text-red-400/80 mb-2 uppercase tracking-widest">⚠ DANGER ZONE</h3>
-                                            <p className="text-[10px] text-muted font-mono mb-3">Это действие необратимо. Все данные будут удалены.</p>
-                                            <button onClick={() => setDeleteModalOpen(true)}
-                                                className="px-4 py-2 text-[10px] font-mono font-bold text-red-400 border border-red-400/30 hover:bg-red-400/10 transition-colors">
-                                                УДАЛИТЬ АККАУНТ
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* CONTENT TAB */}
-                                {editTab === 'content' && (
-                                    <div className="space-y-5">
-                                        <SectionTitle>Контент и приватность</SectionTitle>
-                                        <div>
-                                            <label className="text-xs font-mono font-medium text-muted block mb-1.5">Фильтр эротики</label>
-                                            <select value={newEroticFilter} onChange={e => setNewEroticFilter(e.target.value)}
-                                                className="w-full bg-base border border-overlay p-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-accent/30 transition-colors">
-                                                <option value="hide">Скрывать</option>
-                                                <option value="show">Показывать</option>
-                                                <option value="hentai_only">Только хентай</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-3">
-                                            <Toggle label="Закрытый профиль" description="Скрыть от других" checked={newPrivateProfile} onChange={setNewPrivateProfile} />
-                                            <Toggle label="Обмены" description="Разрешить предложения обмена" checked={newAllowTrades} onChange={setNewAllowTrades} />
-                                        </div>
-                                        <button onClick={handleSaveProfile} disabled={profileSaving}
-                                            className="w-full py-3 bg-brand text-white font-mono font-bold hover:bg-brand-hover disabled:opacity-50 transition-all active:scale-[0.98]">
-                                            {profileSaving ? '...' : 'СОХРАНИТЬ'}
-                                        </button>
-                                    </div>
-                                )}
-
-                                {/* NOTIFICATIONS TAB */}
-                                {editTab === 'notifications' && (
-                                    <div className="space-y-5">
-                                        <SectionTitle>Уведомления</SectionTitle>
-                                        <div className="space-y-3">
-                                            <Toggle label="Email" description="На почту" checked={newNotifyEmail} onChange={setNewNotifyEmail} />
-                                            <Toggle label="ВКонтакте" description="В VK" checked={newNotifyVk} onChange={setNewNotifyVk} />
-                                            <Toggle label="Telegram" description="В Telegram" checked={newNotifyTelegram} onChange={setNewNotifyTelegram} />
-                                        </div>
-                                        <button onClick={handleSaveProfile} disabled={profileSaving}
-                                            className="w-full py-3 bg-brand text-white font-mono font-bold hover:bg-brand-hover disabled:opacity-50 transition-all active:scale-[0.98]">
-                                            {profileSaving ? '...' : 'СОХРАНИТЬ'}
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
-
-            {/* Delete modal */}
-            <Modal isOpen={isDeleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Удалить аккаунт"
-                onConfirm={() => { deleteAccount(); setDeleteModalOpen(false); showToaster('Аккаунт удален.'); navigate('/'); }}
-                confirmText="Да, удалить">
-                <p className="text-text-secondary">Вы уверены? Все данные будут безвозвратно удалены.</p>
-            </Modal>
 
 
 
-            {/* Glitch overlay easter egg */}
-            {showGlitchOverlay && <div className="full-glitch-overlay" />}
-
-            {/* Konami code secret badge indicator */}
-            {konamiUnlocked && (
-                <div className="fixed bottom-4 right-4 z-[9999] bg-base border border-brand-accent/50 px-4 py-2 font-mono text-xs text-brand-accent shadow-[0_0_20px_rgba(169,255,0,0.3)]">
-                    🎮 KONAMI MASTER — Секретная ачивка получена!
-                </div>
-            )}
 
             </div>
         </div>
+
+        {/* CustomizationDrawer removed — use Shop > Персонализация */}
+        <ShopModal
+            isOpen={shopModalOpen}
+            onClose={() => { setShopModalOpen(false); setPreviewCssVars({}); setPreviewSkinKey(null); setIsPreviewingLocked(false); setPreviewBgUrl(null); setPreviewFrameKey(null); }}
+            scrap={currentScrap}
+            purchases={myPurchases}
+            shopItems={allShopItems}
+            onBuy={handleShopBuy}
+            onEquip={handleShopEquip}
+            onPreview={handleShopPreview}
+            onBackgroundPreview={handleBackgroundPreview}
+            onFramePreview={handleFramePreview}
+            activeChecks={{
+                avatarUrl: user.avatar_url || '',
+                bannerUrl: user.profile_banner_url || '',
+                backgroundUrl: profileBgUrl,
+                profileTheme: user.profile_theme || 'base',
+                avatarFrame: user.avatar_frame || 'none',
+                bio: user.bio || '',
+            }}
+        />
+
+        {/* Avatar crop modal — portal to body so it's always centered & on top */}
+        {cropImageSrc && createPortal(
+            <AnimatePresence>
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[13000] bg-black/85 flex items-center justify-center p-4"
+                    onMouseDown={e => { if (e.target === e.currentTarget) setCropImageSrc(null); }}
+                >
+                    <motion.div
+                        initial={{ scale: 0.9, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.9, opacity: 0 }}
+                        onMouseDown={e => e.stopPropagation()}
+                        className="w-full max-w-sm bg-surface border border-overlay shadow-2xl flex flex-col overflow-hidden"
+                    >
+                        <div className="px-4 py-3 border-b border-overlay flex items-center justify-between">
+                            <span className="text-xs font-mono font-bold text-text-primary tracking-wider">ОБРЕЗКА АВАТАРКИ</span>
+                            <button onClick={() => setCropImageSrc(null)} className="text-muted hover:text-text-primary text-sm">✕</button>
+                        </div>
+                        <div className="p-3 bg-base flex items-center justify-center" style={{ maxHeight: '60vh' }}>
+                            <ReactCrop
+                                crop={crop}
+                                onChange={c => setCrop(c)}
+                                onComplete={c => setCompletedCrop(c)}
+                                aspect={1}
+                                circularCrop={false}
+                            >
+                                <img
+                                    ref={cropImgRef}
+                                    src={cropImageSrc}
+                                    alt="crop"
+                                    onLoad={onCropImageLoad}
+                                    style={{ maxHeight: '55vh', maxWidth: '100%', display: 'block' }}
+                                />
+                            </ReactCrop>
+                        </div>
+                        <div className="px-4 py-3 flex gap-3">
+                            <button
+                                onClick={() => setCropImageSrc(null)}
+                                className="flex-1 py-2.5 text-xs font-mono font-bold bg-base text-text-secondary border border-overlay hover:bg-surface-hover transition-all"
+                            >
+                                ОТМЕНА
+                            </button>
+                            <button
+                                onClick={handleCropConfirm}
+                                disabled={avatarLoading}
+                                className="flex-1 py-2.5 text-xs font-mono font-bold bg-brand text-white hover:bg-brand-hover disabled:opacity-50 transition-all"
+                            >
+                                {avatarLoading ? 'ЗАГРУЗКА...' : 'ПРИМЕНИТЬ'}
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            </AnimatePresence>,
+            document.body
+        )}
+        </>
     );
 };
 
 /* ═══════════════════════════════════════════════════════════════
    SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════ */
-
-const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <h3 className="text-sm font-mono font-bold text-text-primary tracking-wider uppercase">{children}</h3>
-);
-
-const InputField: React.FC<{ label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string }> = ({ label, value, onChange, type = 'text', placeholder }) => (
-    <div>
-        <label className="text-xs font-mono font-medium text-muted block mb-1.5">{label}</label>
-        <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-            className="w-full bg-base border border-overlay p-3 text-sm text-text-primary placeholder:text-muted/50 focus:outline-none focus:ring-2 focus:ring-brand-accent/30 focus:border-brand-accent transition-colors font-mono" />
-    </div>
-);
-
-const Toggle: React.FC<{ label: string; description: string; checked: boolean; onChange: (v: boolean) => void }> = ({ label, description, checked, onChange }) => (
-    <label className="flex items-center justify-between p-3 bg-base cursor-pointer hover:bg-overlay/50 transition-colors">
-        <div>
-            <p className="text-sm font-medium text-text-primary">{label}</p>
-            <p className="text-[10px] text-muted font-mono">{description}</p>
-        </div>
-        <div className={`relative w-11 h-6 transition-colors ${checked ? 'bg-brand-accent' : 'bg-overlay'}`}
-            onClick={(e) => { e.preventDefault(); onChange(!checked); }}>
-            <div className={`absolute top-0.5 w-5 h-5 bg-white shadow transition-transform ${checked ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
-        </div>
-    </label>
-);
 
 const StatRow: React.FC<{ label: string; value: string; accent?: boolean }> = ({ label, value, accent }) => (
     <div className="stat-row-noise flex items-center justify-between text-xs px-2 py-1.5 -mx-2 cursor-default">

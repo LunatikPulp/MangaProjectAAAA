@@ -590,8 +590,9 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
   }, [user, manga, likeChapter, visibleChapterId, showToaster, setLikedChapterIds]);
 
   useEffect(() => {
-    const lastTapRef = { time: 0 };
+    const lastTapRef = { time: 0, x: 0, y: 0 };
     let tapTimer: number | null = null;
+    let hasMoved = false;
 
     const isInteractive = (el: Node): boolean => {
       if (el instanceof HTMLElement) {
@@ -609,12 +610,32 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
       return x > w * 0.2 && x < w * 0.8 && y > h * 0.2 && y < h * 0.8;
     };
 
+    const onTouchStart = () => {
+      hasMoved = false;
+    };
+
+    const onTouchMove = () => {
+      hasMoved = true;
+    };
+
     const onPointerUp = (e: PointerEvent) => {
+      // Игнорируем если был скролл
+      if (hasMoved) {
+        hasMoved = false;
+        return;
+      }
+
       if (isInteractive(e.target as Node)) return;
       if (isReportOpen) return;
       if (!isCenter(e.clientX, e.clientY)) return;
+
       const now = Date.now();
-      if (now - lastTapRef.time < 300) {
+      const timeDiff = now - lastTapRef.time;
+      const distX = Math.abs(e.clientX - lastTapRef.x);
+      const distY = Math.abs(e.clientY - lastTapRef.y);
+
+      // Двойной тап: быстро и в том же месте
+      if (timeDiff < 300 && distX < 50 && distY < 50) {
         if (tapTimer) {
           window.clearTimeout(tapTimer);
           tapTimer = null;
@@ -623,14 +644,22 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
         handleLike();
         return;
       }
+
       lastTapRef.time = now;
+      lastTapRef.x = e.clientX;
+      lastTapRef.y = e.clientY;
+
       tapTimer = window.setTimeout(() => {
         setHeaderVisible((v) => !v);
       }, 260);
     };
 
+    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchmove', onTouchMove, { passive: true });
     document.addEventListener('pointerup', onPointerUp);
     return () => {
+      document.removeEventListener('touchstart', onTouchStart);
+      document.removeEventListener('touchmove', onTouchMove);
       document.removeEventListener('pointerup', onPointerUp);
       if (tapTimer) window.clearTimeout(tapTimer);
     };

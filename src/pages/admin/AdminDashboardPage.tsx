@@ -4,12 +4,13 @@ import UserManagementTab from '../../components/admin/UserManagementTab';
 import ReportsTab from '../../components/admin/ReportsTab';
 import EditSuggestionsTab from '../../components/admin/EditSuggestionsTab';
 import MangaListTab from '../../components/admin/MangaListTab';
+import ShopManagementTab from '../../components/admin/ShopManagementTab';
 import { useReports } from '../../hooks/useReports';
 import { useEditSuggestions } from '../../hooks/useEditSuggestions';
 import { useUsers } from '../../hooks/useUsers';
 import { MangaContext } from '../../contexts/MangaContext';
 
-type AdminTab = 'manga' | 'users' | 'reports' | 'suggestions';
+type AdminTab = 'manga' | 'users' | 'reports' | 'suggestions' | 'shop';
 
 const AdminDashboardPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<AdminTab>('manga');
@@ -37,6 +38,7 @@ const AdminDashboardPage: React.FC = () => {
                     <TabButton name="users" count={users.length} activeTab={activeTab} setActiveTab={setActiveTab}>Пользователи</TabButton>
                     <TabButton name="reports" count={pendingReportsCount} activeTab={activeTab} setActiveTab={setActiveTab} highlight={pendingReportsCount > 0}>Жалобы</TabButton>
                     <TabButton name="suggestions" count={pendingSuggestionsCount} activeTab={activeTab} setActiveTab={setActiveTab} highlight={pendingSuggestionsCount > 0}>Правки</TabButton>
+                    <TabButton name="shop" count={0} activeTab={activeTab} setActiveTab={setActiveTab}>Магазин</TabButton>
                 </div>
             </div>
 
@@ -45,6 +47,7 @@ const AdminDashboardPage: React.FC = () => {
                 {activeTab === 'users' && <UserManagementTab />}
                 {activeTab === 'reports' && <ReportsTab />}
                 {activeTab === 'suggestions' && <EditSuggestionsTab />}
+                {activeTab === 'shop' && <ShopManagementTab />}
             </div>
         </div>
     );
