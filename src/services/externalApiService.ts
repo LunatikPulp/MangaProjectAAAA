@@ -1,7 +1,9 @@
 import { Manga, Chapter, Page } from "../types";
 
-export const API_BASE = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
-  ? "http://127.0.0.1:8000"
+// В development: используем Vite proxy (/api → backend) чтобы избежать CORS и проблем с cookie domain
+// В production (nginx): /api проксируется на backend на том же сервере
+export const API_BASE = (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost")
+  ? "/api"
   : "/api";
 
 
