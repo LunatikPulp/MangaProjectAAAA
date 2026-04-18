@@ -21,11 +21,6 @@ export const useHistory = () => {
         }
     });
 
-    const getAuthHeaders = useCallback(() => {
-        const token = localStorage.getItem('backend_token');
-        return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : null;
-    }, []);
-
     // Fetch history from API when user logs in
     useEffect(() => {
         if (!isLoggedIn || isSyncing.current) {
@@ -42,12 +37,12 @@ export const useHistory = () => {
         }
 
         const fetchHistory = async () => {
-            const headers = getAuthHeaders();
-            if (!headers) return;
-
             try {
                 isSyncing.current = true;
-                const res = await fetch(`${API_BASE}/history`, { headers });
+                const res = await fetch(`${API_BASE}/history`, {
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                });
                 if (res.ok) {
                     const data = await res.json();
                     const items: HistoryItem[] = data.map((item: { mangaId: string; chapterId: string; readAt: string }) => ({
@@ -74,7 +69,7 @@ export const useHistory = () => {
         };
 
         fetchHistory();
-    }, [isLoggedIn, historyKey, getAuthHeaders]);
+    }, [isLoggedIn, historyKey]);
 
     const addHistoryItem = useCallback((mangaId: string, chapterId: string) => {
         setHistory(prevHistory => {
@@ -95,20 +90,18 @@ export const useHistory = () => {
 
         // Sync to API if logged in
         if (isLoggedIn) {
-            const headers = getAuthHeaders();
-            if (headers) {
-                fetch(`${API_BASE}/history`, {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({ manga_id: mangaId, chapter_id: chapterId }),
-                }).then(r => r.ok ? r.json() : null).then(data => {
-                    if (data?.scrap_earned > 0) {
-                        window.dispatchEvent(new CustomEvent('scrap-earned', { detail: { amount: data.scrap_earned, reason: 'чтение глав' } }));
-                    }
-                }).catch(err => console.error('Failed to sync history item:', err));
-            }
+            fetch(`${API_BASE}/history`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ manga_id: mangaId, chapter_id: chapterId }),
+            }).then(r => r.ok ? r.json() : null).then(data => {
+                if (data?.scrap_earned > 0) {
+                    window.dispatchEvent(new CustomEvent('scrap-earned', { detail: { amount: data.scrap_earned, reason: 'чтение глав' } }));
+                }
+            }).catch(err => console.error('Failed to sync history item:', err));
         }
-    }, [historyKey, isLoggedIn, getAuthHeaders]);
+    }, [historyKey, isLoggedIn]);
 
     const clearHistory = useCallback(() => {
         setHistory([]);
@@ -116,15 +109,12 @@ export const useHistory = () => {
 
         // Sync to API if logged in
         if (isLoggedIn) {
-            const headers = getAuthHeaders();
-            if (headers) {
-                fetch(`${API_BASE}/history`, {
-                    method: 'DELETE',
-                    headers,
-                }).catch(err => console.error('Failed to clear history on API:', err));
-            }
+            fetch(`${API_BASE}/history`, {
+                method: 'DELETE',
+                credentials: 'include',
+            }).catch(err => console.error('Failed to clear history on API:', err));
         }
-    }, [historyKey, isLoggedIn, getAuthHeaders]);
+    }, [historyKey, isLoggedIn]);
 
     return { history, addHistoryItem, clearHistory };
 };

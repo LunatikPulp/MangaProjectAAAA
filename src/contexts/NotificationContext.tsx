@@ -26,10 +26,9 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
   const { user } = useContext(AuthContext);
 
   const fetchNotifications = useCallback(async () => {
-    const token = localStorage.getItem('backend_token');
-    if (!token || !user) { setNotifications([]); return; }
+    if (!user) { setNotifications([]); return; }
     try {
-      const res = await fetch(`${API_BASE}/notifications`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/notifications`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setNotifications(data);
@@ -55,22 +54,16 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
   };
 
   const markAsRead = async () => {
-    const token = localStorage.getItem('backend_token');
-    if (token) {
-      try {
-        await fetch(`${API_BASE}/notifications/mark-read`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-      } catch {}
-    }
+    try {
+      await fetch(`${API_BASE}/notifications/mark-read`, { method: 'POST', credentials: 'include' });
+    } catch {}
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
   
   const clearNotifications = async () => {
-    const token = localStorage.getItem('backend_token');
-    if (token) {
-      try {
-        await fetch(`${API_BASE}/notifications`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-      } catch {}
-    }
+    try {
+      await fetch(`${API_BASE}/notifications`, { method: 'DELETE', credentials: 'include' });
+    } catch {}
     setNotifications([]);
   };
 

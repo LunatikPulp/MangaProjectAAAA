@@ -9,8 +9,7 @@ interface RevenueStats {
 }
 
 const MonetizationPage: React.FC = () => {
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json' };
 
   const [adsenseClientId, setAdsenseClientId] = useState('');
   const [directAdHtml, setDirectAdHtml] = useState('');

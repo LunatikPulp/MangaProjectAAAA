@@ -411,12 +411,9 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
   useEffect(() => {
     if (!visibleChapterId || !initialMangaId || !manga) return;
     const timer = setTimeout(() => {
-      const headers: Record<string, string> = {};
-      const token = localStorage.getItem('backend_token');
-      if (token) headers['Authorization'] = `Bearer ${token}`;
       fetch(`${API_BASE}/chapters/${visibleChapterId}/view?manga_id=${initialMangaId}`, {
         method: 'POST',
-        headers,
+        credentials: 'include',
       })
         .then(res => res.ok ? res.json() : null)
         .then(data => {

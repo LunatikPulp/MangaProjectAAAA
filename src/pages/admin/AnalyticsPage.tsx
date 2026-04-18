@@ -50,8 +50,7 @@ const EMPTY_STATS: Stats = {
 };
 
 const AnalyticsPage: React.FC = () => {
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json' };
 
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [saving, setSaving] = useState(false);
@@ -61,7 +60,7 @@ const AnalyticsPage: React.FC = () => {
   const fetchStats = async (p?: string) => {
     try {
       const url = p ? `${API_BASE}/admin/stats?period=${p}` : `${API_BASE}/admin/stats`;
-      const res = await fetch(url, { headers });
+      const res = await fetch(url, { headers, credentials: 'include' });
       if (res.ok) {
         const d = await res.json();
         setStats({
@@ -85,7 +84,7 @@ const AnalyticsPage: React.FC = () => {
     setSaving(true);
     setMsg('');
     try {
-      const res = await fetch(`${API_BASE}/admin/clear-cache`, { method: 'POST', headers });
+      const res = await fetch(`${API_BASE}/admin/clear-cache`, { method: 'POST', headers, credentials: 'include' });
       setMsg(res.ok ? 'КЭШ ОЧИЩЕН' : 'ОШИБКА');
     } catch {
       setMsg('ОШИБКА СЕТИ');

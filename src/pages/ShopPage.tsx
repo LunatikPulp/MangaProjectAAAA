@@ -118,14 +118,13 @@ const ShopPage: React.FC = () => {
     const [persRequests, setPersRequests] = useState<PersRequest[]>([]);
     const fileRef = useRef<HTMLInputElement>(null);
 
-    const token = localStorage.getItem('backend_token') || '';
-
     useEffect(() => {
+        const opts: RequestInit = { credentials: 'include' };
         Promise.all([
-            fetch(`${API_BASE}/shop/items`, token ? { headers: { Authorization: `Bearer ${token}` } } : {}).then(r => r.json()),
-            token ? fetch(`${API_BASE}/auth/my-purchases`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()) : Promise.resolve([]),
-            token ? fetch(`${API_BASE}/auth/profile-full`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()) : Promise.resolve(null),
-            fetch(`${API_BASE}/payments/packages`).then(r => r.json()).catch(() => null),
+            fetch(`${API_BASE}/shop/items`, opts).then(r => r.json()),
+            fetch(`${API_BASE}/auth/my-purchases`, opts).then(r => r.ok ? r.json() : []),
+            fetch(`${API_BASE}/auth/profile-full`, opts).then(r => r.ok ? r.json() : null),
+            fetch(`${API_BASE}/payments/packages`, { credentials: 'include' }).then(r => r.json()).catch(() => null),
         ]).then(([shopItems, purchases, profile, packages]) => {
             console.log('ShopPage profile data:', profile);
             console.log('nickname_color:', profile?.nickname_color);
@@ -153,12 +152,11 @@ const ShopPage: React.FC = () => {
     }, []);
 
     const fetchMyPersRequests = useCallback(async () => {
-        if (!token) return;
         try {
-            const res = await fetch(`${API_BASE}/auth/personalization/my-requests`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API_BASE}/auth/personalization/my-requests`, { credentials: 'include' });
             if (res.ok) setPersRequests(await res.json());
         } catch { /* ignore */ }
-    }, [token]);
+    }, []);
 
     const handleCategoryChange = (category: ShopCategory) => {
         setActiveCategory(category);
@@ -251,13 +249,13 @@ const ShopPage: React.FC = () => {
     };
 
     const handleConfirmPurchase = async () => {
-        if (!token || !confirmItem) return;
+        if (!confirmItem) return;
         setBuyingKey(confirmItem.key);
         setShowConfirmModal(false);
         try {
             const res = await fetch(`${API_BASE}/shop/buy/${confirmItem.key}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 const data = await res.json();
@@ -295,12 +293,11 @@ const ShopPage: React.FC = () => {
     };
 
     const handleActivate = async (item: ShopItem) => {
-        if (!token) return;
         setActivatingKey(item.key);
         try {
             const res = await fetch(`${API_BASE}/shop/activate/${item.key}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 showToaster(`Применено: ${item.name}!`);
@@ -334,7 +331,6 @@ const ShopPage: React.FC = () => {
     };
 
     const handlePersSubmit = async () => {
-        if (!token) { showToaster('Войдите в аккаунт'); return; }
         if (!persFile) { showToaster('Выберите файл'); return; }
         setPersSending(true);
         try {
@@ -344,7 +340,7 @@ const ShopPage: React.FC = () => {
             url.searchParams.set('type', 'background');
             const res = await fetch(url.toString(), {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
                 body: formData,
             });
             if (res.ok) {
@@ -369,7 +365,7 @@ const ShopPage: React.FC = () => {
         try {
             const res = await fetch(`${API_BASE}/auth/personalization/${id}/refund`, {
                 method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 const data = await res.json();
@@ -386,13 +382,13 @@ const ShopPage: React.FC = () => {
     };
 
     const handleRealPayment = async (type: 'scrap' | 'springpro', packageId?: string) => {
-        if (!token) { showToaster('Войдите в аккаунт'); return; }
         const key = packageId || type;
         setPaymentProcessing(key);
         try {
             const res = await fetch(`${API_BASE}/payments/create`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ type, package_id: packageId }),
             });
             if (res.ok) {
@@ -407,7 +403,7 @@ const ShopPage: React.FC = () => {
                         attempts++;
                         if (attempts > 60) { clearInterval(poll); return; }
                         try {
-                            const sr = await fetch(`${API_BASE}/payments/status/${paymentId}`, { headers: { Authorization: `Bearer ${token}` } });
+                            const sr = await fetch(`${API_BASE}/payments/status/${paymentId}`, { credentials: 'include' });
                             if (sr.ok) {
                                 const sd = await sr.json();
                                 if (sd.status === 'completed') {
@@ -441,12 +437,12 @@ const ShopPage: React.FC = () => {
     };
 
     const handleSubscribeWithScrap = async (plan: string = 'springpro_month') => {
-        if (!token) { showToaster('Войдите в аккаунт'); return; }
         setPaymentProcessing('scrap_sub_' + plan);
         try {
             const res = await fetch(`${API_BASE}/shop/subscribe-springpro`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ plan }),
             });
             if (res.ok) {
@@ -466,12 +462,12 @@ const ShopPage: React.FC = () => {
     };
 
     const handleSaveNickSettings = async () => {
-        if (!token) return;
         setSavingNick(true);
         try {
             const res = await fetch(`${API_BASE}/auth/profile`, {
                 method: 'PUT',
-                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ nickname_color: nickColorInput, nickname_font: nickFontInput }),
             });
             if (res.ok) {

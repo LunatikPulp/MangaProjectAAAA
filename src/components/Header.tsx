@@ -127,17 +127,15 @@ const Header: React.FC = () => {
   // Poll unread messages count + scrap balance
   useEffect(() => {
     if (!user) { setUnreadMessages(0); setScrapBalance(null); return; }
-    const token = localStorage.getItem('backend_token');
-    if (!token) return;
     const fetchUnread = async () => {
       try {
-        const res = await fetch(`${API_BASE}/messages/unread/count`, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetch(`${API_BASE}/messages/unread/count`, { credentials: 'include' });
         if (res.ok) { const data = await res.json(); setUnreadMessages(data.count || 0); }
       } catch {}
     };
     const fetchScrap = async () => {
       try {
-        const res = await fetch(`${API_BASE}/auth/profile-full`, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetch(`${API_BASE}/auth/profile-full`, { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           setScrapBalance((data.gamification?.scrap || 0) + (data.gamification?.donated_scrap || 0));

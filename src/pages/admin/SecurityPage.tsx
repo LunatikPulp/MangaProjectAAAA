@@ -10,8 +10,7 @@ interface LoginEntry {
 }
 
 const SecurityPage: React.FC = () => {
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json' };
 
   const [sslEnforce, setSslEnforce] = useState(true);
   const [ipBlacklist, setIpBlacklist] = useState('');

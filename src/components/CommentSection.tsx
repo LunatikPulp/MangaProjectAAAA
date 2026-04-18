@@ -8,12 +8,6 @@ import FramedAvatar from './FramedAvatar';
 import RankBadge from './RankBadge';
 import { API_BASE } from '../services/externalApiService';
 
-function getAuthHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const token = localStorage.getItem('backend_token');
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return headers;
-}
 
 interface CommentSectionProps {
   mangaId: string;
@@ -212,7 +206,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ mangaId, chapterId }) =
       const params = new URLSearchParams();
       if (chapterId) params.set('chapter_id', chapterId);
       const res = await fetch(`${API_BASE}/manga/${mangaId}/comments?${params}`, {
-        headers: getAuthHeaders(),
+        credentials: 'include',
       });
       if (res.ok) {
         const data = await res.json();
@@ -247,7 +241,8 @@ const CommentSection: React.FC<CommentSectionProps> = ({ mangaId, chapterId }) =
     try {
       const res = await fetch(`${API_BASE}/manga/${mangaId}/comments`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           text: newComment,
           chapter_id: chapterId || null,
@@ -274,7 +269,8 @@ const CommentSection: React.FC<CommentSectionProps> = ({ mangaId, chapterId }) =
     try {
       const res = await fetch(`${API_BASE}/manga/${mangaId}/comments`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           text,
           parent_id: commentId,
@@ -302,7 +298,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ mangaId, chapterId }) =
     try {
       const res = await fetch(`${API_BASE}/manga/comments/${commentId}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
+        credentials: 'include',
       });
       if (res.ok) {
         const removeRecursively = (list: Comment[]): Comment[] =>
@@ -326,7 +322,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ mangaId, chapterId }) =
     try {
       const res = await fetch(`${API_BASE}/manga/comments/${commentId}/like`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        credentials: 'include',
       });
       if (res.ok) {
         const likeRecursively = (list: Comment[]): Comment[] =>
@@ -352,7 +348,8 @@ const CommentSection: React.FC<CommentSectionProps> = ({ mangaId, chapterId }) =
     try {
       const res = await fetch(`${API_BASE}/manga/comments/${commentId}/report`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ reason, message }),
       });
       if (res.ok) {
@@ -377,7 +374,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ mangaId, chapterId }) =
     try {
       const res = await fetch(`${API_BASE}/admin/comments/${commentId}/moderate?action=${action}`, {
         method: 'PUT',
-        headers: getAuthHeaders(),
+        credentials: 'include',
       });
       if (res.ok) {
         const updateStatus = (list: Comment[]): Comment[] =>

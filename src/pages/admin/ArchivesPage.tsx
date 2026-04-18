@@ -18,8 +18,7 @@ interface MangaRow {
 
 const ArchivesPage: React.FC = () => {
   const navigate = useNavigate();
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}` };
+  const headers = {};
 
   const [items, setItems] = useState<MangaRow[]>([]);
   const [total, setTotal] = useState(0);

@@ -251,14 +251,13 @@ const AdminDashboardPage: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const token = localStorage.getItem('backend_token');
-        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         const [statsRes, visitsRes, auditRes, reportsRes, cronRes] = await Promise.all([
-          fetch(`${API_BASE}/admin/stats`, { headers }),
-          fetch(`${API_BASE}/admin/stats/visits`, { headers }),
-          fetch(`${API_BASE}/admin/audit-log?limit=5`, { headers }).catch(() => null),
-          fetch(`${API_BASE}/admin/reports`, { headers }).catch(() => null),
-          fetch(`${API_BASE}/admin/cron/status`, { headers }).catch(() => null),
+          fetch(`${API_BASE}/admin/stats`, { headers, credentials: 'include' }),
+          fetch(`${API_BASE}/admin/stats/visits`, { headers, credentials: 'include' }),
+          fetch(`${API_BASE}/admin/audit-log?limit=5`, { headers, credentials: 'include' }).catch(() => null),
+          fetch(`${API_BASE}/admin/reports`, { headers, credentials: 'include' }).catch(() => null),
+          fetch(`${API_BASE}/admin/cron/status`, { headers, credentials: 'include' }).catch(() => null),
         ]);
         let serverStats: any = {};
         if (statsRes.ok) serverStats = await statsRes.json();

@@ -11,16 +11,13 @@ interface Transaction {
 }
 
 const TransactionsPage: React.FC = () => {
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}` };
-
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'grant' | 'deduct'>('all');
 
   const fetchTransactions = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/admin/transactions`, { headers });
+      const res = await fetch(`${API_BASE}/admin/transactions`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setTransactions(data.map((t: any) => ({

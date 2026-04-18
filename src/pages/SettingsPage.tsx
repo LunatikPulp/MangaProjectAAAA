@@ -123,9 +123,8 @@ const SettingsPage: React.FC = () => {
         if (newPassword !== confirmPassword) { showToaster('Пароли не совпадают'); return; }
         setPasswordLoading(true);
         try {
-            const token = localStorage.getItem('backend_token');
             const res = await fetch(`${API_BASE}/auth/password`, {
-                method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
                 body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
             });
             if (res.ok) { showToaster('Пароль изменен!'); setOldPassword(''); setNewPassword(''); setConfirmPassword(''); }
@@ -138,9 +137,8 @@ const SettingsPage: React.FC = () => {
         if (!newEmail || !emailPassword) return;
         setEmailLoading(true);
         try {
-            const token = localStorage.getItem('backend_token');
             const res = await fetch(`${API_BASE}/auth/email`, {
-                method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
                 body: JSON.stringify({ password: emailPassword, new_email: newEmail }),
             });
             if (res.ok) { showToaster('Email изменен!'); updateUser({ email: newEmail }); setNewEmail(''); setEmailPassword(''); }
@@ -171,10 +169,9 @@ const SettingsPage: React.FC = () => {
         setAvatarLoading(true);
         try {
             const blob = await getCroppedBlob(cropImgRef.current, completedCrop);
-            const token = localStorage.getItem('backend_token');
             const formData = new FormData();
             formData.append('file', blob, 'avatar.jpg');
-            const res = await fetch(`${API_BASE}/auth/avatar`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+            const res = await fetch(`${API_BASE}/auth/avatar`, { method: 'POST', credentials: 'include', body: formData });
             if (res.ok) {
                 await refreshUser();
                 setMediaCacheBuster(Date.now());
@@ -318,8 +315,7 @@ const SettingsPage: React.FC = () => {
                                 </p>
                                 <button onClick={async () => {
                                     try {
-                                        const t = localStorage.getItem('backend_token');
-                                        const r = await fetch(`${API_BASE}/auth/telegram/unlink`, { method: 'POST', headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' } });
+                                        const r = await fetch(`${API_BASE}/auth/telegram/unlink`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include' });
                                         if (r.ok) { showToaster('Telegram отвязан'); refreshUser(); }
                                         else { const e = await r.json().catch(() => ({})); showToaster(e.detail || 'Ошибка'); }
                                     } catch { showToaster('Ошибка сети'); }
@@ -333,7 +329,7 @@ const SettingsPage: React.FC = () => {
                                 <p className="text-xs text-muted font-mono">Telegram не привязан.</p>
                                 <button onClick={async () => {
                                     try {
-                                        const infoRes = await fetch(`${API_BASE}/auth/telegram/info`);
+                                        const infoRes = await fetch(`${API_BASE}/auth/telegram/info`, { credentials: 'include' });
                                         const info = await infoRes.json();
                                         if (!info.configured || !info.bot_id) { showToaster('Telegram не настроен'); return; }
                                         const botId = info.bot_id;
@@ -349,9 +345,8 @@ const SettingsPage: React.FC = () => {
                                             if (!ud || !ud.id) return;
                                             window.removeEventListener('message', handler);
                                             if (popup) popup.close();
-                                            const t = localStorage.getItem('backend_token');
                                             const lr = await fetch(`${API_BASE}/auth/telegram/link`, {
-                                                method: 'POST', headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' },
+                                                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
                                                 body: JSON.stringify(ud),
                                             });
                                             if (lr.ok) { showToaster('Telegram привязан!'); refreshUser(); }

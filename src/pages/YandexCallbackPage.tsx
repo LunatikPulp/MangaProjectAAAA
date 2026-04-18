@@ -16,11 +16,11 @@ const YandexCallbackPage: React.FC = () => {
                 const res = await fetch(`${API_BASE}/auth/yandex/callback`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ code }),
                 });
                 if (res.ok) {
-                    const data = await res.json();
-                    localStorage.setItem('backend_token', data.access_token);
+                    // Токен устанавливается сервером как httpOnly cookie
                     window.location.href = window.location.origin + window.location.pathname + '#/';
                 } else {
                     const err = await res.json().catch(() => ({}));

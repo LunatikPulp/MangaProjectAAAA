@@ -25,7 +25,6 @@ interface PublicUser {
 
 const FriendsPage: React.FC = () => {
     const { user } = useContext(AuthContext);
-    const token = localStorage.getItem('backend_token');
     const [tab, setTab] = useState<'friends' | 'search'>('friends');
     const [friends, setFriends] = useState<FriendUser[]>([]);
     const [searchResults, setSearchResults] = useState<PublicUser[]>([]);
@@ -36,10 +35,9 @@ const FriendsPage: React.FC = () => {
 
     // Load friends
     const loadFriends = useCallback(async () => {
-        if (!token) return;
         try {
             const res = await fetch(`${API_BASE}/friends`, {
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 const data: FriendUser[] = await res.json();
@@ -47,7 +45,7 @@ const FriendsPage: React.FC = () => {
                 setFriendIds(new Set(data.map(f => f.id)));
             }
         } catch {}
-    }, [token]);
+    }, []);
 
     useEffect(() => { loadFriends(); }, [loadFriends]);
 
@@ -60,7 +58,7 @@ const FriendsPage: React.FC = () => {
         const timer = setTimeout(async () => {
             setLoading(true);
             try {
-                const res = await fetch(`${API_BASE}/users?q=${encodeURIComponent(search)}&limit=20`);
+                const res = await fetch(`${API_BASE}/users?q=${encodeURIComponent(search)}&limit=20`, { credentials: 'include' });
                 if (res.ok) {
                     const data = await res.json();
                     // Filter out self
@@ -73,11 +71,10 @@ const FriendsPage: React.FC = () => {
     }, [search, tab, user?.id]);
 
     const addFriend = async (userId: number) => {
-        if (!token) return;
         try {
             const res = await fetch(`${API_BASE}/friends/${userId}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 await loadFriends();
@@ -86,11 +83,10 @@ const FriendsPage: React.FC = () => {
     };
 
     const removeFriend = async (userId: number) => {
-        if (!token) return;
         try {
             const res = await fetch(`${API_BASE}/friends/${userId}`, {
                 method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 await loadFriends();

@@ -38,8 +38,7 @@ interface ReportedComment {
 }
 
 const ModerationPage: React.FC = () => {
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json' };
 
   const [allowComments, setAllowComments] = useState(true);
   const [commentProvider, setCommentProvider] = useState('builtin');

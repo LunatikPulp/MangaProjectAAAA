@@ -400,9 +400,7 @@ const ProfilePage: React.FC = () => {
     // Real friends from backend
     const [realFriends, setRealFriends] = useState<{ id: number; username: string; avatar_url: string; avatar_frame: string; level: number; bio: string; }[]>([]);
     useEffect(() => {
-        const token = localStorage.getItem('backend_token');
-        if (!token) return;
-        fetch(`${API_BASE}/friends`, { headers: { Authorization: `Bearer ${token}` } })
+        fetch(`${API_BASE}/friends`, { credentials: 'include' })
             .then(r => r.ok ? r.json() : [])
             .then(data => setRealFriends(data))
             .catch(() => {});
@@ -439,10 +437,10 @@ const ProfilePage: React.FC = () => {
         if (!wallInput.trim() || !user?.id) return;
         setWallLoading(true);
         try {
-            const token = localStorage.getItem('backend_token');
             const res = await fetch(`${API_BASE}/auth/wall-comments/${user.id}`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: wallInput.trim() }),
             });
             if (res.ok) {
@@ -460,10 +458,9 @@ const ProfilePage: React.FC = () => {
 
     const handleDeleteWallComment = async (id: number) => {
         try {
-            const token = localStorage.getItem('backend_token');
             await fetch(`${API_BASE}/auth/wall-comments/${id}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` },
+                credentials: 'include',
             });
             setWallComments(prev => prev.filter(c => c.id !== id));
         } catch { showToaster('Ошибка удаления'); }
@@ -472,10 +469,10 @@ const ProfilePage: React.FC = () => {
     const handleWallReply = async (commentId: number) => {
         if (!wallReplyText.trim()) return;
         try {
-            const token = localStorage.getItem('backend_token');
             const res = await fetch(`${API_BASE}/auth/wall-comments/${commentId}/reply`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: wallReplyText.trim() }),
             });
             if (res.ok) {
@@ -489,10 +486,9 @@ const ProfilePage: React.FC = () => {
 
     const handleDeleteWallReply = async (replyId: number, commentId: number) => {
         try {
-            const token = localStorage.getItem('backend_token');
             await fetch(`${API_BASE}/auth/wall-replies/${replyId}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` },
+                credentials: 'include',
             });
             setWallComments(prev => prev.map(c => c.id === commentId ? { ...c, replies: (c.replies || []).filter(r => r.id !== replyId) } : c));
         } catch { showToaster('Ошибка удаления'); }
@@ -516,11 +512,7 @@ const ProfilePage: React.FC = () => {
     const [userComments, setUserComments] = useState<{ text: string; mangaId: string; mangaTitle: string; mangaSlug: string; cover: string; timestamp: string }[]>([]);
     useEffect(() => {
         if (!user) return;
-        const token = localStorage.getItem('backend_token');
-        if (!token) return;
-        fetch(`${API_BASE}/auth/my-comments`, {
-            headers: { 'Authorization': `Bearer ${token}` },
-        })
+        fetch(`${API_BASE}/auth/my-comments`, { credentials: 'include' })
             .then(res => res.ok ? res.json() : [])
             .then((data: { id: number; mangaId: string; mangaTitle?: string; mangaSlug?: string; coverUrl?: string; chapterId?: string; text: string; timestamp: string }[]) => {
                 setUserComments(data.map(c => ({
@@ -580,18 +572,14 @@ const ProfilePage: React.FC = () => {
         if (!user) { setProfileLoading(false); return; }
         try { setBadges(JSON.parse(user.badge_ids || '[]')); } catch { setBadges([]); }
 
-        const token = localStorage.getItem('backend_token');
-        if (!token) { setProfileLoading(false); return; }
-
         setProfileLoading(true);
-        const headers = { Authorization: `Bearer ${token}` };
 
         Promise.all([
-            fetch(`${API_BASE}/auth/profile-full`, { headers }).then(r => r.json()).catch(() => null),
-            fetch(`${API_BASE}/auth/check-achievements`, { method: 'POST', headers }).then(r => r.json()).catch(() => null),
-            fetch(`${API_BASE}/auth/sync-xp`, { method: 'POST', headers }).then(r => r.json()).catch(() => null),
-            fetch(`${API_BASE}/auth/my-purchases`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-            fetch(`${API_BASE}/shop/items`, { headers }).then(r => r.json()).catch(() => []),
+            fetch(`${API_BASE}/auth/profile-full`, { credentials: 'include' }).then(r => r.json()).catch(() => null),
+            fetch(`${API_BASE}/auth/check-achievements`, { method: 'POST', credentials: 'include' }).then(r => r.json()).catch(() => null),
+            fetch(`${API_BASE}/auth/sync-xp`, { method: 'POST', credentials: 'include' }).then(r => r.json()).catch(() => null),
+            fetch(`${API_BASE}/auth/my-purchases`, { credentials: 'include' }).then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch(`${API_BASE}/shop/items`, { credentials: 'include' }).then(r => r.json()).catch(() => []),
         ]).then(([profileData, achData, xpData, purchases, shopItems]) => {
             if (profileData) {
                 setProfileData(profileData);
@@ -650,21 +638,18 @@ const ProfilePage: React.FC = () => {
                 if (e.code === expected) {
                     const next = prev + 1;
                     if (next === KONAMI_CODE.length) {
-                        const token = localStorage.getItem('backend_token');
-                        if (token) {
-                            fetch(`${API_BASE}/auth/unlock-achievement?achievement_id=konami_master`, {
-                                method: 'POST',
-                                headers: { 'Authorization': `Bearer ${token}` },
+                        fetch(`${API_BASE}/auth/unlock-achievement?achievement_id=konami_master`, {
+                            method: 'POST',
+                            credentials: 'include',
+                        })
+                            .then(r => r.json())
+                            .then(data => {
+                                if (data.success) {
+                                    setBadges(prev => [...prev, 'konami_master']);
+                                    showToaster('🎮 СЕКРЕТНАЯ АЧИВКА РАЗБЛОКИРОВАНА: Konami Master!');
+                                }
                             })
-                                .then(r => r.json())
-                                .then(data => {
-                                    if (data.success) {
-                                        setBadges(prev => [...prev, 'konami_master']);
-                                        showToaster('🎮 СЕКРЕТНАЯ АЧИВКА РАЗБЛОКИРОВАНА: Konami Master!');
-                                    }
-                                })
-                                .catch(() => {});
-                        }
+                            .catch(() => {});
                         return 0;
                     }
                     return next;
@@ -783,12 +768,10 @@ const ProfilePage: React.FC = () => {
 
     // @ts-ignore - unused but kept for potential future use
     const handleSkinBuy = async (skin: typeof allSkins[0]) => {
-        const token = localStorage.getItem('backend_token');
-        if (!token) return;
         try {
             const res = await fetch(`${API_BASE}/shop/buy/skin_${skin.key}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 const data = await res.json();
@@ -814,8 +797,6 @@ const ProfilePage: React.FC = () => {
     // Handlers for CustomizationDrawer
     // @ts-ignore - unused but kept for potential future use
     const handleDrawerEquip = async (itemKey: string, category: string) => {
-        const token = localStorage.getItem('backend_token');
-        if (!token) return;
         if (category === 'skin') {
             // For free skins, use profile_theme directly; for shop skins, use activate endpoint
             const isFree = ['base', 'neon', 'corroded'].includes(itemKey) || ['base', 'neon', 'corroded'].includes(itemKey.replace('skin_', ''));
@@ -827,7 +808,7 @@ const ProfilePage: React.FC = () => {
             }
             const activateKey = itemKey.startsWith('skin_') ? itemKey : `skin_${itemKey}`;
             const res = await fetch(`${API_BASE}/shop/activate/${activateKey}`, {
-                method: 'POST', headers: { Authorization: `Bearer ${token}` },
+                method: 'POST', credentials: 'include',
             });
             if (res.ok) showToaster('Скин применён!');
             else showToaster('Ошибка применения');
@@ -836,22 +817,20 @@ const ProfilePage: React.FC = () => {
             showToaster('Рамка применена!');
         } else {
             const res = await fetch(`${API_BASE}/shop/activate/${itemKey}`, {
-                method: 'POST', headers: { Authorization: `Bearer ${token}` },
+                method: 'POST', credentials: 'include',
             });
             if (res.ok) showToaster('Предмет применён!');
             else showToaster('Ошибка применения');
         }
         // Refresh profile data
-        const pfRes = await fetch(`${API_BASE}/auth/profile-full`, { headers: { Authorization: `Bearer ${token}` } });
+        const pfRes = await fetch(`${API_BASE}/auth/profile-full`, { credentials: 'include' });
         if (pfRes.ok) setProfileData(await pfRes.json());
     };
 
     // @ts-ignore - unused but kept for potential future use
     const handleDrawerBuy = async (itemKey: string): Promise<boolean> => {
-        const token = localStorage.getItem('backend_token');
-        if (!token) return false;
         const res = await fetch(`${API_BASE}/shop/buy/${itemKey}`, {
-            method: 'POST', headers: { Authorization: `Bearer ${token}` },
+            method: 'POST', credentials: 'include',
         });
         if (res.ok) {
             const data = await res.json();
@@ -938,10 +917,9 @@ const ProfilePage: React.FC = () => {
         setAvatarLoading(true);
         try {
             const blob = await getCroppedBlob(cropImgRef.current, completedCrop);
-            const token = localStorage.getItem('backend_token');
             const formData = new FormData();
             formData.append('file', blob, 'avatar.jpg');
-            const res = await fetch(`${API_BASE}/auth/avatar`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+            const res = await fetch(`${API_BASE}/auth/avatar`, { method: 'POST', credentials: 'include', body: formData });
             if (res.ok) {
                 await refreshUser();
                 setMediaCacheBuster(Date.now());
@@ -954,10 +932,8 @@ const ProfilePage: React.FC = () => {
 
     // Refresh profile & user data from backend
     const refreshProfileAndUser = useCallback(async () => {
-        const token = localStorage.getItem('backend_token');
-        if (!token) return;
         const [profileRes] = await Promise.all([
-            fetch(`${API_BASE}/auth/profile-full`, { headers: { Authorization: `Bearer ${token}` } }),
+            fetch(`${API_BASE}/auth/profile-full`, { credentials: 'include' }),
             refreshUser(),
         ]);
         if (profileRes.ok) {
@@ -967,7 +943,7 @@ const ProfilePage: React.FC = () => {
             if (data.purchases) setMyPurchases(data.purchases);
         }
         // Also refresh purchases separately in case profile-full doesn't include them
-        fetch(`${API_BASE}/auth/my-purchases`, { headers: { Authorization: `Bearer ${token}` } })
+        fetch(`${API_BASE}/auth/my-purchases`, { credentials: 'include' })
             .then(r => r.ok ? r.json() : [])
             .then(data => setMyPurchases(data))
             .catch(() => {});
@@ -978,9 +954,8 @@ const ProfilePage: React.FC = () => {
         if (!file) return;
         setBannerLoading(true);
         try {
-            const token = localStorage.getItem('backend_token');
             const formData = new FormData(); formData.append('file', file);
-            const res = await fetch(`${API_BASE}/auth/banner`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+            const res = await fetch(`${API_BASE}/auth/banner`, { method: 'POST', credentials: 'include', body: formData });
             if (res.ok) {
                 await refreshProfileAndUser();
                 setMediaCacheBuster(Date.now());
@@ -1002,9 +977,8 @@ const ProfilePage: React.FC = () => {
         if (!file) return;
         setBackgroundLoading(true);
         try {
-            const token = localStorage.getItem('backend_token');
             const formData = new FormData(); formData.append('file', file);
-            const res = await fetch(`${API_BASE}/auth/background`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+            const res = await fetch(`${API_BASE}/auth/background`, { method: 'POST', credentials: 'include', body: formData });
             if (res.ok) {
                 await refreshProfileAndUser();
                 setMediaCacheBuster(Date.now());
@@ -1022,12 +996,10 @@ const ProfilePage: React.FC = () => {
     };
 
     const handleShopBuy = useCallback(async (itemKey: string): Promise<boolean> => {
-        const token = localStorage.getItem('backend_token');
-        if (!token) return false;
         try {
             const res = await fetch(`${API_BASE}/shop/buy/${itemKey}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 showToaster('Куплено!');
@@ -1044,8 +1016,6 @@ const ProfilePage: React.FC = () => {
     }, [showToaster, refreshProfileAndUser]);
 
     const handleShopEquip = useCallback(async (itemKey: string) => {
-        const token = localStorage.getItem('backend_token');
-        if (!token) return;
         // Free skins: update profile_theme directly instead of calling /shop/activate
         const FREE_SKIN_KEYS = ['skin_base', 'skin_neon', 'skin_corroded'];
         if (FREE_SKIN_KEYS.includes(itemKey)) {
@@ -1062,7 +1032,7 @@ const ProfilePage: React.FC = () => {
         try {
             const res = await fetch(`${API_BASE}/shop/activate/${itemKey}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 showToaster('Применено!');

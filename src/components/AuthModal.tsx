@@ -124,16 +124,16 @@ const AuthModal: React.FC = () => {
       const res = await fetch(`${API_BASE}/auth/telegram/callback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(tgData),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Ошибка авторизации Telegram');
       }
-      const data = await res.json();
-      localStorage.setItem('backend_token', data.access_token);
+      await res.json();
       const meRes = await fetch(`${API_BASE}/auth/me`, {
-        headers: { Authorization: `Bearer ${data.access_token}` },
+        credentials: 'include',
       });
       if (meRes.ok) {
         const meData = await meRes.json();

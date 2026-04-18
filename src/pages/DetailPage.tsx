@@ -108,12 +108,9 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
 
 
     useEffect(() => {
-        const headers: Record<string, string> = {};
-        const token = localStorage.getItem('backend_token');
-        if (token) headers['Authorization'] = `Bearer ${token}`;
         fetch(`${API_BASE}/manga/${manga.id}/view`, {
             method: 'POST',
-            headers,
+            credentials: 'include',
         }).catch(() => {});
     }, [manga.id]);
 

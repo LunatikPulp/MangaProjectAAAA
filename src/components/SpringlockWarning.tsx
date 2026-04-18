@@ -2,12 +2,6 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { API_BASE } from '../services/externalApiService';
 
-function getAuthHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const token = localStorage.getItem('backend_token');
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return headers;
-}
 
 const SpringlockWarning: React.FC = () => {
     const { user } = useContext(AuthContext);
@@ -17,7 +11,7 @@ const SpringlockWarning: React.FC = () => {
 
     useEffect(() => {
         if (!user) return;
-        fetch(`${API_BASE}/auth/warning`, { headers: getAuthHeaders() })
+        fetch(`${API_BASE}/auth/warning`, { credentials: 'include' })
             .then(r => r.json())
             .then(data => {
                 if (data.active) {
@@ -39,7 +33,7 @@ const SpringlockWarning: React.FC = () => {
     }, [countdown, warning, dismissed]);
 
     const handleDismiss = async () => {
-        await fetch(`${API_BASE}/auth/warning/dismiss`, { method: 'POST', headers: getAuthHeaders() }).catch(() => {});
+        await fetch(`${API_BASE}/auth/warning/dismiss`, { method: 'POST', credentials: 'include' }).catch(() => {});
         setDismissed(true);
     };
 

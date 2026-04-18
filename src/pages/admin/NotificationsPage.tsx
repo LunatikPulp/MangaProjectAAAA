@@ -2,9 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../services/externalApiService';
 
 const NotificationsPage: React.FC = () => {
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-
   const [emailNotif, setEmailNotif] = useState(false);
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState('587');
@@ -21,7 +18,7 @@ const NotificationsPage: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/admin/settings`, { headers });
+        const res = await fetch(`${API_BASE}/admin/settings`, { credentials: 'include' });
         if (res.ok) {
           const d = await res.json();
           setEmailNotif(d.email_notifications === true || d.email_notifications === 'true');

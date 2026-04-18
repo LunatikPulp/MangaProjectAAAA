@@ -28,8 +28,7 @@ const getActionColor = (action: string): string => {
 };
 
 const AuditPage: React.FC = () => {
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}` };
+  const headers = { 'Content-Type': 'application/json' };
 
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +36,7 @@ const AuditPage: React.FC = () => {
 
   const fetchAudit = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/admin/audit-log`, { headers });
+      const res = await fetch(`${API_BASE}/admin/audit-log`, { headers, credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setEntries(data.map((e: any) => ({

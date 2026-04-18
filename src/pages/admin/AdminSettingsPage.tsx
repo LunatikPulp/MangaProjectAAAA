@@ -10,8 +10,7 @@ interface BackupFile {
 
 const AdminSettingsPage: React.FC = () => {
   const { user, refreshUser } = useContext(AuthContext);
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json' };
 
   const [maintenance, setMaintenance] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -26,7 +25,7 @@ const AdminSettingsPage: React.FC = () => {
 
   const loadBackups = async () => {
     try {
-      const res = await fetch(`${API_BASE}/admin/backups`, { headers });
+      const res = await fetch(`${API_BASE}/admin/backups`, { headers, credentials: 'include' });
       if (res.ok) setBackups(await res.json());
     } catch {}
   };
@@ -34,7 +33,7 @@ const AdminSettingsPage: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/admin/settings`, { headers });
+        const res = await fetch(`${API_BASE}/admin/settings`, { headers, credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           setMaintenance(data.maintenance_mode === true || data.maintenance_mode === 'true');
@@ -50,6 +49,7 @@ const AdminSettingsPage: React.FC = () => {
       const res = await fetch(`${API_BASE}/admin/settings`, {
         method: 'PUT',
         headers,
+        credentials: 'include',
         body: JSON.stringify({ maintenance_mode: !maintenance }),
       });
       if (res.ok) {
@@ -222,7 +222,7 @@ const AdminSettingsPage: React.FC = () => {
                 { label: 'РОЛЬ', value: user?.role || '—', color: '#9b8c3b' },
                 { label: 'API ENDPOINT', value: API_BASE, color: '#d4c8b0' },
                 { label: 'ВЕРСИЯ SPRINGOS', value: 'v3.0', color: '#39ff14', glow: true },
-                { label: 'ТОКЕН', value: token ? 'АКТИВЕН' : 'НЕТ', badge: token ? 'alive' : 'dead' },
+                { label: 'ТОКЕН', value: 'httpOnly', badge: 'alive' },
                 { label: 'СТАТУС СЕРВИСА', value: maintenance ? 'ОБСЛУЖИВАНИЕ' : 'ОНЛАЙН', badge: maintenance ? 'dead' : 'alive' },
               ].map((row, i) => (
                 <div
@@ -288,7 +288,7 @@ const AdminSettingsPage: React.FC = () => {
                 setBackupLoading(true);
                 setBackupMsg('');
                 try {
-                  const res = await fetch(`${API_BASE}/admin/backup`, { method: 'POST', headers });
+                  const res = await fetch(`${API_BASE}/admin/backup`, { method: 'POST', headers, credentials: 'include' });
                   if (res.ok) {
                     const d = await res.json();
                     setBackupMsg(`БЭКАП СОЗДАН: ${d.filename}`);
@@ -350,7 +350,7 @@ const AdminSettingsPage: React.FC = () => {
                                   setBackupLoading(true);
                                   try {
                                     const res = await fetch(`${API_BASE}/admin/backup/restore`, {
-                                      method: 'POST', headers,
+                                      method: 'POST', headers, credentials: 'include',
                                       body: JSON.stringify({ filename: b.filename }),
                                     });
                                     if (res.ok) {
@@ -385,7 +385,7 @@ const AdminSettingsPage: React.FC = () => {
                                 className="springos-btn text-[10px] py-1 px-2"
                                 style={{ borderColor: '#7a1616', color: '#7a1616' }}
                                 onClick={async () => {
-                                  await fetch(`${API_BASE}/admin/backup/${b.filename}`, { method: 'DELETE', headers });
+                                  await fetch(`${API_BASE}/admin/backup/${b.filename}`, { method: 'DELETE', headers, credentials: 'include' });
                                   loadBackups();
                                 }}
                               >

@@ -7,13 +7,6 @@ import { API_BASE } from '../services/externalApiService';
 const BOOKMARKS_STORAGE_KEY_PREFIX = 'bookmarks_v3_';
 const getBookmarksKey = (userId: string | undefined) => `${BOOKMARKS_STORAGE_KEY_PREFIX}${userId || 'guest'}`;
 
-function getAuthHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {};
-    const token = localStorage.getItem('backend_token');
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return headers;
-}
-
 export const useBookmarks = () => {
     const { user } = useContext(AuthContext);
     const { updateUserStatus } = useContext(MangaContext);
@@ -47,10 +40,7 @@ export const useBookmarks = () => {
       if (!user || fetchedRef.current) return;
       fetchedRef.current = true;
 
-      const token = localStorage.getItem('backend_token');
-      if (!token) return;
-
-      fetch(`${API_BASE}/auth/bookmarks`, { headers: getAuthHeaders() })
+      fetch(`${API_BASE}/auth/bookmarks`, { credentials: 'include' })
         .then(res => {
           if (!res.ok) throw new Error('Failed to fetch bookmarks');
           return res.json();

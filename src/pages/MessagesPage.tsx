@@ -178,7 +178,6 @@ const MessagesPage: React.FC = () => {
     const { userId } = useParams<{ userId: string }>();
     const { user } = useContext(AuthContext);
     const navigate = useNavigate();
-    const token = localStorage.getItem('backend_token');
     const isMobile = useIsMobile();
 
     const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -193,18 +192,16 @@ const MessagesPage: React.FC = () => {
 
     // Load conversations
     const loadConversations = useCallback(async () => {
-        if (!token) return;
         try {
-            const res = await fetch(`${API_BASE}/messages/conversations`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API_BASE}/messages/conversations`, { credentials: 'include' });
             if (res.ok) setConversations(await res.json());
         } catch {}
-    }, [token]);
+    }, []);
 
     // Load messages for a chat
     const loadMessages = useCallback(async (uid: string) => {
-        if (!token) return;
         try {
-            const res = await fetch(`${API_BASE}/messages/${uid}?limit=100`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API_BASE}/messages/${uid}?limit=100`, { credentials: 'include' });
             if (res.ok) {
                 const data: Message[] = await res.json();
                 // Detect new messages for glitch animation
@@ -217,12 +214,12 @@ const MessagesPage: React.FC = () => {
                 setMessages(data);
             }
         } catch {}
-    }, [token]);
+    }, []);
 
     // Load chat user info
     useEffect(() => {
         if (!userId) { setChatUser(null); setMessages([]); prevMsgCount.current = 0; return; }
-        fetch(`${API_BASE}/users/${userId}`)
+        fetch(`${API_BASE}/users/${userId}`, { credentials: 'include' })
             .then(r => r.json())
             .then(d => setChatUser({ id: d.id, username: d.username, avatar_url: d.avatar_url, avatar_frame: d.avatar_frame, is_online: d.is_online, last_seen: d.last_seen, chapters_read: d.chapters_read ?? d.stats?.chapters_read ?? 0 }))
             .catch(() => setChatUser(null));
@@ -232,7 +229,7 @@ const MessagesPage: React.FC = () => {
 
     // Refresh chat user online status
     const refreshChatUser = useCallback((uid: string) => {
-        fetch(`${API_BASE}/users/${uid}`)
+        fetch(`${API_BASE}/users/${uid}`, { credentials: 'include' })
             .then(r => r.json())
             .then(d => setChatUser(prev => prev ? { ...prev, is_online: d.is_online, last_seen: d.last_seen } : prev))
             .catch(() => {});
@@ -255,12 +252,13 @@ const MessagesPage: React.FC = () => {
     }, [messages]);
 
     const handleSend = async () => {
-        if (!input.trim() || !token || !userId) return;
+        if (!input.trim() || !userId) return;
         setSending(true);
         try {
             const res = await fetch(`${API_BASE}/messages/${userId}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ text: input.trim() }),
             });
             if (res.ok) {

@@ -195,21 +195,18 @@ const SpringtrapNightmare: React.FC = () => {
 
     // Unlock horror_discoverer achievement — only on first activation, not restore
     if (!isRestore) {
-      const token = localStorage.getItem('backend_token');
-      if (token) {
-        fetch(`${API_BASE}/auth/unlock-achievement?achievement_id=horror_discoverer`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
+      fetch(`${API_BASE}/auth/unlock-achievement?achievement_id=horror_discoverer`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            showToaster('🎃 СЕКРЕТНАЯ АЧИВКА РАЗБЛОКИРОВАНА: Кошмарный исследователь!');
+            window.dispatchEvent(new CustomEvent('achievement-unlocked', { detail: 'horror_discoverer' }));
+          }
         })
-          .then(r => r.json())
-          .then(data => {
-            if (data.success) {
-              showToaster('🎃 СЕКРЕТНАЯ АЧИВКА РАЗБЛОКИРОВАНА: Кошмарный исследователь!');
-              window.dispatchEvent(new CustomEvent('achievement-unlocked', { detail: 'horror_discoverer' }));
-            }
-          })
-          .catch(() => {});
-      }
+        .catch(() => {});
     }
 
     document.documentElement.classList.add('springtrap-nightmare-active');

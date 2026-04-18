@@ -598,6 +598,33 @@ def migrate_comment_moderation():
 
 migrate_comment_moderation()
 
+def migrate_add_indexes():
+    """Add missing indexes for frequently queried columns."""
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    indexes = [
+        ("ix_chapter_likes_user_id", "chapter_likes", "user_id"),
+        ("ix_manga_ratings_user_id", "manga_ratings", "user_id"),
+        ("ix_manga_bookmarks_user_id", "manga_bookmarks", "user_id"),
+        ("ix_manga_comments_user_id", "manga_comments", "user_id"),
+        ("ix_bookmark_user_created", "manga_bookmarks", "user_id, created_at"),
+        ("ix_reading_history_user_read_at", "reading_history", "user_id, read_at"),
+    ]
+    for idx_name, table, columns in indexes:
+        try:
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({columns})")
+        except Exception as e:
+            print(f"[INDEX] Skipped {idx_name}: {e}")
+    conn.commit()
+    conn.close()
+    print("[MIGRATION] Database indexes checked/created")
+
+migrate_add_indexes()
+
 # Seed shop items
 def seed_shop_items():
     db = SessionLocal()
@@ -3566,7 +3593,26 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    from fastapi.responses import JSONResponse
+    response = JSONResponse({"access_token": access_token, "token_type": "bearer"})
+    response.set_cookie(
+        key=auth.COOKIE_NAME,
+        value=access_token,
+        max_age=auth.COOKIE_MAX_AGE,
+        httponly=True,
+        secure=auth.COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+        domain=auth.COOKIE_DOMAIN,
+    )
+    return response
+
+@app.post("/auth/logout", summary="Выход из системы")
+async def logout():
+    from fastapi.responses import JSONResponse
+    response = JSONResponse({"detail": "Logged out"})
+    response.delete_cookie(key=auth.COOKIE_NAME, path="/", domain=auth.COOKIE_DOMAIN)
+    return response
 
 @app.get("/auth/me", summary="Получить текущего пользователя")
 async def get_me(current_user: User = Depends(get_current_user)):
@@ -4995,7 +5041,15 @@ async def google_callback(data: GoogleCodeRequest, db: Session = Depends(get_db)
         data={"sub": user.email},
         expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    from fastapi.responses import JSONResponse as _JSONResponse
+    response = _JSONResponse({"access_token": access_token, "token_type": "bearer"})
+    response.set_cookie(
+        key=auth.COOKIE_NAME, value=access_token,
+        max_age=auth.COOKIE_MAX_AGE, httponly=True,
+        secure=auth.COOKIE_SECURE, samesite="lax",
+        path="/", domain=auth.COOKIE_DOMAIN,
+    )
+    return response
 
 # --- Yandex OAuth ---
 YANDEX_CLIENT_ID = os.environ.get("YANDEX_CLIENT_ID", "")
@@ -5082,7 +5136,15 @@ async def yandex_callback(data: YandexCodeRequest, db: Session = Depends(get_db)
         data={"sub": user.email},
         expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    from fastapi.responses import JSONResponse as _JSONResponse
+    response = _JSONResponse({"access_token": access_token, "token_type": "bearer"})
+    response.set_cookie(
+        key=auth.COOKIE_NAME, value=access_token,
+        max_age=auth.COOKIE_MAX_AGE, httponly=True,
+        secure=auth.COOKIE_SECURE, samesite="lax",
+        path="/", domain=auth.COOKIE_DOMAIN,
+    )
+    return response
 import hmac as _hmac
 import hashlib as _hashlib
 
@@ -5178,7 +5240,15 @@ async def telegram_auth_callback(data: dict = Body(...), db: Session = Depends(g
         data={"sub": user.email},
         expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    from fastapi.responses import JSONResponse as _JSONResponse
+    response = _JSONResponse({"access_token": access_token, "token_type": "bearer"})
+    response.set_cookie(
+        key=auth.COOKIE_NAME, value=access_token,
+        max_age=auth.COOKIE_MAX_AGE, httponly=True,
+        secure=auth.COOKIE_SECURE, samesite="lax",
+        path="/", domain=auth.COOKIE_DOMAIN,
+    )
+    return response
 
 
 @app.post("/auth/telegram/link", summary="Привязать Telegram к текущему аккаунту")

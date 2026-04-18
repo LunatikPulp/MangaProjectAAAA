@@ -31,13 +31,11 @@ const BookmarksPage: React.FC = () => {
     const [showRandom, setShowRandom] = useState(false);
 
     const handleRandom = async () => {
-        const token = localStorage.getItem('backend_token');
-        if (!token) return;
         setRandomLoading(true);
         setShowRandom(true);
         try {
             const res = await fetch(`${API_BASE}/auth/bookmarks/random`, {
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 setRandomResult(await res.json());

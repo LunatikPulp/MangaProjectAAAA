@@ -34,8 +34,7 @@ const UsersPage: React.FC = () => {
   const [bulkAction, setBulkAction] = useState<'ban' | 'unban' | 'role' | ''>('');
   const [bulkRole, setBulkRole] = useState<string>('user');
 
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json' };
 
   const filtered = users.filter(u => {
     if (search && !u.username.toLowerCase().includes(search.toLowerCase()) && !u.email.toLowerCase().includes(search.toLowerCase())) return false;

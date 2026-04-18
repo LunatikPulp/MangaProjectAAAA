@@ -16,11 +16,11 @@ const GoogleCallbackPage: React.FC = () => {
                 const res = await fetch(`${API_BASE}/auth/google/callback`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ code }),
                 });
                 if (res.ok) {
-                    const data = await res.json();
-                    localStorage.setItem('backend_token', data.access_token);
+                    // Токен устанавливается сервером как httpOnly cookie
                     // Очищаем ?code= из URL и переходим на главную
                     window.location.href = window.location.origin + window.location.pathname + '#/';
                 } else {

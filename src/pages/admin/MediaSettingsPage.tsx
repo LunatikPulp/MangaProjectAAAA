@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../services/externalApiService';
 
 const MediaSettingsPage: React.FC = () => {
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json' };
 
   const [cdnProvider, setCdnProvider] = useState('local');
   const [cdnUrl, setCdnUrl] = useState('');
@@ -30,7 +29,7 @@ const MediaSettingsPage: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/admin/settings`, { headers });
+        const res = await fetch(`${API_BASE}/admin/settings`, { headers, credentials: 'include' });
         if (res.ok) {
           const d = await res.json();
           setCdnProvider(d.cdn_provider ?? 'local');
@@ -63,6 +62,7 @@ const MediaSettingsPage: React.FC = () => {
       const res = await fetch(`${API_BASE}/admin/settings`, {
         method: 'PUT',
         headers,
+        credentials: 'include',
         body: JSON.stringify({
           cdn_provider: cdnProvider,
           cdn_url: cdnUrl,
@@ -275,7 +275,7 @@ const MediaSettingsPage: React.FC = () => {
                     onClick={async () => {
                       setBackupRunning(true);
                       try {
-                        const res = await fetch(`${API_BASE}/admin/backup`, { method: 'POST', headers });
+                        const res = await fetch(`${API_BASE}/admin/backup`, { method: 'POST', headers, credentials: 'include' });
                         if (res.ok) {
                           setLastBackupTime(new Date().toISOString());
                         }

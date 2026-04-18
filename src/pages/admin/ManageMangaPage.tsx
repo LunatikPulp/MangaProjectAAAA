@@ -38,9 +38,8 @@ const ManageMangaPage: React.FC<ManageMangaPageProps> = ({ manga }) => {
     useEffect(() => {
         if (activeTab === 'history' && history.length === 0) {
             setHistoryLoading(true);
-            const token = localStorage.getItem('backend_token') || '';
             fetch(`${API_BASE}/admin/audit-log?target=${encodeURIComponent(manga.id)}&limit=100`, {
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             })
                 .then(r => r.ok ? r.json() : [])
                 .then(data => setHistory(Array.isArray(data) ? data : []))

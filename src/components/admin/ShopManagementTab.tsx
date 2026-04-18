@@ -45,8 +45,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const ShopManagementTab: React.FC = () => {
-    const token = localStorage.getItem('backend_token') || '';
-    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const jsonHeaders = { 'Content-Type': 'application/json' };
 
     // Shop items
     const [items, setItems] = useState<ShopItem[]>([]);
@@ -83,7 +82,7 @@ const ShopManagementTab: React.FC = () => {
 
     const fetchPersReqs = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE}/admin/personalization/pending`, { headers });
+            const res = await fetch(`${API_BASE}/admin/personalization/pending`, { credentials: 'include' });
             if (res.ok) setPersReqs(await res.json());
         } catch { /* ignore */ }
     }, []);
@@ -96,13 +95,13 @@ const ShopManagementTab: React.FC = () => {
 
     // CRUD
     const createItem = async () => {
-        const res = await fetch(`${API_BASE}/admin/shop/items`, { method: 'POST', headers, body: JSON.stringify(form) });
+        const res = await fetch(`${API_BASE}/admin/shop/items`, { method: 'POST', headers: jsonHeaders, credentials: 'include', body: JSON.stringify(form) });
         if (res.ok) { setShowForm(false); setForm({ key: '', name: '', description: '', category: 'sticker', price: 0, preview: '', rarity: 'common', css_variables: '{}', block_style: 'none', nickname_effect: 'none', font_family: '' }); fetchItems(); }
     };
 
     const deleteItem = async (key: string) => {
         if (!confirm(`Удалить товар ${key}?`)) return;
-        await fetch(`${API_BASE}/admin/shop/items/${key}`, { method: 'DELETE', headers });
+        await fetch(`${API_BASE}/admin/shop/items/${key}`, { method: 'DELETE', credentials: 'include' });
         fetchItems();
     };
 
@@ -113,7 +112,7 @@ const ShopManagementTab: React.FC = () => {
 
     const saveEdit = async () => {
         if (!editingKey) return;
-        await fetch(`${API_BASE}/admin/shop/items/${editingKey}`, { method: 'PUT', headers, body: JSON.stringify(editForm) });
+        await fetch(`${API_BASE}/admin/shop/items/${editingKey}`, { method: 'PUT', headers: jsonHeaders, credentials: 'include', body: JSON.stringify(editForm) });
         setEditingKey(null);
         fetchItems();
     };
@@ -125,12 +124,12 @@ const ShopManagementTab: React.FC = () => {
         if (!scrapUsername.trim()) { setScrapMsg('Введите юзернейм'); return; }
         if (isNaN(amount) || amount === 0) { setScrapMsg('Введите ненулевую сумму'); return; }
         try {
-            const usersRes = await fetch(`${API_BASE}/admin/users`, { headers });
+            const usersRes = await fetch(`${API_BASE}/admin/users`, { credentials: 'include' });
             if (!usersRes.ok) { setScrapMsg('Ошибка загрузки пользователей'); return; }
             const users = await usersRes.json();
             const target = users.find((u: any) => u.username.toLowerCase() === scrapUsername.trim().toLowerCase());
             if (!target) { setScrapMsg(`Пользователь "${scrapUsername}" не найден`); return; }
-            const res = await fetch(`${API_BASE}/admin/users/${target.id}/scrap`, { method: 'POST', headers, body: JSON.stringify({ amount }) });
+            const res = await fetch(`${API_BASE}/admin/users/${target.id}/scrap`, { method: 'POST', headers: jsonHeaders, credentials: 'include', body: JSON.stringify({ amount }) });
             if (res.ok) {
                 const data = await res.json();
                 setScrapMsg(`Готово! ${target.username} получил донатный Scrap (${data.donated_scrap})`);
@@ -147,11 +146,11 @@ const ShopManagementTab: React.FC = () => {
 
     // Personalization
     const approvePers = async (id: number) => {
-        await fetch(`${API_BASE}/admin/personalization/${id}/approve`, { method: 'PUT', headers });
+        await fetch(`${API_BASE}/admin/personalization/${id}/approve`, { method: 'PUT', credentials: 'include' });
         fetchPersReqs();
     };
     const rejectPers = async (id: number) => {
-        await fetch(`${API_BASE}/admin/personalization/${id}/reject`, { method: 'PUT', headers });
+        await fetch(`${API_BASE}/admin/personalization/${id}/reject`, { method: 'PUT', credentials: 'include' });
         fetchPersReqs();
     };
 
@@ -164,7 +163,7 @@ const ShopManagementTab: React.FC = () => {
             fd.append('file', file);
             const res = await fetch(`${API_BASE}/admin/shop/upload`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
                 body: fd,
             });
             if (res.ok) {

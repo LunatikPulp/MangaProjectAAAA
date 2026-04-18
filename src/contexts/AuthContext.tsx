@@ -38,11 +38,11 @@ export const AuthContext = createContext<AuthContextType>({
   setAuthModalView: () => {},
 });
 
-// Вспомогательная функция: получить данные пользователя с бэкенда по токену
-async function fetchMe(token: string): Promise<User | null> {
+// Fetch current user via httpOnly cookie
+async function fetchMe(): Promise<User | null> {
   try {
     const res = await fetch(`${API_BASE}/auth/me`, {
-      headers: { 'Authorization': `Bearer ${token}` },
+      credentials: 'include',
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -92,36 +92,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     returnTo: undefined,
   });
 
-  // При загрузке — восстанавливаем сессию из localStorage + проверяем токен
+  // On load — restore session from cookie
   useEffect(() => {
     const init = async () => {
       try {
-        const token = localStorage.getItem('backend_token');
-        const storedUser = localStorage.getItem('user');
-
-        if (token) {
-          const backendUser = await fetchMe(token);
-          if (backendUser) {
-            if (storedUser) {
-              try {
-                const parsed = JSON.parse(storedUser);
-                backendUser.subscribedMangaIds = parsed.subscribedMangaIds || [];
-              } catch {}
-            }
-            setUser(backendUser);
-            localStorage.setItem('user', JSON.stringify(backendUser));
-            return;
-          }
+        // Migrate: clear old localStorage token if present
+        if (localStorage.getItem('backend_token')) {
           localStorage.removeItem('backend_token');
         }
 
-        if (storedUser) {
+        const backendUser = await fetchMe();
+        if (backendUser) {
+          const storedUser = localStorage.getItem('user');
+          if (storedUser) {
+            try {
+              const parsed = JSON.parse(storedUser);
+              backendUser.subscribedMangaIds = parsed.subscribedMangaIds || [];
+            } catch {}
+          }
+          setUser(backendUser);
+          localStorage.setItem('user', JSON.stringify(backendUser));
+        } else {
           localStorage.removeItem('user');
         }
       } catch (error) {
         console.error("Failed to restore session", error);
         localStorage.removeItem('user');
-        localStorage.removeItem('backend_token');
       } finally {
         setLoading(false);
       }
@@ -129,18 +125,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     init();
 
     const handleAuthChange = () => {
-      const token = localStorage.getItem('backend_token');
-      if (token) {
-        fetchMe(token).then(u => {
-          if (u) {
-            setUser(prev => {
-              if (prev) u.subscribedMangaIds = prev.subscribedMangaIds || [];
-              return u;
-            });
-            localStorage.setItem('user', JSON.stringify(u));
-          }
-        });
-      }
+      fetchMe().then(u => {
+        if (u) {
+          setUser(prev => {
+            if (prev) u.subscribedMangaIds = prev.subscribedMangaIds || [];
+            return u;
+          });
+          localStorage.setItem('user', JSON.stringify(u));
+        }
+      });
     };
     window.addEventListener('auth-change', handleAuthChange);
     return () => window.removeEventListener('auth-change', handleAuthChange);
@@ -153,24 +146,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const updateUser = async (userData: Partial<User>) => {
     if (!user) return;
-    const token = localStorage.getItem('backend_token');
-    if (token) {
-      try {
-        await fetch(`${API_BASE}/auth/profile`, {
-          method: 'PUT',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(userData),
-        });
-      } catch {}
-    }
+    try {
+      await fetch(`${API_BASE}/auth/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(userData),
+      });
+    } catch {}
     const newUser = { ...user, ...userData };
     updateUserState(newUser);
   };
 
   const refreshUser = async () => {
-    const token = localStorage.getItem('backend_token');
-    if (!token) return;
-    const backendUser = await fetchMe(token);
+    const backendUser = await fetchMe();
     if (backendUser) {
       if (user) {
         backendUser.subscribedMangaIds = user.subscribedMangaIds || [];
@@ -180,14 +169,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const login = async (email: string, pass: string): Promise<void> => {
-    // Логинимся через бэкенд
     const form = new URLSearchParams();
-    form.append('username', email); // бэкенд ожидает email в поле username (OAuth2 форма)
+    form.append('username', email);
     form.append('password', pass);
 
     const res = await fetch(`${API_BASE}/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
       body: form.toString(),
     });
 
@@ -197,21 +186,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       throw new Error(err.detail || 'Неверная почта или пароль.');
     }
 
-    const data = await res.json();
-    localStorage.setItem('backend_token', data.access_token);
-
-    // Получаем профиль пользователя
-    const backendUser = await fetchMe(data.access_token);
+    // Cookie is set by the server — just fetch the user profile
+    const backendUser = await fetchMe();
     if (!backendUser) throw new Error('Не удалось получить данные пользователя.');
 
     updateUserState(backendUser);
   };
 
   const register = async (username: string, email: string, pass: string): Promise<void> => {
-    // Регистрируемся на бэкенде
     const regRes = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ username, email, password: pass }),
     });
 
@@ -220,7 +206,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       throw new Error(err.detail || 'Ошибка регистрации.');
     }
 
-    // Сразу логинимся
+    // Login after registration
     const form = new URLSearchParams();
     form.append('username', email);
     form.append('password', pass);
@@ -228,41 +214,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const tokenRes = await fetch(`${API_BASE}/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
       body: form.toString(),
     });
 
     if (!tokenRes.ok) throw new Error('Регистрация прошла, но не удалось войти. Попробуйте залогиниться.');
 
-    const data = await tokenRes.json();
-    localStorage.setItem('backend_token', data.access_token);
-
-    const backendUser = await fetchMe(data.access_token);
+    const backendUser = await fetchMe();
     if (!backendUser) throw new Error('Не удалось получить данные пользователя.');
 
     updateUserState(backendUser);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {}
     localStorage.removeItem('user');
-    localStorage.removeItem('backend_token');
     setUser(null);
   };
 
   const deleteAccount = async () => {
     if (!user) return;
-    const token = localStorage.getItem('backend_token');
-    if (token) {
-      try {
-        const res = await fetch(`${API_BASE}/auth/account`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          console.error('Failed to delete account:', res.status);
-        }
-      } catch (e) {
-        console.error('Failed to delete account:', e);
+    try {
+      const res = await fetch(`${API_BASE}/auth/account`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        console.error('Failed to delete account:', res.status);
       }
+    } catch (e) {
+      console.error('Failed to delete account:', e);
     }
     localStorage.removeItem(`bookmarks_v2_${user.email}`);
     localStorage.removeItem(`history_${user.email}`);

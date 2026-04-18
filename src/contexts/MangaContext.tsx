@@ -185,13 +185,6 @@ function backendItemToManga(item: any, localCache: Record<string, Partial<Manga>
   };
 }
 
-function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  const token = localStorage.getItem('backend_token');
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return headers;
-}
-
 export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [mangaList, setMangaList] = useState<Manga[]>([]);
   const [loading, setLoading] = useState(true);
@@ -203,7 +196,7 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const fetchMangaList = useCallback(async () => {
     try {
       pageRef.current = 1;
-      const res = await fetch(`${API_BASE}/manga/list?page=1&limit=30`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/manga/list?page=1&limit=30`, { credentials: 'include' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const localCache = getLocalCache();
@@ -224,7 +217,7 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     loadingMore.current = true;
     try {
       const nextPage = pageRef.current + 1;
-      const res = await fetch(`${API_BASE}/manga/list?page=${nextPage}&limit=30`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/manga/list?page=${nextPage}&limit=30`, { credentials: 'include' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const localCache = getLocalCache();
@@ -245,7 +238,7 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const searchMangas = useCallback(async (query: string): Promise<Manga[]> => {
     try {
-      const res = await fetch(`${API_BASE}/manga/list?search=${encodeURIComponent(query)}&limit=20`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/manga/list?search=${encodeURIComponent(query)}&limit=20`, { credentials: 'include' });
       if (!res.ok) return [];
       const data = await res.json();
       const localCache = getLocalCache();
@@ -260,14 +253,14 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (existing && existing.chapters.length > 0) return existing;
 
     try {
-      const res = await fetch(`${API_BASE}/manga/${id}/detail`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/manga/${id}/detail`, { credentials: 'include' });
       if (!res.ok) return existing;
       const item = await res.json();
       const localCache = getLocalCache();
       const manga = backendItemToManga(item, localCache);
 
       // Загружаем главы
-      const chapRes = await fetch(`${API_BASE}/manga/${id}/chapters`, { headers: getAuthHeaders() });
+      const chapRes = await fetch(`${API_BASE}/manga/${id}/chapters`, { credentials: 'include' });
       if (chapRes.ok) {
         const chapData = await chapRes.json();
         manga.chapters = chapData.map((ch: any, idx: number) => normalizeChapter(ch, idx));
@@ -291,7 +284,7 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const fetchMangaChapters = useCallback(async (mangaId: string): Promise<Chapter[]> => {
     try {
-      const res = await fetch(`${API_BASE}/manga/${mangaId}/chapters`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/manga/${mangaId}/chapters`, { credentials: 'include' });
       if (!res.ok) return [];
       const data = await res.json();
       const chapters = data.map((ch: any, idx: number) => normalizeChapter(ch, idx));
@@ -401,23 +394,21 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return newList;
     });
 
-    const token = localStorage.getItem('backend_token');
-    if (token) {
-      fetch(`${API_BASE}/manga/${mangaId}/rate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ rating }),
-      }).then(res => res.json()).then(data => {
-        if (data.average !== undefined) {
-          setMangaList(prev => prev.map(m =>
-            m.id === mangaId ? { ...m, rating: data.average, ratingInfo: { average: data.average, total: data.total, distribution: data.distribution, user_rating: rating } } : m
-          ));
-        }
-        if (data.scrap_earned > 0) {
-          window.dispatchEvent(new CustomEvent('scrap-earned', { detail: { amount: data.scrap_earned, reason: 'оценку манги' } }));
-        }
-      }).catch(err => console.error("Ошибка сохранения оценки:", err));
-    }
+    fetch(`${API_BASE}/manga/${mangaId}/rate`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating }),
+    }).then(res => res.json()).then(data => {
+      if (data.average !== undefined) {
+        setMangaList(prev => prev.map(m =>
+          m.id === mangaId ? { ...m, rating: data.average, ratingInfo: { average: data.average, total: data.total, distribution: data.distribution, user_rating: rating } } : m
+        ));
+      }
+      if (data.scrap_earned > 0) {
+        window.dispatchEvent(new CustomEvent('scrap-earned', { detail: { amount: data.scrap_earned, reason: 'оценку манги' } }));
+      }
+    }).catch(err => console.error("Ошибка сохранения оценки:", err));
   }, []);
 
   const updateUserStatus = useCallback((mangaId: string, userEmail: string, status: BookmarkStatus | null) => {
@@ -445,31 +436,26 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return newList;
     });
 
-    const token = localStorage.getItem('backend_token');
-    if (token) {
-      if (status === null) {
-        fetch(`${API_BASE}/manga/${mangaId}/bookmark`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` },
-        }).catch(err => console.error("Ошибка удаления закладки:", err));
-      } else {
-        fetch(`${API_BASE}/manga/${mangaId}/bookmark`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ status }),
-        }).catch(err => console.error("Ошибка сохранения закладки:", err));
-      }
+    if (status === null) {
+      fetch(`${API_BASE}/manga/${mangaId}/bookmark`, {
+        method: 'DELETE',
+        credentials: 'include',
+      }).catch(err => console.error("Ошибка удаления закладки:", err));
+    } else {
+      fetch(`${API_BASE}/manga/${mangaId}/bookmark`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      }).catch(err => console.error("Ошибка сохранения закладки:", err));
     }
   }, []);
 
   const likeChapter = useCallback(async (mangaId: string, chapterId: string): Promise<'liked' | 'unliked' | null> => {
-      const token = localStorage.getItem('backend_token');
-      if (!token) return null;
-
       try {
           const res = await fetch(`${API_BASE}/chapters/${chapterId}/like?manga_id=${mangaId}`, {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` },
+              credentials: 'include',
           });
           if (!res.ok) return null;
           const data = await res.json();

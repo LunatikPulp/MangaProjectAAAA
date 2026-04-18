@@ -13,9 +13,6 @@ interface Promocode {
 }
 
 const PromocodesPage: React.FC = () => {
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-
   const [promocodes, setPromocodes] = useState<Promocode[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formCode, setFormCode] = useState('');
@@ -29,7 +26,7 @@ const PromocodesPage: React.FC = () => {
 
   const fetchPromocodes = async () => {
     try {
-      const res = await fetch(`${API_BASE}/admin/promocodes`, { headers });
+      const res = await fetch(`${API_BASE}/admin/promocodes`, { credentials: 'include' });
       if (res.ok) {
         const d = await res.json();
         if (Array.isArray(d)) setPromocodes(d);
@@ -45,7 +42,8 @@ const PromocodesPage: React.FC = () => {
     try {
       const res = await fetch(`${API_BASE}/admin/promocodes`, {
         method: 'POST',
-        headers,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code: formCode.toUpperCase(),
           discount_percent: formDiscount,
@@ -78,7 +76,7 @@ const PromocodesPage: React.FC = () => {
   const deletePromo = async (id: number) => {
     if (!confirm('УДАЛИТЬ ПРОМОКОД?')) return;
     try {
-      await fetch(`${API_BASE}/admin/promocodes/${id}`, { method: 'DELETE', headers });
+      await fetch(`${API_BASE}/admin/promocodes/${id}`, { method: 'DELETE', credentials: 'include' });
       fetchPromocodes();
     } catch {}
   };

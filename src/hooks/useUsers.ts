@@ -2,24 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { User } from '../types';
 import { API_BASE } from '../services/externalApiService';
 
-function getToken() {
-    return localStorage.getItem('backend_token');
-}
-
 export const useUsers = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchUsers = useCallback(async () => {
-        const token = getToken();
-        if (!token) {
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         try {
             const res = await fetch(`${API_BASE}/admin/users`, {
-                headers: { 'Authorization': `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 const data = await res.json();
@@ -45,13 +36,13 @@ export const useUsers = () => {
     }, [fetchUsers]);
 
     const updateUserStatus = useCallback(async (email: string, newStatus: 'active' | 'banned') => {
-        const token = getToken();
         const user = users.find(u => u.email === email);
-        if (!user?.id || !token) return;
+        if (!user?.id) return;
         try {
             const res = await fetch(`${API_BASE}/admin/users/${user.id}/status`, {
                 method: 'PUT',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ status: newStatus }),
             });
             if (res.ok) {
@@ -63,13 +54,13 @@ export const useUsers = () => {
     }, [users]);
 
     const updateUserRole = useCallback(async (email: string, role: User['role']) => {
-        const token = getToken();
         const user = users.find(u => u.email === email);
-        if (!user?.id || !token) return;
+        if (!user?.id) return;
         try {
             const res = await fetch(`${API_BASE}/admin/users/${user.id}/role`, {
                 method: 'PUT',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ role }),
             });
             if (res.ok) {

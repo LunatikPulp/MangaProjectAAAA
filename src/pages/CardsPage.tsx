@@ -39,7 +39,6 @@ type FilterRarity = 'all' | 'common' | 'rare' | 'epic' | 'legendary';
 
 const CardsPage: React.FC = () => {
     const { user } = useContext(AuthContext);
-    const token = localStorage.getItem('backend_token');
     const [cards, setCards] = useState<Card[]>([]);
     const [stats, setStats] = useState<CardStats | null>(null);
     const [loading, setLoading] = useState(true);
@@ -47,16 +46,16 @@ const CardsPage: React.FC = () => {
     const [selectedCard, setSelectedCard] = useState<Card | null>(null);
 
     useEffect(() => {
-        if (!token) return;
-        const headers = { Authorization: `Bearer ${token}` };
+        if (!user) return;
+        const opts: RequestInit = { credentials: 'include' };
         Promise.all([
-            fetch(`${API_BASE}/auth/cards`, { headers }).then(r => r.json()),
-            fetch(`${API_BASE}/auth/cards/stats`, { headers }).then(r => r.json()),
+            fetch(`${API_BASE}/auth/cards`, opts).then(r => r.json()),
+            fetch(`${API_BASE}/auth/cards/stats`, opts).then(r => r.json()),
         ]).then(([cardsData, statsData]) => {
             setCards(cardsData);
             setStats(statsData);
         }).finally(() => setLoading(false));
-    }, [token]);
+    }, [user]);
 
     const filteredCards = filter === 'all' ? cards : cards.filter(c => c.rarity === filter);
 

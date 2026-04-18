@@ -50,8 +50,7 @@ const emptyForm = { key: '', name: '', description: '', category: 'sticker', pri
 type Tab = 'items' | 'scrap' | 'requests';
 
 const ShopPageAdmin: React.FC = () => {
-  const token = localStorage.getItem('backend_token') || '';
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json' };
 
   const [activeTab, setActiveTab] = useState<Tab>('items');
   const [items, setItems] = useState<ShopItem[]>([]);
@@ -76,7 +75,7 @@ const ShopPageAdmin: React.FC = () => {
         const fd = new FormData();
         fd.append('file', data.file);
         const res = await fetch(`${API_BASE}/admin/shop/upload`, {
-          method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
+          method: 'POST', credentials: 'include', body: fd,
         });
         if (res.ok) { previewUrl = (await res.json()).url; }
       } catch {} finally { setUploading(false); }
@@ -170,7 +169,7 @@ const ShopPageAdmin: React.FC = () => {
     setUploading(true);
     try {
       const fd = new FormData(); fd.append('file', file);
-      const res = await fetch(`${API_BASE}/admin/shop/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      const res = await fetch(`${API_BASE}/admin/shop/upload`, { method: 'POST', credentials: 'include', body: fd });
       if (res.ok) {
         const data = await res.json();
         if (target === 'create') setForm(prev => ({ ...prev, preview: data.url }));

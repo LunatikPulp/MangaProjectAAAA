@@ -18,10 +18,7 @@ interface FiltersMeta {
     categories: string[];
 }
 
-const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem('backend_token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-};
+const getCredentials = (): RequestInit => ({ credentials: 'include' });
 
 const defaultFilters = {
     type: 'all',
@@ -194,7 +191,7 @@ const CatalogPage: React.FC = () => {
     const fetchData = useCallback(async (page: number, append: boolean = false) => {
         try {
             const query = buildQuery(page);
-            const res = await fetch(`${API_BASE}/manga/list?${query}`, { headers: getAuthHeaders() });
+            const res = await fetch(`${API_BASE}/manga/list?${query}`, getCredentials());
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             const items = data.items.map(normalizeItem);

@@ -34,8 +34,6 @@ interface GenreQuestion {
 type QuizQuestion = CoverQuestion | GenreQuestion;
 
 const QuizPage: React.FC = () => {
-    const token = localStorage.getItem('backend_token');
-
     const [mode, setMode] = useState<QuizMode>('cover');
     const [question, setQuestion] = useState<QuizQuestion | null>(null);
     const [loading, setLoading] = useState(false);
@@ -50,7 +48,7 @@ const QuizPage: React.FC = () => {
         setSelected(null);
         setResult(null);
         try {
-            const res = await fetch(`${API_BASE}/quiz/question?mode=${qMode}`);
+            const res = await fetch(`${API_BASE}/quiz/question?mode=${qMode}`, { credentials: 'include' });
             if (res.ok) {
                 setQuestion(await res.json());
             }
@@ -77,12 +75,10 @@ const QuizPage: React.FC = () => {
         }
 
         try {
-            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-            if (token) headers['Authorization'] = `Bearer ${token}`;
-
             const res = await fetch(`${API_BASE}/quiz/answer`, {
                 method: 'POST',
-                headers,
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ mode: question.mode, answer, correct: correctValue }),
             });
             if (res.ok) {

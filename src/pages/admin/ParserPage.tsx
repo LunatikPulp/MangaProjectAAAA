@@ -146,10 +146,9 @@ const ParserPage: React.FC = () => {
     setCronError(null);
     addLog('ЗАПУСК АВТОМАТИЧЕСКОГО ПАРСИНГА ОБНОВЛЕНИЙ...');
     try {
-      const token = localStorage.getItem('backend_token');
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/admin/cron/trigger`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Ошибка запуска');
       addLog('АВТОПАРСИНГ ЗАПУЩЕН — ПРОВЕРКА ОБНОВЛЕНИЙ С MANGABUFF.RU');

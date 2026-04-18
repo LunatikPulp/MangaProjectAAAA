@@ -28,8 +28,6 @@ const CustomizationDrawer: React.FC<CustomizationDrawerProps> = ({
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
-    const token = localStorage.getItem('backend_token') || '';
-
     // Reset state when drawer opens/closes
     React.useEffect(() => {
         if (isOpen) {
@@ -53,7 +51,7 @@ const CustomizationDrawer: React.FC<CustomizationDrawerProps> = ({
     };
 
     const handleSubmit = async () => {
-        if (!token || !persFile) return;
+        if (!persFile) return;
         setSending(true);
         setMessage(null);
         try {
@@ -63,7 +61,7 @@ const CustomizationDrawer: React.FC<CustomizationDrawerProps> = ({
             url.searchParams.set('type', 'background');
             const res = await fetch(url.toString(), {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
                 body: formData,
             });
             if (res.ok) {

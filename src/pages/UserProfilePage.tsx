@@ -74,8 +74,6 @@ const UserProfilePage: React.FC = () => {
     const { user: currentUser } = useContext(AuthContext);
     const { showToaster } = useContext(ToasterContext);
     const navigate = useNavigate();
-    const token = localStorage.getItem('backend_token');
-
     const [profile, setProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [isFriend, setIsFriend] = useState(false);
@@ -130,15 +128,15 @@ const UserProfilePage: React.FC = () => {
             .then(r => r.json()).catch(() => []);
         const wallP = fetch(`${API_BASE}/auth/wall-comments/${userId}/with-replies?offset=0&limit=10`)
             .then(r => r.json()).catch(() => ({ comments: [], total: 0, has_more: false }));
-        const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
-        const friendP = token
-            ? fetch(`${API_BASE}/friends/check/${userId}`, { headers: authHeaders }).then(r => r.json()).catch(() => ({ is_friend: false }))
+        const authOpts: RequestInit = { credentials: 'include' };
+        const friendP = currentUser
+            ? fetch(`${API_BASE}/friends/check/${userId}`, authOpts).then(r => r.json()).catch(() => ({ is_friend: false }))
             : Promise.resolve(null);
-        const blockP = token
-            ? fetch(`${API_BASE}/blocks/check/${userId}`, { headers: authHeaders }).then(r => r.json()).catch(() => ({ i_blocked: false, they_blocked: false }))
+        const blockP = currentUser
+            ? fetch(`${API_BASE}/blocks/check/${userId}`, authOpts).then(r => r.json()).catch(() => ({ i_blocked: false, they_blocked: false }))
             : Promise.resolve(null);
-        const compatP = token && !isOwnProfile
-            ? fetch(`${API_BASE}/users/${userId}/compatibility`, { headers: authHeaders }).then(r => r.ok ? r.json() : null).catch(() => null)
+        const compatP = currentUser && !isOwnProfile
+            ? fetch(`${API_BASE}/users/${userId}/compatibility`, authOpts).then(r => r.ok ? r.json() : null).catch(() => null)
             : Promise.resolve(null);
 
         Promise.all([profileP, shopP, wallP, friendP, blockP, compatP])
@@ -168,7 +166,7 @@ const UserProfilePage: React.FC = () => {
             })
             .catch(() => setProfile(null))
             .finally(() => setLoading(false));
-    }, [userId, token, isOwnProfile]);
+    }, [userId, currentUser, isOwnProfile]);
 
     useEffect(() => {
         if (!profile?.nickname_font) return;
@@ -204,19 +202,19 @@ const UserProfilePage: React.FC = () => {
     // Initial wall load is handled in the main parallel useEffect above; loadWallComments is used for pagination only
 
     const toggleFriend = async () => {
-        if (!token || !userId) return;
+        if (!userId) return;
         setFriendLoading(true);
         try {
-            const res = await fetch(`${API_BASE}/friends/${userId}`, { method: isFriend ? 'DELETE' : 'POST', headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API_BASE}/friends/${userId}`, { method: isFriend ? 'DELETE' : 'POST', credentials: 'include' });
             if (res.ok) { setIsFriend(!isFriend); showToaster(isFriend ? 'Удалён из друзей' : 'Добавлен в друзья!'); }
         } catch {}
         setFriendLoading(false);
     };
 
     const toggleBlock = async () => {
-        if (!token || !userId) return;
+        if (!userId) return;
         try {
-            const res = await fetch(`${API_BASE}/blocks/${userId}`, { method: iBlocked ? 'DELETE' : 'POST', headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API_BASE}/blocks/${userId}`, { method: iBlocked ? 'DELETE' : 'POST', credentials: 'include' });
             if (res.ok) {
                 setIBlocked(!iBlocked);
                 if (!iBlocked) { setIsFriend(false); showToaster('Добавлен в чёрный список'); }
@@ -226,11 +224,11 @@ const UserProfilePage: React.FC = () => {
     };
 
     const handleWallComment = async () => {
-        if (!wallInput.trim() || !token || !userId) return;
+        if (!wallInput.trim() || !userId) return;
         setWallLoading(true);
         try {
             const res = await fetch(`${API_BASE}/auth/wall-comments/${userId}`, {
-                method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: wallInput.trim() }),
             });
             if (res.ok) {
@@ -244,10 +242,10 @@ const UserProfilePage: React.FC = () => {
     };
 
     const handleReply = async (commentId: number) => {
-        if (!replyText.trim() || !token) return;
+        if (!replyText.trim()) return;
         try {
             const res = await fetch(`${API_BASE}/auth/wall-comments/${commentId}/reply`, {
-                method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: replyText.trim() }),
             });
             if (res.ok) {
@@ -260,17 +258,15 @@ const UserProfilePage: React.FC = () => {
     };
 
     const handleDeleteWallComment = async (id: number) => {
-        if (!token) return;
         try {
-            await fetch(`${API_BASE}/auth/wall-comments/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+            await fetch(`${API_BASE}/auth/wall-comments/${id}`, { method: 'DELETE', credentials: 'include' });
             setWallComments(prev => prev.filter(c => c.id !== id));
         } catch {}
     };
 
     const handleDeleteReply = async (replyId: number, commentId: number) => {
-        if (!token) return;
         try {
-            await fetch(`${API_BASE}/auth/wall-replies/${replyId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+            await fetch(`${API_BASE}/auth/wall-replies/${replyId}`, { method: 'DELETE', credentials: 'include' });
             setWallComments(prev => prev.map(c => c.id === commentId ? { ...c, replies: (c.replies || []).filter(r => r.id !== replyId) } : c));
         } catch {}
     };
