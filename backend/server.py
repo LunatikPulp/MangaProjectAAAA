@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import shutil
 import requests
 from urllib.parse import urljoin, urlparse
 from dotenv import load_dotenv
@@ -29,9 +30,20 @@ import hashlib
 from fastapi.staticfiles import StaticFiles
 from datetime import timedelta, datetime
 
+import redis as _redis
+import sqlite3
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+try:
+    redis_client = _redis.from_url(REDIS_URL, decode_responses=True)
+    redis_client.ping()
+except Exception:
+    redis_client = None
+    print("[WARN] Redis недоступен — кэширование отключено")
+
 # Local imports
 from database import engine, SessionLocal, Base, get_db, DB_PATH
-from models import User, ChapterView, ChapterLike, ChapterMeta, MangaItem, MangaView, MangaRating, MangaBookmark, ReadingHistory, Chapter, WallComment, MangaComment, CommentLike, Friendship, UserBlock, DirectMessage, WallCommentReply, UserNotification, ShopItem, UserPurchase, PersonalizationRequest, PaymentTransaction
+from badword_filter import check_comment, shadow_replace
+from models import User, ChapterView, ChapterLike, ChapterMeta, MangaItem, MangaView, MangaRating, MangaBookmark, ReadingHistory, Chapter, WallComment, MangaComment, CommentLike, CommentReport, UserWarning, Friendship, UserBlock, DirectMessage, WallCommentReply, UserNotification, ShopItem, UserPurchase, PersonalizationRequest, PaymentTransaction, SiteSetting, AuditLog, ScrapTransaction, Promocode, LoginHistory, Report, PasswordResetToken
 import auth
 from auth import get_current_user, get_optional_user, get_password_hash, verify_password, create_access_token
 
@@ -71,6 +83,7 @@ def migrate_users_table():
         "notify_vk": "INTEGER DEFAULT 0",
         "notify_telegram": "INTEGER DEFAULT 0",
         "google_id": "TEXT DEFAULT ''",
+        "yandex_id": "TEXT DEFAULT ''",
     }
     for col_name, col_type in new_cols.items():
         if col_name not in columns:
@@ -370,6 +383,45 @@ def migrate_profile_background_url_column():
 
 migrate_profile_background_url_column()
 
+def migrate_telegram_columns():
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(users)")
+    user_cols = {row[1] for row in cursor.fetchall()}
+    if "telegram_id" not in user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN telegram_id TEXT DEFAULT ''")
+        print("[MIGRATION] Добавлена колонка telegram_id в users")
+    if "telegram_username" not in user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN telegram_username TEXT DEFAULT ''")
+        print("[MIGRATION] Добавлена колонка telegram_username в users")
+    conn.commit()
+    conn.close()
+
+migrate_telegram_columns()
+
+def seed_telegram_bot_token():
+    env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not env_token:
+        return
+    try:
+        db = SessionLocal()
+        existing = db.query(SiteSetting).filter(SiteSetting.key == "telegram_bot_token").first()
+        if existing:
+            if not existing.value:
+                existing.value = env_token
+        else:
+            db.add(SiteSetting(key="telegram_bot_token", value=env_token))
+        db.commit()
+        db.close()
+    except:
+        pass
+
+seed_telegram_bot_token()
+
 # Миграция: добавляем updated_at в manga_items + индексы для локальных метрик
 def migrate_local_metrics():
     import sqlite3
@@ -413,12 +465,143 @@ def migrate_local_metrics():
 
 migrate_local_metrics()
 
+def migrate_manga_hidden_column():
+    db = SessionLocal()
+    cursor = db.connection().connection.cursor()
+    try:
+        cursor.execute("PRAGMA table_info(manga_items)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if "hidden" not in columns:
+            cursor.execute("ALTER TABLE manga_items ADD COLUMN hidden BOOLEAN DEFAULT 0")
+            print("[MIGRATION] Добавлена колонка hidden в manga_items")
+    finally:
+        db.close()
+
+migrate_manga_hidden_column()
+
+
+# ── Slug generation ──────────────────────────────────────────────
+
+_TRANSLIT = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+}
+
+def generate_slug(title: str) -> str:
+    """Transliterate title to URL-friendly slug."""
+    result = []
+    for ch in title.lower():
+        if ch in _TRANSLIT:
+            result.append(_TRANSLIT[ch])
+        elif ch.isascii() and (ch.isalnum() or ch == '-'):
+            result.append(ch)
+        else:
+            result.append('-')
+    slug = re.sub(r'-+', '-', ''.join(result)).strip('-')
+    return slug[:120]
+
+
+def ensure_unique_slug(cursor, slug: str, manga_id: str) -> str:
+    """Ensure slug uniqueness, append hash prefix if collision."""
+    cursor.execute("SELECT manga_id FROM manga_items WHERE slug = ? AND manga_id != ?", (slug, manga_id))
+    if cursor.fetchone():
+        slug = f"{slug}-{manga_id[:8]}"
+    return slug
+
+
+def migrate_manga_slug_column():
+    import sqlite3
+    if not os.path.exists(DB_PATH):
+        return
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(manga_items)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "slug" not in columns:
+        cursor.execute("ALTER TABLE manga_items ADD COLUMN slug TEXT")
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_manga_items_slug ON manga_items(slug)")
+        print("[MIGRATION] Добавлена колонка slug в manga_items")
+    # Backfill slugs for rows that don't have one
+    cursor.execute("SELECT id, manga_id, title FROM manga_items WHERE slug IS NULL OR slug = ''")
+    rows = cursor.fetchall()
+    if rows:
+        print(f"[MIGRATION] Заполняю slug для {len(rows)} тайтлов...")
+        for row_id, mid, title in rows:
+            slug = generate_slug(title)
+            if not slug:
+                slug = mid[:16]
+            slug = ensure_unique_slug(cursor, slug, mid)
+            cursor.execute("UPDATE manga_items SET slug = ? WHERE id = ?", (slug, row_id))
+        print(f"[MIGRATION] Slug заполнен для {len(rows)} тайтлов")
+    conn.commit()
+    conn.close()
+
+migrate_manga_slug_column()
+
+
+def resolve_manga(db, identifier: str):
+    """Resolve MangaItem by manga_id (MD5 hex) or slug."""
+    if re.fullmatch(r'[0-9a-f]{32}', identifier):
+        return db.query(MangaItem).filter(MangaItem.manga_id == identifier).first()
+    return db.query(MangaItem).filter(MangaItem.slug == identifier).first()
+
+
+def migrate_comment_moderation():
+    import sqlite3
+    db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(manga_comments)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "status" not in columns:
+        cursor.execute("ALTER TABLE manga_comments ADD COLUMN status TEXT DEFAULT 'approved'")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_manga_comments_status ON manga_comments(status)")
+        print("[MIGRATION] Добавлена колонка status в manga_comments")
+    cursor.execute("PRAGMA table_info(users)")
+    columns = {row[1] for row in cursor.fetchall()}
+    for col_name, col_type in [("warnings_count", "INTEGER DEFAULT 0"), ("warning_shown_at", "DATETIME DEFAULT NULL"), ("muted_until", "DATETIME DEFAULT NULL")]:
+        if col_name not in columns:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+            print(f"[MIGRATION] Добавлена колонка {col_name} в users")
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='comment_reports'")
+    if not cursor.fetchone():
+        cursor.execute("""
+            CREATE TABLE comment_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                comment_id INTEGER NOT NULL,
+                reporter_id INTEGER NOT NULL,
+                reason TEXT DEFAULT 'spam',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(comment_id, reporter_id)
+            )
+        """)
+        print("[MIGRATION] Создана таблица comment_reports")
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_warnings'")
+    if not cursor.fetchone():
+        cursor.execute("""
+            CREATE TABLE user_warnings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                admin_id INTEGER NOT NULL,
+                reason TEXT DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        print("[MIGRATION] Создана таблица user_warnings")
+    conn.commit()
+    conn.close()
+
+migrate_comment_moderation()
+
 # Seed shop items
 def seed_shop_items():
     db = SessionLocal()
     try:
-        db.query(ShopItem).filter(ShopItem.owner_id == None).delete()
-        db.commit()
         items = [
             # Рамки для аватара (разблокируются по уровням)
             ShopItem(key="frame_rusty_gear", name="Ржавая Шестерня", description="Разблокируется на 5 уровне", category="frame", price=0, preview="/Frames_lvl/Rusty_gear.png", rarity="common", required_level=5),
@@ -464,13 +647,12 @@ def seed_shop_items():
                      block_style="system-crash", nickname_effect="system-crash", font_family="VT323"),
             ShopItem(key="skin_phantom", name="Фантом", description="Ghost in the Machine — аномалия в системе. Нестабильные голограммы, хроматическая аберрация, призрачные эхо.", category="skin", price=15000, preview="#00FFFF",
                      rarity="mythic", css_variables='{"--profile-accent":"#00FFFF","--profile-accent-rgb":"0 255 255","--profile-glow":"#00FFFF","--profile-glow-rgb":"0 255 255","--profile-surface":"#000000","--profile-border":"rgba(0,255,255,0.08)","--profile-badge-bg":"rgba(0,255,255,0.04)"}',
-                     block_style="phantom", nickname_effect="phantom", font_family="Creepster"),
+                     block_style="phantom", nickname_effect="phantom", font_family="Creeposter"),
             # SPRINGPRO подписка
             ShopItem(key="springpro_month", name="SPRINGPRO 1 мес", description="Все привилегии на 30 дней: без рекламы, эксклюзивные рамки, +50% Scrap", category="springpro", price=1200, preview="⭐"),
             ShopItem(key="springpro_3month", name="SPRINGPRO 3 мес", description="Всё то же, но выгоднее! Экономия ~17%", category="springpro", price=3000, preview="🌟"),
             ShopItem(key="springpro_year", name="SPRINGPRO 1 год", description="Максимальная выгода: экономия ~41%, эксклюзивный титул", category="springpro", price=8500, preview="👑"),
         ]
-        # Import scraped Steam frames from JSON
         import json as _json
         frames_json_path = os.path.join(os.path.dirname(__file__), '..', 'public', 'Frames_shop', 'frames_data.json')
         if os.path.exists(frames_json_path):
@@ -486,13 +668,33 @@ def seed_shop_items():
             print(f"[SEED] Загружено {len(steam_frames)} Steam рамок из frames_data.json")
 
         for item in items:
-            db.add(item)
+            existing = db.query(ShopItem).filter(ShopItem.key == item.key).first()
+            if existing:
+                for col in ['name', 'description', 'category', 'price', 'preview', 'rarity', 'required_level', 'css_variables', 'block_style', 'nickname_effect', 'font_family']:
+                    if getattr(item, col, None) is not None:
+                        setattr(existing, col, getattr(item, col))
+            else:
+                db.add(item)
         db.commit()
-        print(f"[SEED] Добавлено {len(items)} товаров в магазин")
+        print(f"[SEED] Магазин обновлён ({len(items)} айтемов)")
+    except Exception as e:
+        print(f"[SEED] Ошибка: {e}")
+        db.rollback()
     finally:
         db.close()
 
 seed_shop_items()
+
+
+def init_fts5():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS manga_fts USING fts5(title, content='manga_items', content_rowid=rowid)")
+    conn.execute("INSERT INTO manga_fts(manga_fts) VALUES('rebuild')")
+    conn.commit()
+    conn.close()
+    print("[FTS5] Полнотекстовый индекс создан")
+
+init_fts5()
 
 
 def upsert_chapters(db: Session, manga_id: str, chapters_list: list):
@@ -724,6 +926,20 @@ class RoleUpdate(BaseModel):
 class StatusUpdate(BaseModel):
     status: str
 
+class PromocodeCreate(BaseModel):
+    code: str
+    discount_percent: int = 0
+    fixed_scrap: int = 0
+    expires_at: Optional[str] = None
+    usage_limit: int = 100
+    active: bool = True
+
+class ReportCreate(BaseModel):
+    manga_id: str
+    manga_title: str = ""
+    reason: str = ""
+    message: str = ""
+
 class MangaResponse(BaseModel):
     title: str
     alternative_titles: Dict[str, str] = {}
@@ -754,9 +970,16 @@ async def lifespan(app: FastAPI):
     global browser_pool
     print("🚀 Запуск сервера парсера манги...")
     browser_pool = await async_playwright().start()
+
+    # Запуск cron-задач
+    from cron_tasks import cron_manager
+    cron_manager.start()
+    print("⏰ Cron-задачи запущены")
+
     yield
     # Shutdown
     print("🛑 Остановка сервера...")
+    cron_manager.stop()
     if browser_pool:
         await browser_pool.stop()
 
@@ -786,10 +1009,63 @@ PAYPALYCH_API_KEY = os.environ.get("PAYPALYCH_API_KEY", "")
 PAYPALYCH_SHOP_ID = os.environ.get("PAYPALYCH_SHOP_ID", "")
 PAYPALYCH_SECRET = os.environ.get("PAYPALYCH_SECRET", "")
 
+@app.middleware("http")
+async def redis_online_tracker(request: Request, call_next):
+    ip = request.client.host if request.client else "unknown"
+    now_ts = int(time())
+    try:
+        if redis_client:
+            pipe = redis_client.pipeline()
+            pipe.sadd("online_ips", ip)
+            pipe.expire("online_ips", 300)
+            pipe.execute()
+    except Exception:
+        pass
+    response = await call_next(request)
+    return response
+
 def is_springpro_active(user: User) -> bool:
     if not user.subscription_expires_at:
         return False
     return user.subscription_expires_at > datetime.utcnow()
+
+
+def apply_mute(author: User, db, reason_text: str, manga_title: str, comment_text: str, manga_id: str, admin_user=None):
+    author.warnings_count = (author.warnings_count or 0) + 1
+    author.warning_shown_at = datetime.utcnow()
+    stages_raw = get_setting_value("mute_stages", "1,7,30,0")
+    stages = [int(s.strip()) for s in stages_raw.split(",") if s.strip()]
+    stage_idx = min(author.warnings_count - 1, len(stages) - 1)
+    mute_days = stages[stage_idx] if stage_idx < len(stages) else 0
+
+    if mute_days == 0:
+        author.muted_until = datetime(2099, 1, 1)
+        mute_label = "вечный мут"
+    else:
+        from datetime import timedelta as _td
+        author.muted_until = datetime.utcnow() + _td(days=mute_days)
+        mute_label = f"мут на {mute_days} дн."
+
+    if author.warnings_count >= len(stages) and mute_days > 0:
+        year_ago = datetime.utcnow() - __import__('datetime').timedelta(days=365)
+        if author.warning_shown_at and any(
+            w.created_at and w.created_at > year_ago
+            for w in db.query(UserWarning).filter(UserWarning.user_id == author.id).all()
+        ):
+            author.muted_until = datetime(2099, 1, 1)
+            mute_label = "вечный мут (повтор в течение года)"
+
+    notif_msg = (
+        f'<b>🔇 {mute_label}</b><br>'
+        f'Причина: <span style="color:#ff4444">{reason_text}</span><br>'
+        f'Тайтл: <a href="/manga/{manga_id}" style="color:#6cacff">{manga_title}</a><br>'
+        f'Удалённый комментарий: <i>"{comment_text[:100]}{"..." if len(comment_text) > 100 else ""}"</i><br>'
+        f'Предупреждение {author.warnings_count}/{len(stages)}<br>'
+        f'<span style="color:#ff6666">При повторных нарушениях — более строгий мут</span>'
+    )
+    create_notification(db, author.id, notif_msg, f"/manga/{manga_id}", "warning")
+    actor_label = admin_user.username if admin_user else "SYSTEM"
+    log_admin_action(db, admin_user, f"МУТ {mute_label}", f"{author.username}: {reason_text} в {manga_title} ({author.warnings_count}/{len(stages)})")
 
 # Раздаём файлы из папки "manga" по адресу /static
 app.mount("/static", StaticFiles(directory=MANGA_DIR), name="static")
@@ -800,11 +1076,83 @@ app.mount("/Frames_shop", StaticFiles(directory=FRAMES_SHOP_DIR), name="frames_s
 # 👇 Разрешаем фронту обращаться к API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # для отладки — можно потом ограничить ["http://localhost:5173"]
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 👇 Security middleware (rate limiting, IP blacklist, SSL redirect)
+from security_middleware import SecurityMiddleware
+app.add_middleware(SecurityMiddleware, db_session_factory=SessionLocal)
+
+
+def get_setting_value(key: str, default: str = "false") -> str:
+    try:
+        db = SessionLocal()
+        s = db.query(SiteSetting).filter(SiteSetting.key == key).first()
+        db.close()
+        return s.value if s else default
+    except:
+        return default
+
+
+MAINTENANCE_BYPASS_COOKIE = "mnt_bypass"
+
+@app.middleware("http")
+async def maintenance_middleware(request: Request, call_next):
+    maintenance = get_setting_value("maintenance_mode", "false") == "true"
+    if maintenance:
+        allowed_paths = ["/auth/login", "/token", "/auth/me", "/admin/settings",
+                         "/admin/maintenance-status", "/admin/maintenance-bypass",
+                         "/docs", "/openapi.json"]
+        is_admin = False
+        # Проверяем bypass: cookie или query-параметр
+        bypass_key = get_setting_value("maintenance_bypass_key", "")
+        has_bypass = bypass_key and (
+            request.cookies.get(MAINTENANCE_BYPASS_COOKIE) == bypass_key
+            or request.query_params.get("mnt_bypass") == bypass_key
+        )
+        try:
+            token = request.headers.get("authorization", "").replace("Bearer ", "")
+            if token:
+                payload = auth.decode_token(token)
+                if payload:
+                    db = SessionLocal()
+                    email = payload.get("sub")
+                    user = db.query(User).filter(User.email == email).first()
+                    db.close()
+                    is_admin = user and user.role == "admin"
+        except:
+            pass
+        if not is_admin and not has_bypass and not any(request.url.path.startswith(p) for p in allowed_paths):
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=503, content={"detail": "Сайт на техническом обслуживании. Скоро вернёмся."})
+    response = await call_next(request)
+    return response
+
+
+@app.get("/admin/maintenance-status", summary="Публичный статус тех. работ")
+async def maintenance_status():
+    """Без авторизации — нужен фронтенду для блокировки UI."""
+    return {"maintenance": get_setting_value("maintenance_mode", "false") == "true"}
+
+
+@app.get("/admin/maintenance-bypass", summary="Секретный bypass для админа")
+async def maintenance_bypass(request: Request, key: str = Query("")):
+    """Проверяет динамический ключ и редиректит на фронтенд с bypass-токеном в hash."""
+    stored_key = get_setting_value("maintenance_bypass_key", "")
+    if not stored_key or key != stored_key:
+        raise HTTPException(status_code=404, detail="Not found")
+    # Определяем URL фронтенда
+    host = request.headers.get("host", "localhost:8000")
+    if "localhost" in host or "127.0.0.1" in host:
+        frontend_url = "http://localhost:5173"
+    else:
+        frontend_url = f"https://{host.split(':')[0]}"
+    from fastapi.responses import RedirectResponse
+    # Передаём ключ через hash — фронтенд прочитает и сохранит в sessionStorage
+    return RedirectResponse(url=f"{frontend_url}/?mnt_bypass={stored_key}#/login", status_code=302)
 
 class FastMangaParser:
     def __init__(self, max_workers: int = 10):
@@ -2184,10 +2532,19 @@ async def get_manga_list(
     chapters_min: Optional[int] = Query(None),
     chapters_max: Optional[int] = Query(None),
 ):
+    cache_key = f"manga_list:{page}:{limit}:{sort}:{manga_type}:{status}:{genre}:{year}:{search}:{age_rating}:{category}:{rating_min}:{rating_max}:{year_min}:{year_max}:{chapters_min}:{chapters_max}"
+    if redis_client:
+        cached = redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+
     from sqlalchemy import func
     from collections import Counter
 
     query = db.query(MangaItem)
+
+    if not (current_user and current_user.role == "admin"):
+        query = query.filter(MangaItem.hidden != True)
 
     # Фильтры
     if manga_type and manga_type != "all":
@@ -2199,7 +2556,17 @@ async def get_manga_list(
     if genre:
         query = query.filter(MangaItem.genres.contains(genre))
     if search:
-        query = query.filter(MangaItem.title.ilike(f"%{search}%"))
+        _conn = sqlite3.connect(DB_PATH)
+        try:
+            _rows = _conn.execute("SELECT rowid FROM manga_fts WHERE manga_fts MATCH ? ORDER BY rank LIMIT 5000", (search,)).fetchall()
+            _ids = [str(r[0]) for r in _rows]
+        except Exception:
+            _ids = []
+        _conn.close()
+        if _ids:
+            query = query.filter(MangaItem.id.in_([int(i) for i in _ids]))
+        else:
+            query = query.filter(MangaItem.title.ilike(f"%{search}%"))
     if age_rating and age_rating != "all":
         query = query.filter(MangaItem.additional_info.contains(age_rating))
     if category and category != "all":
@@ -2348,6 +2715,7 @@ async def get_manga_list(
 
         result.append({
             "manga_id": manga_id,
+            "slug": item.slug or manga_id,
             "title": item.title,
             "description": item.description,
             "cover_url": cover_url,
@@ -2369,14 +2737,18 @@ async def get_manga_list(
             },
             "bookmark_counts": bookmark_counts,
             "user_bookmark": user_bookmarks_map.get(manga_id),
+            "hidden": item.hidden or False,
         })
-    return {
+    response = {
         "items": result,
         "total": total_count,
         "page": page,
         "limit": limit,
         "pages": (total_count + limit - 1) // limit,
     }
+    if redis_client:
+        redis_client.setex(cache_key, 90, json.dumps(response, default=str))
+    return response
 
 
 @app.get("/manga/{manga_id}/detail", summary="Получить одну мангу по ID")
@@ -2387,32 +2759,34 @@ async def get_manga_detail(
 ):
     from sqlalchemy import func
     from collections import Counter
-    item = db.query(MangaItem).filter(MangaItem.manga_id == manga_id).first()
+    item = resolve_manga(db, manga_id)
     if not item:
         raise HTTPException(status_code=404, detail="Манга не найдена")
+    real_id = item.manga_id
 
-    manga_ratings = db.query(MangaRating).filter(MangaRating.manga_id == manga_id).all()
+    manga_ratings = db.query(MangaRating).filter(MangaRating.manga_id == real_id).all()
     avg_rating = round(sum(r.rating for r in manga_ratings) / len(manga_ratings), 2) if manga_ratings else 0
     rating_distribution = {}
     for r in manga_ratings:
         rating_distribution[str(r.rating)] = rating_distribution.get(str(r.rating), 0) + 1
     user_rating = None
     if current_user:
-        ur = db.query(MangaRating).filter(MangaRating.manga_id == manga_id, MangaRating.user_id == current_user.id).first()
+        ur = db.query(MangaRating).filter(MangaRating.manga_id == real_id, MangaRating.user_id == current_user.id).first()
         if ur: user_rating = ur.rating
 
-    bookmarks = db.query(MangaBookmark).filter(MangaBookmark.manga_id == manga_id).all()
+    bookmarks = db.query(MangaBookmark).filter(MangaBookmark.manga_id == real_id).all()
     bookmark_counts = Counter(b.status for b in bookmarks)
     user_bookmark = None
     if current_user:
-        ub = db.query(MangaBookmark).filter(MangaBookmark.manga_id == manga_id, MangaBookmark.user_id == current_user.id).first()
+        ub = db.query(MangaBookmark).filter(MangaBookmark.manga_id == real_id, MangaBookmark.user_id == current_user.id).first()
         if ub: user_bookmark = ub.status
 
-    views_count = db.query(func.count(MangaView.id)).filter(MangaView.manga_id == manga_id).scalar() or 0
-    chapter_count = db.query(func.count(Chapter.id)).filter(Chapter.manga_id == manga_id).scalar() or 0
+    views_count = db.query(func.count(MangaView.id)).filter(MangaView.manga_id == real_id).scalar() or 0
+    chapter_count = db.query(func.count(Chapter.id)).filter(Chapter.manga_id == real_id).scalar() or 0
 
     return {
-        "manga_id": manga_id,
+        "manga_id": real_id,
+        "slug": item.slug or real_id,
         "title": item.title,
         "description": item.description,
         "cover_url": item.cover_url,
@@ -2444,15 +2818,15 @@ async def get_manga_chapters(
     current_user: Optional[User] = Depends(get_optional_user)
 ):
     from collections import Counter
-    chapters = chapters_from_db(db, manga_id)
-    if not chapters:
-        item = db.query(MangaItem).filter(MangaItem.manga_id == manga_id).first()
-        if item:
-            chapters = safe_json_load(item.chapters, [])
+    item = resolve_manga(db, manga_id)
+    real_id = item.manga_id if item else manga_id
+    chapters = chapters_from_db(db, real_id)
+    if not chapters and item:
+        chapters = safe_json_load(item.chapters, [])
 
     # Обогащаем views/likes
-    likes = db.query(ChapterLike.chapter_id).filter(ChapterLike.manga_id == manga_id).all()
-    views = db.query(ChapterView.chapter_id).filter(ChapterView.manga_id == manga_id).all()
+    likes = db.query(ChapterLike.chapter_id).filter(ChapterLike.manga_id == real_id).all()
+    views = db.query(ChapterView.chapter_id).filter(ChapterView.manga_id == real_id).all()
     likes_counter = Counter(cid for (cid,) in likes)
     views_counter = Counter(cid for (cid,) in views)
 
@@ -2517,9 +2891,10 @@ async def save_manga(data: MangaSaveRequest, db: Session = Depends(get_db)):
 
 @app.delete("/manga/{manga_id}", summary="Удалить мангу из библиотеки")
 async def delete_manga(manga_id: str, db: Session = Depends(get_db)):
-    item = db.query(MangaItem).filter(MangaItem.manga_id == manga_id).first()
+    item = resolve_manga(db, manga_id)
     if not item:
         raise HTTPException(status_code=404, detail="Манга не найдена")
+    manga_id = item.manga_id
     # Каскадное удаление всех связанных данных
     db.query(ChapterLike).filter(ChapterLike.manga_id == manga_id).delete()
     db.query(ChapterView).filter(ChapterView.manga_id == manga_id).delete()
@@ -2546,6 +2921,42 @@ async def delete_manga(manga_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "deleted", "manga_id": manga_id}
 
+
+@app.patch("/admin/manga/{manga_id}/visibility", summary="Переключить видимость манги")
+async def toggle_manga_visibility(manga_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+    item = resolve_manga(db, manga_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Манга не найдена")
+    manga_id = item.manga_id
+    item.hidden = not (item.hidden or False)
+    db.commit()
+    action = "СКРЫТИЕ МАНГИ" if item.hidden else "ПОКАЗ МАНГИ"
+    log_admin_action(db, current_user, action, f"{item.title} ({manga_id})")
+    return {"manga_id": manga_id, "hidden": item.hidden}
+
+
+@app.delete("/admin/manga/bulk", summary="Массовое удаление манг")
+async def bulk_delete_manga(ids: list[str] = Body(..., embed=True), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+    for manga_id in ids:
+        item = db.query(MangaItem).filter(MangaItem.manga_id == manga_id).first()
+        if item:
+            db.query(ChapterLike).filter(ChapterLike.manga_id == manga_id).delete()
+            db.query(ChapterView).filter(ChapterView.manga_id == manga_id).delete()
+            db.query(ChapterMeta).filter(ChapterMeta.manga_id == manga_id).delete()
+            db.query(MangaView).filter(MangaView.manga_id == manga_id).delete()
+            db.query(MangaRating).filter(MangaRating.manga_id == manga_id).delete()
+            db.query(MangaBookmark).filter(MangaBookmark.manga_id == manga_id).delete()
+            db.query(ReadingHistory).filter(ReadingHistory.manga_id == manga_id).delete()
+            db.query(Chapter).filter(Chapter.manga_id == manga_id).delete()
+            db.delete(item)
+    db.commit()
+    log_admin_action(db, current_user, "УДАЛЕНИЕ МАНГИ", f"{len(ids)} шт.")
+    return {"status": "deleted", "count": len(ids)}
+
 @app.post("/manga/{manga_id}/view", summary="Засчитать просмотр тайтла")
 async def add_manga_view(
     manga_id: str,
@@ -2553,6 +2964,8 @@ async def add_manga_view(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ):
+    _item = resolve_manga(db, manga_id)
+    if _item: manga_id = _item.manga_id
     ip = request.client.host if request else "0.0.0.0"
 
     if current_user:
@@ -2787,6 +3200,10 @@ async def mass_parse_manga(
     results = await asyncio.gather(*tasks)
 
     ok_count = sum(1 for r in results if r["status"] == "ok")
+    if ok_count > 0:
+        titles = [r.get("title", "?") for r in results if r["status"] == "ok"]
+        preview = ", ".join(titles[:3]) + ("..." if len(titles) > 3 else "")
+        notify_telegram_event(db, "new_chapter", f"📚 <b>Импорт завершён</b>\nУспешно: {ok_count} из {len(all_urls)}\n{preview}")
     return {
         "total": len(all_urls),
         "success": ok_count,
@@ -2936,18 +3353,20 @@ def _is_uniform_strip(img, x0, y0, x1, y1, tolerance=40):
     return True, avg_c
 
 def replace_watermark(image_bytes: bytes, wm_mode: str = "") -> bytes:
-    """Replace mangabuff.ru watermark strips.
-    wm_mode: 'top' = text top only, 'bottom' = text bottom only, 'both' = text both. '' = do nothing."""
-    if not wm_mode:
-        return image_bytes
-
+    """Replace mangabuff.ru watermark strips and convert to WebP.
+    wm_mode: 'top' = text top only, 'bottom' = text bottom only, 'both' = text both. '' = convert to WebP only."""
     try:
         img = Image.open(io.BytesIO(image_bytes))
-        orig_format = img.format or "JPEG"
         width, height = img.size
 
         if width < 100 or height < 200:
             return image_bytes
+
+        WEBP_MAX = 16383
+        if width > WEBP_MAX or height > WEBP_MAX:
+            ratio = min(WEBP_MAX / width, WEBP_MAX / height)
+            img = img.resize((int(width * ratio), int(height * ratio)), Image.LANCZOS)
+            width, height = img.size
 
         if img.mode == "RGBA":
             bg = Image.new("RGB", img.size, (255, 255, 255))
@@ -2956,60 +3375,80 @@ def replace_watermark(image_bytes: bytes, wm_mode: str = "") -> bytes:
         elif img.mode != "RGB":
             img = img.convert("RGB")
 
-        from PIL import ImageDraw, ImageFont
+        if wm_mode:
+            from PIL import ImageDraw, ImageFont
 
-        draw = ImageDraw.Draw(img)
+            draw = ImageDraw.Draw(img)
 
-        do_top = wm_mode in ("top", "both")
-        do_bot = wm_mode in ("bottom", "both")
+            do_top = wm_mode in ("top", "both")
+            do_bot = wm_mode in ("bottom", "both")
 
-        strip_h = max(WATERMARK_TOP_STRIP, WATERMARK_BOT_STRIP)
-        font_size = max(18, min(strip_h - 10, width // 18, 44))
-        font = None
-        for fp in ["C:/Windows/Fonts/impact.ttf", "impact.ttf", "C:/Windows/Fonts/arialbd.ttf"]:
-            try:
-                font = ImageFont.truetype(fp, font_size)
-                break
-            except (IOError, OSError):
-                continue
-        if font is None:
-            font = ImageFont.load_default()
+            strip_h = max(WATERMARK_TOP_STRIP, WATERMARK_BOT_STRIP)
+            font_size = max(18, min(strip_h - 10, width // 18, 44))
+            font = None
+            for fp in [
+                "C:/Windows/Fonts/impact.ttf", "impact.ttf", "C:/Windows/Fonts/arialbd.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            ]:
+                try:
+                    font = ImageFont.truetype(fp, font_size)
+                    break
+                except (IOError, OSError):
+                    continue
+            if font is None:
+                font = ImageFont.load_default()
 
-        STRIP_BG = (35, 35, 40)
-        TEXT_COLOR = (255, 255, 255)
+            STRIP_BG = (35, 35, 40)
+            TEXT_COLOR = (255, 255, 255)
 
-        if do_top:
-            h = WATERMARK_TOP_STRIP
-            draw.rectangle([0, 0, width, h], fill=STRIP_BG)
-            bbox = draw.textbbox((0, 0), WATERMARK_TEXT, font=font)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            draw.text(((width - tw) // 2, (h - th) // 2), WATERMARK_TEXT, fill=TEXT_COLOR, font=font)
+            if do_top:
+                h = WATERMARK_TOP_STRIP
+                draw.rectangle([0, 0, width, h], fill=STRIP_BG)
+                bbox = draw.textbbox((0, 0), WATERMARK_TEXT, font=font)
+                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                draw.text(((width - tw) // 2, (h - th) // 2), WATERMARK_TEXT, fill=TEXT_COLOR, font=font)
 
-        if do_bot:
-            h = WATERMARK_BOT_STRIP
-            draw.rectangle([0, height - h, width, height], fill=STRIP_BG)
-            bbox = draw.textbbox((0, 0), WATERMARK_TEXT, font=font)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            draw.text(((width - tw) // 2, height - h + (h - th) // 2), WATERMARK_TEXT, fill=TEXT_COLOR, font=font)
+            if do_bot:
+                h = WATERMARK_BOT_STRIP
+                draw.rectangle([0, height - h, width, height], fill=STRIP_BG)
+                bbox = draw.textbbox((0, 0), WATERMARK_TEXT, font=font)
+                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                draw.text(((width - tw) // 2, height - h + (h - th) // 2), WATERMARK_TEXT, fill=TEXT_COLOR, font=font)
 
         buf = io.BytesIO()
-        if orig_format.upper() in ("JPEG", "JPG"):
-            img.save(buf, format="JPEG", quality=90)
-        else:
-            img.save(buf, format="PNG")
+        img.save(buf, format="WEBP", quality=85, method=4)
         return buf.getvalue()
     except Exception as e:
         print(f"[WARN] Watermark replacement failed: {e}")
         return image_bytes
 
 
+import hashlib as _hashlib
+
+CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "image_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+def _cache_key(url: str, wm: str) -> str:
+    h = _hashlib.md5((url + "|" + wm).encode()).hexdigest()
+    return h + ".webp"
+
+def _cache_path(url: str, wm: str) -> str:
+    return os.path.join(CACHE_DIR, _cache_key(url, wm))
+
+
 @app.get("/proxy/image", summary="Проксирование изображений с заменой watermark")
 async def proxy_image(url: str = Query(..., description="URL изображения"), wm: str = Query("", description="Watermark mode: top, bottom, both, or empty")):
-    """Скачивает изображение, заменяет watermark mangabuff → Springmanga, отдаёт клиенту."""
-    from fastapi.responses import Response
+    from fastapi.responses import Response, FileResponse
 
     if not url.startswith("http"):
         raise HTTPException(status_code=400, detail="Invalid URL")
+
+    cpath = _cache_path(url, wm)
+    if os.path.exists(cpath):
+        return FileResponse(cpath, media_type="image/webp", headers={"Cache-Control": "public, max-age=604800", "X-Cache": "HIT"})
 
     try:
         session = await get_chapter_session()
@@ -3023,18 +3462,73 @@ async def proxy_image(url: str = Query(..., description="URL изображен�
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Error fetching image: {e}")
 
-    # Replace watermark
     processed = await asyncio.get_event_loop().run_in_executor(None, lambda: replace_watermark(image_bytes, wm))
+
+    is_webp = processed[:4] == b"RIFF" if processed else False
+    ct = "image/webp" if is_webp else content_type
+
+    try:
+        if is_webp:
+            with open(cpath, "wb") as f:
+                f.write(processed)
+    except Exception:
+        pass
 
     return Response(
         content=processed,
-        media_type=content_type,
-        headers={"Cache-Control": "public, max-age=86400"},
+        media_type=ct,
+        headers={"Cache-Control": "public, max-age=604800", "X-Cache": "MISS"},
+    )
+
+
+@app.get("/img/{filename}", summary="Чистый URL для картинок")
+async def serve_cached_image(filename: str, url: str = Query(""), wm: str = Query("")):
+    """Clean URL: /img/<hash>.webp?url=...&wm=...
+    Если файл уже в кэше — отдаёт мгновенно. Если нет — скачивает, конвертирует, кэширует."""
+    from fastapi.responses import FileResponse, Response
+    if not filename.endswith(".webp") or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    fpath = os.path.join(CACHE_DIR, filename)
+    if os.path.exists(fpath):
+        return FileResponse(fpath, media_type="image/webp", headers={"Cache-Control": "public, max-age=604800", "X-Cache": "HIT"})
+
+    # Not cached yet — need original URL to fetch
+    if not url or not url.startswith("http"):
+        raise HTTPException(status_code=404, detail="Image not cached and no source URL provided")
+
+    try:
+        session = await get_chapter_session()
+        async with session.get(url, headers={**HEADERS, "Referer": BASE_URL}, proxy=MANGABUFF_PROXY) as resp:
+            if resp.status != 200:
+                raise HTTPException(status_code=resp.status, detail="Failed to fetch image")
+            image_bytes = await resp.read()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error fetching image: {e}")
+
+    processed = await asyncio.get_event_loop().run_in_executor(None, lambda: replace_watermark(image_bytes, wm))
+    is_webp = processed[:4] == b"RIFF" if processed else False
+
+    try:
+        if is_webp:
+            with open(fpath, "wb") as f:
+                f.write(processed)
+    except Exception:
+        pass
+
+    return Response(
+        content=processed,
+        media_type="image/webp" if is_webp else "image/jpeg",
+        headers={"Cache-Control": "public, max-age=604800", "X-Cache": "MISS"},
     )
 
 
 @app.post("/auth/register", summary="Регистрация пользователя")
 async def register(user: UserCreate, db: Session = Depends(get_db)):
+    reg_open = get_setting_value("registration_open", "true")
+    if reg_open != "true":
+        raise HTTPException(status_code=403, detail="Регистрация временно закрыта")
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -3046,17 +3540,28 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     return {"username": db_user.username, "email": db_user.email, "id": db_user.id, "role": db_user.role}
 
 @app.post("/token", response_model=Token, summary="Вход в систему")
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    ip = request.client.host if request.client else "unknown"
     # Ищем по email (username в форме = email)
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
+        db.add(LoginHistory(user_id=None, username=form_data.username or "-", ip=ip, status="FAIL"))
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if user.status == "banned":
+        db.add(LoginHistory(user_id=user.id, username=user.username, ip=ip, status="BANNED"))
+        db.commit()
         raise HTTPException(status_code=403, detail="Account is banned")
+    if user.status == "frozen":
+        db.add(LoginHistory(user_id=user.id, username=user.username, ip=ip, status="FROZEN"))
+        db.commit()
+        raise HTTPException(status_code=403, detail="Account is frozen — contact admin")
+    db.add(LoginHistory(user_id=user.id, username=user.username, ip=ip, status="OK"))
+    db.commit()
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
@@ -3095,6 +3600,10 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "sound_enabled": bool(current_user.sound_enabled),
         "subscription_active": is_springpro_active(current_user),
         "subscription_expires_at": current_user.subscription_expires_at.isoformat() if current_user.subscription_expires_at else None,
+        "telegram_id": current_user.telegram_id or "",
+        "telegram_username": current_user.telegram_username or "",
+        "google_id": current_user.google_id or "",
+        "yandex_id": current_user.yandex_id or "",
     }
 
 @app.put("/auth/profile", summary="Обновить профиль")
@@ -3183,6 +3692,114 @@ async def change_email(data: EmailChange, current_user: User = Depends(get_curre
     db.commit()
     return {"ok": True}
 
+
+def _send_smtp_email(to_email: str, subject: str, html_body: str) -> bool:
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        db = SessionLocal()
+        settings = {}
+        for s in db.query(SiteSetting).all():
+            settings[s.key] = s.value
+        db.close()
+        smtp_host = settings.get("smtp_host", "")
+        smtp_port = int(settings.get("smtp_port", "587"))
+        smtp_user = settings.get("smtp_user", "")
+        smtp_pass = settings.get("smtp_password", "")
+        smtp_from = settings.get("smtp_from", "")
+        use_tls = settings.get("smtp_tls", "true") == "true"
+        if not smtp_host or not smtp_user:
+            return False
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = smtp_from or smtp_user
+        msg["To"] = to_email
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        if use_tls:
+            server = smtplib.SMTP(smtp_host, smtp_port)
+            server.starttls()
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port)
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(msg["From"], to_email, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"[SMTP ERROR] {e}")
+        return False
+
+
+@app.post("/auth/forgot-password", summary="Запросить сброс пароля")
+async def forgot_password(data: dict = Body(...), db: Session = Depends(get_db)):
+    email = data.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Введите email")
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        return {"ok": True}
+    import secrets as _secrets
+    reset_token = _secrets.token_urlsafe(32)
+    db.add(PasswordResetToken(user_id=user.id, token=reset_token))
+    db.commit()
+    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+    reset_link = f"{frontend_url}/#/reset-password?token={reset_token}"
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0a0908;font-family:monospace,sans-serif;color:#d4c8b0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0908;padding:40px 20px;">
+<tr><td align="center">
+<table width="500" cellpadding="0" cellspacing="0" style="background:#141210;border:1px solid #2a2420;">
+<tr><td style="background:#1a1815;padding:24px 30px;border-bottom:1px solid #2a2420;">
+<h1 style="margin:0;font-size:22px;color:#9b8c3b;letter-spacing:3px;">SPRINGMANGA</h1>
+<p style="margin:6px 0 0;font-size:11px;color:#5a5040;">СБРОС ПАРОЛЯ</p>
+</td></tr>
+<tr><td style="padding:30px;">
+<p style="margin:0 0 16px;font-size:14px;color:#d4c8b0;">Привет, <strong style="color:#39ff14">{user.username}</strong>.</p>
+<p style="margin:0 0 16px;font-size:13px;color:#8a8070;">Поступил запрос на сброс пароля от вашего аккаунта. Если это не вы — просто проигнорируйте это письмо.</p>
+<table cellpadding="0" cellspacing="0" style="margin:24px 0;">
+<tr><td style="background:#9b8c3b;border-radius:4px;">
+<a href="{reset_link}" style="display:inline-block;padding:14px 32px;font-size:14px;font-weight:bold;color:#0a0908;text-decoration:none;letter-spacing:1px;">СБРОСИТЬ ПАРОЛЬ</a>
+</td></tr>
+</table>
+<p style="margin:16px 0 0;font-size:11px;color:#5a5040;">Или скопируйте ссылку в браузер:</p>
+<p style="margin:4px 0 0;font-size:11px;color:#6cacff;word-break:break-all;">{reset_link}</p>
+</td></tr>
+<tr><td style="padding:16px 30px;border-top:1px solid #2a2420;">
+<p style="margin:0;font-size:10px;color:#5a5040;">Ссылка действительна 1 час. SpringManga — springtrap@afton</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+    _send_smtp_email(email, "SpringManga — Сброс пароля", html)
+    return {"ok": True}
+
+
+@app.post("/auth/reset-password", summary="Сбросить пароль по токену")
+async def reset_password(data: dict = Body(...), db: Session = Depends(get_db)):
+    token_val = data.get("token", "")
+    new_pass = data.get("new_password", "")
+    if not token_val or not new_pass:
+        raise HTTPException(status_code=400, detail="Токен и новый пароль обязательны")
+    if len(new_pass) < 6:
+        raise HTTPException(status_code=400, detail="Пароль минимум 6 символов")
+    reset_entry = db.query(PasswordResetToken).filter(PasswordResetToken.token == token_val, PasswordResetToken.used == False).first()
+    if not reset_entry:
+        raise HTTPException(status_code=400, detail="Токен недействителен или истёк")
+    if reset_entry.created_at and (datetime.utcnow() - reset_entry.created_at).total_seconds() > 3600:
+        raise HTTPException(status_code=400, detail="Токен истёк. Запросите новый.")
+    user = db.query(User).filter(User.id == reset_entry.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    user.hashed_password = get_password_hash(new_pass)
+    reset_entry.used = True
+    db.commit()
+    return {"ok": True}
+
+
 @app.post("/auth/avatar", summary="Загрузить аватарку")
 async def upload_avatar(file: UploadFile = FastAPIFile(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ext = os.path.splitext(file.filename or "img.png")[1].lower()
@@ -3266,11 +3883,28 @@ async def get_wall_comments(user_id: int, db: Session = Depends(get_db)):
 
 @app.post("/auth/wall-comments/{user_id}", summary="Добавить комментарий на стену профиля")
 async def add_wall_comment(user_id: int, data: WallCommentCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.muted_until and current_user.muted_until > datetime.utcnow():
+        remaining = current_user.muted_until - datetime.utcnow()
+        raise HTTPException(status_code=403, detail=f"Вы замьючены. Мут снимется через {remaining.days}д {remaining.seconds // 3600}ч")
     if not data.text or not data.text.strip():
         raise HTTPException(status_code=400, detail="Пустой комментарий")
     if len(data.text) > 500:
         raise HTTPException(status_code=400, detail="Слишком длинный комментарий (макс. 500)")
-    comment = WallComment(profile_user_id=user_id, author_id=current_user.id, text=data.text.strip())
+    cleaned_text = data.text.strip()
+    bw_result = check_comment(cleaned_text, extra_banned=[w.strip().lower() for w in get_setting_value("banned_words", "").split(",") if w.strip()], word_overrides={
+        "badwords_shadow": get_setting_value("badwords_shadow", ""),
+        "badwords_warn_links": get_setting_value("badwords_warn_links", ""),
+        "badwords_warn_scam": get_setting_value("badwords_warn_scam", ""),
+        "badwords_freeze": get_setting_value("badwords_freeze", ""),
+    })
+    if bw_result:
+        if bw_result['severity'] == 'shadow':
+            cleaned_text = shadow_replace(cleaned_text, word_overrides={
+                "badwords_shadow": get_setting_value("badwords_shadow", ""),
+            })
+        elif bw_result['severity'] in ('warn', 'freeze'):
+            raise HTTPException(status_code=400, detail=f"Комментарий отклонён: {bw_result['reason']}")
+    comment = WallComment(profile_user_id=user_id, author_id=current_user.id, text=cleaned_text)
     db.add(comment)
     db.commit()
     db.refresh(comment)
@@ -3326,19 +3960,21 @@ async def get_profile_full(current_user: User = Depends(get_current_user), db: S
     except:
         showcase_list = []
     
-    # Build heatmap from reading history
-    from collections import defaultdict
-    heatmap = defaultdict(int)
-    histories = db.query(ReadingHistory).filter(ReadingHistory.user_id == current_user.id).all()
-    for h in histories:
-        if h.read_at:
-            day = h.read_at.strftime("%Y-%m-%d")
-            heatmap[day] += 1
-    
+    # Build heatmap via SQL GROUP BY (instead of loading all rows into Python)
+    from sqlalchemy import func as sa_func
+    heatmap = {}
+    heatmap_rows = db.query(
+        sa_func.date(ReadingHistory.read_at).label('day'),
+        sa_func.count().label('cnt')
+    ).filter(ReadingHistory.user_id == current_user.id).group_by('day').all()
+    for row in heatmap_rows:
+        if row.day:
+            heatmap[str(row.day)] = row.cnt
+
+    chapters_read = db.query(ReadingHistory).filter(ReadingHistory.user_id == current_user.id).count()
     total_likes = db.query(ChapterLike).filter(ChapterLike.user_id == current_user.id).count()
     total_ratings = db.query(MangaRating).filter(MangaRating.user_id == current_user.id).count()
     total_bookmarks = db.query(MangaBookmark).filter(MangaBookmark.user_id == current_user.id).count()
-    chapters_read = len(histories)
     
     xp = current_user.xp or 0
     lvl = current_user.level or 1
@@ -3379,6 +4015,25 @@ async def get_profile_full(current_user: User = Depends(get_current_user), db: S
         "subscription_active": is_springpro_active(current_user),
         "subscription_expires_at": current_user.subscription_expires_at.isoformat() if current_user.subscription_expires_at else None,
     }
+
+@app.get("/auth/my-comments", summary="Мои комментарии")
+async def get_my_comments(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = (
+        db.query(MangaComment, MangaItem.title, MangaItem.slug, MangaItem.cover_url)
+        .outerjoin(MangaItem, MangaComment.manga_id == MangaItem.manga_id)
+        .filter(MangaComment.user_id == current_user.id, MangaComment.status == "approved")
+        .order_by(MangaComment.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return [{
+        "id": c.id, "mangaId": c.manga_id, "chapterId": c.chapter_id,
+        "text": c.text, "timestamp": c.created_at.isoformat() if c.created_at else "",
+        "mangaTitle": title or c.manga_id,
+        "mangaSlug": slug or c.manga_id,
+        "coverUrl": cover_url or "",
+    } for c, title, slug, cover_url in rows]
+
 
 @app.post("/auth/check-achievements", summary="Проверить достижения")
 async def check_achievements(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -3558,10 +4213,13 @@ async def delete_account(current_user: User = Depends(get_current_user), db: Ses
 
 # --- Admin endpoints ---
 @app.get("/admin/users", summary="Список пользователей (админ)")
-async def admin_get_users(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def admin_get_users(search: str = "", current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if current_user.role not in ("admin", "moderator"):
         raise HTTPException(status_code=403, detail="Доступ запрещён")
-    users = db.query(User).all()
+    q = db.query(User)
+    if search:
+        q = q.filter((User.username.contains(search)) | (User.email.contains(search)))
+    users = q.order_by(User.id.desc()).limit(100).all()
     return [
         {
             "id": u.id,
@@ -3570,6 +4228,8 @@ async def admin_get_users(current_user: User = Depends(get_current_user), db: Se
             "role": u.role,
             "status": u.status,
             "avatar_url": u.avatar_url or "",
+            "last_seen": u.last_seen.isoformat() if u.last_seen else None,
+            "scrap": u.scrap or 0,
         }
         for u in users
     ]
@@ -3581,9 +4241,662 @@ async def admin_update_role(user_id: int, data: RoleUpdate, current_user: User =
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
+    old_role = target.role
     target.role = data.role
     db.commit()
+    log_admin_action(db, current_user, "СМЕНА РОЛИ", f"{target.username} ({old_role} → {data.role})")
     return {"ok": True}
+
+# ===== ADMIN SETTINGS =====
+
+SETTINGS_DEFAULTS = {
+    "site_name": "SPRINGMANGA",
+    "maintenance_mode": "false",
+    "registration_open": "true",
+    "max_upload_mb": "10",
+    "scrap_rate": "1",
+    "allow_comments": "true",
+    "allow_ratings": "true",
+    "auto_ban_after_reports": "3",
+    "mute_stages": "1,7,30,0",
+    "max_scrap_daily": "500",
+    "cdn_provider": "local",
+    "cdn_url": "",
+    "max_file_size_mb": "50",
+    "allowed_formats": "png,jpg,gif,webp,mp4,zip",
+    "auto_convert_webp": "false",
+    "image_quality": "85",
+    "storage_type": "local",
+    "s3_endpoint": "",
+    "s3_bucket": "",
+    "s3_access_key": "",
+    "s3_secret_key": "",
+    "backup_media": "false",
+    "backup_interval": "daily",
+    "backup_destination": "local",
+    "backup_retention": "7",
+    "backup_s3_endpoint": "",
+    "backup_s3_bucket": "",
+    "lazy_load": "true",
+    "preload_next": "true",
+    "anti_download": "false",
+    "chapter_no_reload": "true",
+    "comment_provider": "builtin",
+    "disqus_shortname": "",
+    "pre_moderation": "false",
+    "auto_moderation": "false",
+    "spam_filter": "true",
+    "banned_words": "",
+    "badwords_shadow": "хуй,хуе,хуя,хую,пизда,пизде,пизды,пизду,ебать,ебан,ебуч,ебал,ебли,ёбан,блядь,бля,шлюха,шлюх,мудак,ублюдок,сука,сук,пидор,пидар,гандон,гондон,чмо,шмара,залупа,хер,ху,пзд,блть,ебт,аху,оху,хуе,хуи,пезд,ебик,ебну,ёб,ебл,пидр,уёб,уеб,хуё,заеб,заёб,отъеб,нигер,nigger,негр,хохол,русня,жид,даун,аутист,инвалид,мамку,мамаша,сынш",
+    "badwords_warn_links": "впрофиле,переходипо,ссылкавбио,подпишисьнамой,вшапкепрофиля,тгканал,tgканал,телеграмканал,вкгруппа,ссылканамой,переходимвмойпрофиль,переходивпрофиль,ссылкавпрофиле,ссылканабусти,подпишись,подписывайся,бусти,busty,boosty",
+    "badwords_warn_scam": "казино,casino,рулетка,ставки,1xbet,melbet,вулкан,vulkan,фриспины,слоты,азино,букмекер,заработок,безвложений,крипта,биткоин,bitcoin,binance,пассивныйдоход,трейдинг,заработатьонлайн,инвестиции,накрутка,подписчики,лайки,промокод,скидка,халява,купить,продаю,onlyfans,сливы",
+    "badwords_freeze": "мефедрон,соль,спайс,закладка,шишки,гашыш,экстази,марки,кладмен,травка,суицид,вскрытьвены,расчлененка,цп,даркнет,сваттинг,доксинг,снафф,снаф,педофил,childporn,детскаяпорнография",
+    "warn_before_ban": "true",
+    "ssl_enforce": "false",
+    "ip_blacklist": "",
+    "rate_limit": "true",
+    "rate_limit_rpm": "60",
+    "anti_bot": "false",
+    "captcha_register": "false",
+    "captcha_login": "false",
+    "suspicious_alerts": "true",
+    "dmca_email": "",
+    "dmca_auto_takedown": "3",
+    "hotlink_protection": "false",
+    "email_notifications": "false",
+    "smtp_host": "",
+    "smtp_port": "587",
+    "smtp_user": "",
+    "smtp_password": "",
+    "smtp_from": "",
+    "smtp_tls": "true",
+    "push_notifications": "false",
+    "push_new_chapter": "true",
+    "push_comment_reply": "true",
+    "email_on_register": "true",
+    "email_on_reset": "true",
+    "adsense_client_id": "",
+    "direct_ad_html": "",
+    "donation_url": "",
+    "premium_price": "",
+    "ad_cpm_rub": "50",
+    "telegram_enabled": "false",
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
+    "telegram_new_chapter": "true",
+    "telegram_report": "true",
+    "telegram_error": "false",
+}
+
+@app.get("/admin/settings", summary="Получить настройки сайта (админ)")
+async def admin_get_settings(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    settings = db.query(SiteSetting).all()
+    result = dict(SETTINGS_DEFAULTS)
+    for s in settings:
+        result[s.key] = s.value
+    return {k: v for k, v in result.items()}
+
+@app.put("/admin/settings", summary="Сохранить настройки сайта (админ)")
+async def admin_save_settings(data: dict = Body(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+
+    bypass_key = None
+
+    for key, value in data.items():
+        if key.startswith("_"):
+            continue
+        str_val = str(value) if not isinstance(value, bool) else ("true" if value else "false")
+        existing = db.query(SiteSetting).filter(SiteSetting.key == key).first()
+        if existing:
+            existing.value = str_val
+        else:
+            db.add(SiteSetting(key=key, value=str_val))
+
+    # Генерация / удаление bypass-ключа при переключении maintenance_mode
+    if "maintenance_mode" in data:
+        import secrets
+        is_on = str(data["maintenance_mode"]).lower() in ("true", "1")
+        bypass_setting = db.query(SiteSetting).filter(SiteSetting.key == "maintenance_bypass_key").first()
+        if is_on:
+            bypass_key = secrets.token_urlsafe(16)
+            if bypass_setting:
+                bypass_setting.value = bypass_key
+            else:
+                db.add(SiteSetting(key="maintenance_bypass_key", value=bypass_key))
+        else:
+            if bypass_setting:
+                bypass_setting.value = ""
+
+    db.commit()
+    return {"ok": True, "bypass_key": bypass_key}
+
+
+# ─── Бэкапы базы данных ───
+BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backups")
+
+@app.post("/admin/backup", summary="Создать бэкап БД")
+async def admin_create_backup(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_name = f"manga_app_{timestamp}.db"
+    backup_path = os.path.join(BACKUP_DIR, backup_name)
+    shutil.copy2(DB_PATH, backup_path)
+    size = os.path.getsize(backup_path)
+    log_admin_action(db, current_user, "СОЗДАНИЕ БЭКАПА", backup_name)
+    return {"ok": True, "filename": backup_name, "size": size}
+
+@app.get("/admin/backups", summary="Список бэкапов")
+async def admin_list_backups(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    if not os.path.isdir(BACKUP_DIR):
+        return []
+    files = []
+    for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
+        if f.endswith(".db"):
+            fpath = os.path.join(BACKUP_DIR, f)
+            files.append({
+                "filename": f,
+                "size": os.path.getsize(fpath),
+                "created": os.path.getmtime(fpath),
+            })
+    return files
+
+@app.post("/admin/backup/restore", summary="Восстановить БД из бэкапа")
+async def admin_restore_backup(data: dict = Body(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    filename = data.get("filename", "")
+    if not filename or ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Неверное имя файла")
+    backup_path = os.path.join(BACKUP_DIR, filename)
+    if not os.path.exists(backup_path):
+        raise HTTPException(status_code=404, detail="Бэкап не найден")
+    # Create safety backup before restore
+    from datetime import datetime
+    safety = os.path.join(BACKUP_DIR, f"pre_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    shutil.copy2(DB_PATH, safety)
+    shutil.copy2(backup_path, DB_PATH)
+    log_admin_action(db, current_user, "ВОССТАНОВЛЕНИЕ ИЗ БЭКАПА", filename)
+    return {"ok": True, "restored_from": filename, "safety_backup": os.path.basename(safety)}
+
+@app.delete("/admin/backup/{filename}", summary="Удалить бэкап")
+async def admin_delete_backup(filename: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Неверное имя файла")
+    backup_path = os.path.join(BACKUP_DIR, filename)
+    if not os.path.exists(backup_path):
+        raise HTTPException(status_code=404, detail="Бэкап не найден")
+    os.remove(backup_path)
+    log_admin_action(db, current_user, "УДАЛЕНИЕ БЭКАПА", filename)
+    return {"ok": True}
+
+
+# ─── Telegram-уведомления ───
+def send_telegram_message(text: str, db: Session):
+    """Отправить сообщение в Telegram, если бот настроен и включён."""
+    try:
+        enabled = db.query(SiteSetting).filter(SiteSetting.key == "telegram_enabled").first()
+        if not enabled or enabled.value != "true":
+            return False
+        bot_token_row = db.query(SiteSetting).filter(SiteSetting.key == "telegram_bot_token").first()
+        chat_id_row = db.query(SiteSetting).filter(SiteSetting.key == "telegram_chat_id").first()
+        if not bot_token_row or not chat_id_row or not bot_token_row.value or not chat_id_row.value:
+            return False
+        url = f"https://api.telegram.org/bot{bot_token_row.value}/sendMessage"
+        requests.post(url, json={"chat_id": chat_id_row.value, "text": text, "parse_mode": "HTML"}, timeout=10)
+        return True
+    except Exception:
+        return False
+
+
+def notify_telegram_event(db: Session, event_type: str, text: str):
+    """Отправить уведомление если соответствующий тип события включён."""
+    setting_key = f"telegram_{event_type}"
+    row = db.query(SiteSetting).filter(SiteSetting.key == setting_key).first()
+    if row and row.value == "false":
+        return
+    send_telegram_message(text, db)
+
+
+@app.post("/admin/test-telegram", summary="Тест Telegram-бота")
+async def admin_test_telegram(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    ok = send_telegram_message("🟢 <b>SpringOS</b>: Тестовое сообщение — бот работает!", db)
+    if ok:
+        return {"ok": True, "message": "Сообщение отправлено"}
+    raise HTTPException(status_code=400, detail="Не удалось отправить. Проверьте токен и chat_id.")
+
+
+@app.get("/admin/stats", summary="Общая статистика для аналитики (админ)")
+async def admin_stats(period: str = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    from sqlalchemy import func as sa_fn
+    total_users = db.query(sa_fn.count(User.id)).scalar()
+    total_manga = db.query(sa_fn.count(MangaItem.manga_id)).scalar()
+    total_views = db.query(sa_fn.count(MangaView.id)).scalar()
+    total_chapter_views = db.query(sa_fn.count(ChapterView.id)).scalar()
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    dau = db.query(sa_fn.count(User.id)).filter(User.last_seen >= seven_days_ago).scalar()
+    mau = db.query(sa_fn.count(User.id)).filter(User.last_seen >= thirty_days_ago).scalar()
+    # Time-filtered top queries
+    period_filter = None
+    if period == "day":
+        period_filter = datetime.utcnow() - timedelta(days=1)
+    elif period == "week":
+        period_filter = datetime.utcnow() - timedelta(days=7)
+    elif period == "month":
+        period_filter = datetime.utcnow() - timedelta(days=30)
+    # else: all time (no filter)
+    manga_q = db.query(MangaView.manga_id, sa_fn.count(MangaView.id).label("views"))
+    if period_filter:
+        manga_q = manga_q.filter(MangaView.created_at >= period_filter)
+    top_manga = manga_q.group_by(MangaView.manga_id).order_by(sa_fn.count(MangaView.id).desc()).limit(10).all()
+    top_manga_list = []
+    for mv in top_manga:
+        item = db.query(MangaItem).filter(MangaItem.manga_id == mv[0]).first()
+        top_manga_list.append({"manga_id": mv[0], "title": item.title if item else mv[0], "views": mv[1]})
+    chapter_q = db.query(ChapterView.chapter_id, ChapterView.manga_id, sa_fn.count(ChapterView.id).label("views"))
+    if period_filter:
+        chapter_q = chapter_q.filter(ChapterView.created_at >= period_filter)
+    top_chapters = chapter_q.group_by(ChapterView.chapter_id).order_by(sa_fn.count(ChapterView.id).desc()).limit(10).all()
+    top_chapters_list = []
+    for tc in top_chapters:
+        ch = db.query(Chapter).filter(Chapter.chapter_id == tc[0], Chapter.manga_id == tc[1]).first()
+        mi = db.query(MangaItem).filter(MangaItem.manga_id == tc[1]).first()
+        top_chapters_list.append({
+            "chapter_id": tc[0],
+            "manga": mi.title if mi else tc[1],
+            "chapter": ch.title if ch else tc[0],
+            "views": tc[2],
+        })
+    genre_counts = {}
+    all_manga = db.query(MangaItem.genres).all()
+    for g_str in all_manga:
+        try:
+            genres = json.loads(g_str[0]) if g_str[0] else []
+            for g in genres:
+                genre_counts[g] = genre_counts.get(g, 0) + 1
+        except:
+            pass
+    sorted_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:15]
+    total_purchases = db.query(sa_fn.count(UserPurchase.id)).scalar()
+    total_scrap = db.query(sa_fn.coalesce(sa_fn.sum(PaymentTransaction.scrap_amount), 0)).scalar()
+    # Дополнительные метрики
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    fifteen_min_ago = datetime.utcnow() - timedelta(minutes=15)
+    new_chapters_today = db.query(sa_fn.count(Chapter.id)).filter(Chapter.created_at >= today_start).scalar()
+    premium_count = db.query(sa_fn.count(User.id)).filter(User.subscription_type == "springpro").scalar()
+    banned_count = db.query(sa_fn.count(User.id)).filter(User.status == "banned").scalar()
+    online_now = (redis_client.scard("online_ips") if redis_client else 0) or db.query(sa_fn.count(User.id)).filter(User.last_seen >= fifteen_min_ago).scalar()
+    transactions_today = db.query(sa_fn.count(ScrapTransaction.id)).filter(ScrapTransaction.created_at >= today_start).scalar()
+    payments_today_rub = db.query(sa_fn.coalesce(sa_fn.sum(PaymentTransaction.amount_rub), 0)).filter(PaymentTransaction.status == "completed", PaymentTransaction.created_at >= today_start).scalar()
+    total_scrap_circulation = db.query(sa_fn.coalesce(sa_fn.sum(User.scrap), 0)).scalar() + db.query(sa_fn.coalesce(sa_fn.sum(User.donated_scrap), 0)).scalar()
+    pending_reports = db.query(sa_fn.count(Report.id)).filter(Report.status == "pending").scalar()
+
+    # Storage and system stats
+    import shutil
+    storage_total = 0
+    storage_used = 0
+    storage_percent = 0
+    try:
+        stat = shutil.disk_usage(".")
+        storage_total = stat.total
+        storage_used = stat.used
+        storage_percent = int((stat.used / stat.total) * 100) if stat.total > 0 else 0
+    except:
+        pass
+
+    # Shop purchases today
+    shop_purchases_today = db.query(sa_fn.count(UserPurchase.id)).filter(UserPurchase.purchased_at >= today_start).scalar()
+    scrap_spent_today = db.query(sa_fn.coalesce(sa_fn.sum(ScrapTransaction.amount), 0)).filter(
+        ScrapTransaction.created_at >= today_start,
+        ScrapTransaction.reason == "purchase"
+    ).scalar()
+
+    # Broken pages reports (reports with type "broken_page" or similar)
+    broken_reports = db.query(sa_fn.count(Report.id)).filter(
+        Report.status == "pending",
+        Report.reason.in_(["broken_page", "missing_chapter", "image_error"])
+    ).scalar()
+
+    # DMCA requests (reports with type "copyright")
+    dmca_reports = db.query(sa_fn.count(Report.id)).filter(
+        Report.status == "pending",
+        Report.reason == "copyright"
+    ).scalar()
+
+    # Последние комментарии
+    recent_comments_raw = db.query(MangaComment).order_by(MangaComment.created_at.desc()).limit(5).all()
+    recent_comments_list = []
+    for c in recent_comments_raw:
+        u = db.query(User).filter(User.id == c.user_id).first()
+        m = db.query(MangaItem).filter(MangaItem.manga_id == c.manga_id).first()
+        recent_comments_list.append({
+            "id": c.id,
+            "text": c.text[:80] + ("..." if len(c.text) > 80 else ""),
+            "username": u.username if u else "Unknown",
+            "avatar_url": u.avatar_url if u else "",
+            "manga_title": m.title if m else c.manga_id,
+            "manga_id": c.manga_id,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        })
+    comments_today = db.query(sa_fn.count(MangaComment.id)).filter(
+        MangaComment.created_at >= today_start
+    ).scalar()
+
+    # Traffic sources — computed from view data
+    auth_manga_views_q = db.query(sa_fn.count(MangaView.id)).filter(MangaView.user_id != None)
+    anon_manga_views_q = db.query(sa_fn.count(MangaView.id)).filter(MangaView.user_id == None)
+    auth_chapter_views_q = db.query(sa_fn.count(ChapterView.id)).filter(ChapterView.user_id != None)
+    anon_chapter_views_q = db.query(sa_fn.count(ChapterView.id)).filter(ChapterView.user_id == None)
+    if period_filter:
+        auth_manga_views_q = auth_manga_views_q.filter(MangaView.created_at >= period_filter)
+        anon_manga_views_q = anon_manga_views_q.filter(MangaView.created_at >= period_filter)
+        auth_chapter_views_q = auth_chapter_views_q.filter(ChapterView.created_at >= period_filter)
+        anon_chapter_views_q = anon_chapter_views_q.filter(ChapterView.created_at >= period_filter)
+    auth_views = (auth_manga_views_q.scalar() or 0) + (auth_chapter_views_q.scalar() or 0)
+    anon_views = (anon_manga_views_q.scalar() or 0) + (anon_chapter_views_q.scalar() or 0)
+
+    bookmark_manga_q = db.query(sa_fn.count(MangaBookmark.id))
+    if period_filter:
+        bookmark_manga_q = bookmark_manga_q.filter(MangaBookmark.created_at >= period_filter)
+    bookmark_views = bookmark_manga_q.scalar() or 0
+
+    total_traffic = auth_views + anon_views or 1
+    traffic_sources_list = [
+        {"source": "Авторизованные", "visits": auth_views, "percent": round(auth_views / total_traffic * 100, 1)},
+        {"source": "Гости (анонимы)", "visits": anon_views, "percent": round(anon_views / total_traffic * 100, 1)},
+    ]
+    if bookmark_views > 0:
+        traffic_sources_list.append({"source": "Из закладок", "visits": bookmark_views, "percent": round(bookmark_views / total_traffic * 100, 1)})
+
+    # Ad revenue — estimated from total views * CPM
+    ad_cpm_rub = float(get_setting_value("ad_cpm_rub", "50"))
+    ad_revenue_rub = round(total_views * ad_cpm_rub / 1000, 2)
+
+    # Frozen accounts count
+    frozen_count = db.query(sa_fn.count(User.id)).filter(User.status == "frozen").scalar()
+
+    return {
+        "total_users": total_users,
+        "total_manga": total_manga,
+        "total_views": total_views,
+        "total_chapter_views": total_chapter_views,
+        "dau": dau,
+        "mau": mau,
+        "top_manga": top_manga_list,
+        "top_chapters": top_chapters_list,
+        "popular_genres": [{"genre": g, "tag": g, "count": c} for g, c in sorted_genres],
+        "traffic_sources": traffic_sources_list,
+        "total_purchases": total_purchases,
+        "total_scrap_earned": total_scrap,
+        "ad_revenue_rub": ad_revenue_rub,
+        "new_chapters_today": new_chapters_today,
+        "premium_count": premium_count,
+        "banned_count": banned_count,
+        "frozen_count": frozen_count,
+        "online_now": online_now,
+        "transactions_today": transactions_today,
+        "payments_today_rub": float(payments_today_rub),
+        "total_scrap_circulation": total_scrap_circulation,
+        "pending_reports": pending_reports,
+        "recent_errors": [],
+        "storage_total_bytes": storage_total,
+        "storage_used_bytes": storage_used,
+        "storage_percent": storage_percent,
+        "shop_purchases_today": shop_purchases_today,
+        "scrap_spent_today": abs(int(scrap_spent_today)),
+        "broken_reports": broken_reports,
+        "dmca_reports": dmca_reports,
+        "recent_comments": recent_comments_list,
+        "comments_today": comments_today,
+    }
+
+
+@app.post("/admin/test-email", summary="Тестовая отправка email (админ)")
+async def admin_test_email(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        settings = {}
+        db = SessionLocal()
+        for s in db.query(SiteSetting).all():
+            settings[s.key] = s.value
+        db.close()
+        smtp_host = settings.get("smtp_host", "")
+        smtp_port = int(settings.get("smtp_port", "587"))
+        smtp_user = settings.get("smtp_user", "")
+        smtp_pass = settings.get("smtp_password", "")
+        smtp_from = settings.get("smtp_from", "")
+        use_tls = settings.get("smtp_tls", "true") == "true"
+        if not smtp_host or not smtp_user:
+            return {"ok": False, "detail": "SMTP не настроен"}
+        msg = MIMEText("SPRINGOS TEST — Если вы видите это письмо, SMTP работает корректно.\n\n— Afton Robotics")
+        msg["Subject"] = "SPRINGOS :: Тестовое письмо"
+        msg["From"] = smtp_from or smtp_user
+        msg["To"] = current_user.email
+        if use_tls:
+            server = smtplib.SMTP(smtp_host, smtp_port)
+            server.starttls()
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port)
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(msg["From"], current_user.email, msg.as_string())
+        server.quit()
+        return {"ok": True, "detail": f"Письмо отправлено на {current_user.email}"}
+    except Exception as e:
+        return {"ok": False, "detail": str(e)}
+
+
+@app.get("/admin/stats/visits", summary="Статистика посещений за 30 дней (админ)")
+async def admin_stats_visits(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    from sqlalchemy import func
+    import sqlite3
+    now = datetime.utcnow()
+    start = now - timedelta(days=29)
+    start_str = start.strftime("%Y-%m-%d")
+    # Используем raw SQL для SQLite — cast(Date) не работает с SQLite
+    day_map: dict = {}
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        # Просмотры манги по дням
+        cursor.execute(
+            "SELECT date(created_at) as day, COUNT(*) as cnt FROM manga_views WHERE date(created_at) >= ? GROUP BY day ORDER BY day",
+            (start_str,)
+        )
+        for row in cursor.fetchall():
+            if row[0]:
+                day_map[row[0]] = day_map.get(row[0], 0) + row[1]
+        # Просмотры глав по дням
+        cursor.execute(
+            "SELECT date(created_at) as day, COUNT(*) as cnt FROM chapter_views WHERE date(created_at) >= ? GROUP BY day ORDER BY day",
+            (start_str,)
+        )
+        for row in cursor.fetchall():
+            if row[0]:
+                day_map[row[0]] = day_map.get(row[0], 0) + row[1]
+        conn.close()
+    except Exception:
+        pass
+    # Заполняем все 30 дней (даже пустые)
+    result = []
+    for i in range(30):
+        d = (start + timedelta(days=i)).strftime("%Y-%m-%d")
+        result.append({"date": d, "visits": day_map.get(d, 0)})
+    return result
+
+@app.post("/admin/clear-cache", summary="Очистить кеш (админ)")
+async def admin_clear_cache(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    if redis_client:
+        redis_client.flushdb()
+    import glob as _glob
+    for f in _glob.glob(os.path.join(CACHE_DIR, "*")):
+        try: os.remove(f)
+        except: pass
+    return {"ok": True, "redis": "flushed", "image_cache": "cleared"}
+
+@app.get("/admin/cron/status", summary="Статус cron-задач (админ)")
+async def admin_cron_status(current_user: User = Depends(get_current_user)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    from cron_tasks import cron_manager
+    stats = cron_manager.get_stats()
+    return {
+        "status": stats['status'],
+        "is_running": cron_manager.is_running,
+        "last_run": stats['last_run'],
+        "chapters_found": stats['chapters_found'],
+        "errors": stats['errors']
+    }
+
+@app.post("/admin/cron/trigger", summary="Запустить проверку обновлений вручную (админ)")
+async def admin_cron_trigger(current_user: User = Depends(get_current_user)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    from cron_tasks import cron_manager
+    cron_manager.trigger_manual_update()
+    log_admin_action(SessionLocal(), current_user, "ЗАПУСК ПАРСЕРА", "Ручной запуск проверки обновлений")
+    return {"ok": True, "message": "Проверка обновлений запущена"}
+
+@app.post("/admin/cron/start", summary="Запустить cron-задачи (админ)")
+async def admin_cron_start(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    from cron_tasks import cron_manager
+    cron_manager.start()
+    return {"ok": True, "message": "Cron-задачи запущены"}
+
+@app.post("/admin/cron/stop", summary="Остановить cron-задачи (админ)")
+async def admin_cron_stop(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    from cron_tasks import cron_manager
+    cron_manager.stop()
+    return {"ok": True, "message": "Cron-задачи остановлены"}
+
+
+# ─── Хелпер аудита ───
+def log_admin_action(db: Session, admin: User, action: str, target: str = ""):
+    entry = AuditLog(admin_id=admin.id, admin_username=admin.username, action=action, target=target)
+    db.add(entry)
+    db.commit()
+
+
+# ─── Аудит-лог ───
+@app.get("/admin/audit-log", summary="Лог действий админов")
+async def admin_audit_log(limit: int = 200, offset: int = 0, target: str = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    q = db.query(AuditLog)
+    if target:
+        q = q.filter(AuditLog.target.contains(target))
+    rows = q.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit).all()
+    return [{"id": r.id, "admin": r.admin_username, "action": r.action, "target": r.target, "timestamp": r.created_at.isoformat() if r.created_at else ""} for r in rows]
+
+
+# ─── Транзакции скрапа ───
+@app.get("/admin/transactions", summary="История транзакций скрапа")
+async def admin_transactions(limit: int = 200, offset: int = 0, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    rows = db.query(ScrapTransaction).order_by(ScrapTransaction.created_at.desc()).offset(offset).limit(limit).all()
+    return [{"id": r.id, "username": r.username, "amount": r.amount, "reason": r.reason, "created_at": r.created_at.isoformat() if r.created_at else ""} for r in rows]
+
+
+# ─── Промокоды CRUD ───
+@app.get("/admin/promocodes", summary="Список промокодов")
+async def admin_get_promocodes(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    rows = db.query(Promocode).order_by(Promocode.created_at.desc()).all()
+    return [{"id": r.id, "code": r.code, "discount_percent": r.discount_percent, "fixed_scrap": r.fixed_scrap, "expires_at": r.expires_at or "", "usage_limit": r.usage_limit, "usage_count": r.usage_count, "active": r.active} for r in rows]
+
+@app.post("/admin/promocodes", summary="Создать промокод")
+async def admin_create_promocode(data: PromocodeCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    existing = db.query(Promocode).filter(Promocode.code == data.code).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Промокод с таким кодом уже существует")
+    promo = Promocode(code=data.code, discount_percent=data.discount_percent, fixed_scrap=data.fixed_scrap, expires_at=data.expires_at, usage_limit=data.usage_limit, active=data.active)
+    db.add(promo)
+    db.commit()
+    db.refresh(promo)
+    log_admin_action(db, current_user, "СОЗДАНИЕ ПРОМОКОДА", f"{data.code}")
+    return {"ok": True, "id": promo.id}
+
+@app.delete("/admin/promocodes/{promo_id}", summary="Удалить промокод")
+async def admin_delete_promocode(promo_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    promo = db.query(Promocode).filter(Promocode.id == promo_id).first()
+    if not promo:
+        raise HTTPException(status_code=404, detail="Промокод не найден")
+    code = promo.code
+    db.delete(promo)
+    db.commit()
+    log_admin_action(db, current_user, "УДАЛЕНИЕ ПРОМОКОДА", code)
+    return {"ok": True}
+
+
+# ─── История входов ───
+@app.get("/admin/logins", summary="История входов")
+async def admin_logins(limit: int = 20, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    rows = db.query(LoginHistory).order_by(LoginHistory.created_at.desc()).limit(limit).all()
+    return [{"id": r.id, "ip": r.ip, "username": r.username, "time": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "", "status": r.status} for r in rows]
+
+
+# ─── Жалобы ───
+@app.post("/reports", summary="Отправить жалобу")
+async def create_report(data: ReportCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    report = Report(user_id=current_user.id, user_email=current_user.email, manga_id=data.manga_id, manga_title=data.manga_title, reason=data.reason, message=data.message)
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    notify_telegram_event(db, "report", f"⚠️ <b>Новая жалоба</b>\nТайтл: {data.manga_title}\nПричина: {data.reason}\nОт: {current_user.email}")
+    return {"ok": True, "id": report.id}
+
+@app.get("/admin/reports", summary="Список жалоб (админ)")
+async def admin_get_reports(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    rows = db.query(Report).order_by(Report.created_at.desc()).all()
+    return [{"id": r.id, "mangaId": r.manga_id, "mangaTitle": r.manga_title, "reportedBy": r.user_email, "timestamp": r.created_at.isoformat() if r.created_at else "", "status": r.status, "reason": r.reason or "", "message": r.message or ""} for r in rows]
+
+@app.put("/admin/reports/{report_id}/resolve", summary="Закрыть жалобу")
+async def admin_resolve_report(report_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Жалоба не найдена")
+    report.status = "resolved"
+    db.commit()
+    log_admin_action(db, current_user, "ЗАКРЫТИЕ ЖАЛОБЫ", f"#{report_id} на {report.manga_title}")
+    return {"ok": True}
+
 
 @app.put("/admin/users/{user_id}/status", summary="Бан/разбан (админ)")
 async def admin_update_status(user_id: int, data: StatusUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -3596,6 +4909,9 @@ async def admin_update_status(user_id: int, data: StatusUpdate, current_user: Us
         raise HTTPException(status_code=403, detail="Нельзя заблокировать администратора")
     target.status = data.status
     db.commit()
+    action_map = {"banned": "БЛОКИРОВКА", "frozen": "ЗАМОРОЗКА", "active": "РАЗБЛОКИРОВКА"}
+    action = action_map.get(data.status, f"СТАТУС → {data.status}")
+    log_admin_action(db, current_user, action, f"{target.username} (id={target.id})")
     return {"ok": True}
 
 # --- Google OAuth ---
@@ -3681,6 +4997,223 @@ async def google_callback(data: GoogleCodeRequest, db: Session = Depends(get_db)
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+# --- Yandex OAuth ---
+YANDEX_CLIENT_ID = os.environ.get("YANDEX_CLIENT_ID", "")
+YANDEX_CLIENT_SECRET = os.environ.get("YANDEX_CLIENT_SECRET", "")
+YANDEX_REDIRECT_URI = os.environ.get("YANDEX_REDIRECT_URI", "http://localhost:5173")
+if YANDEX_CLIENT_ID.startswith("YOUR_"):
+    YANDEX_CLIENT_ID = ""
+if YANDEX_CLIENT_SECRET.startswith("YOUR_"):
+    YANDEX_CLIENT_SECRET = ""
+
+@app.get("/auth/yandex", summary="Yandex OAuth redirect")
+async def yandex_auth():
+    if not YANDEX_CLIENT_ID:
+        raise HTTPException(status_code=501, detail="Yandex OAuth не настроен")
+    params = {
+        "client_id": YANDEX_CLIENT_ID,
+        "redirect_uri": YANDEX_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "login:email login:info login:avatar",
+    }
+    from urllib.parse import urlencode
+    url = f"https://oauth.yandex.ru/authorize?{urlencode(params)}"
+    return RedirectResponse(url)
+
+class YandexCodeRequest(BaseModel):
+    code: str
+
+@app.post("/auth/yandex/callback", summary="Yandex OAuth callback")
+async def yandex_callback(data: YandexCodeRequest, db: Session = Depends(get_db)):
+    if not YANDEX_CLIENT_ID or not YANDEX_CLIENT_SECRET:
+        raise HTTPException(status_code=501, detail="Yandex OAuth не настроен")
+    token_resp = requests.post("https://oauth.yandex.ru/token", data={
+        "code": data.code,
+        "client_id": YANDEX_CLIENT_ID,
+        "client_secret": YANDEX_CLIENT_SECRET,
+        "redirect_uri": YANDEX_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    })
+    if token_resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="Ошибка получения токена Яндекс")
+    token_data = token_resp.json()
+    userinfo_resp = requests.get("https://login.yandex.ru/info", headers={
+        "Authorization": f"OAuth {token_data['access_token']}"
+    })
+    if userinfo_resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="Ошибка получения данных пользователя Яндекс")
+    yandex_user = userinfo_resp.json()
+    yandex_id = str(yandex_user.get("id", ""))
+    email = yandex_user.get("default_email", "") or (yandex_user.get("emails", [""])[0] if yandex_user.get("emails") else "")
+    login_name = yandex_user.get("login", "")
+    first_name = yandex_user.get("first_name", "")
+    last_name = yandex_user.get("last_name", "")
+    if first_name or last_name:
+        name = f"{first_name} {last_name}".strip()
+    elif login_name:
+        name = login_name
+    else:
+        name = email.split("@")[0] if email else f"yandex_{yandex_id}"
+    avatar_id = yandex_user.get("default_avatar_id", "")
+    picture = ""
+    if avatar_id and not yandex_user.get("is_avatar_empty", True):
+        picture = f"https://avatars.yandex.net/get-yapic/{avatar_id}/islands-200"
+    user = db.query(User).filter(User.yandex_id == yandex_id).first()
+    if not user:
+        user = db.query(User).filter(User.email == email).first() if email else None
+    if user:
+        if not user.yandex_id:
+            user.yandex_id = yandex_id
+        if picture and not user.avatar_url:
+            user.avatar_url = picture
+        db.commit()
+    else:
+        user = User(
+            username=name,
+            email=email or f"yandex_{yandex_id}@yandex.placeholder",
+            hashed_password="",
+            yandex_id=yandex_id,
+            avatar_url=picture,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+import hmac as _hmac
+import hashlib as _hashlib
+
+
+def _get_bot_token() -> str:
+    env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if env_token:
+        return env_token
+    return get_setting_value("telegram_bot_token", "")
+
+
+def _verify_telegram_hash(auth_data: dict, bot_token: str) -> bool:
+    check_hash = auth_data.get("hash", "")
+    if not check_hash:
+        return False
+    data_check = []
+    for key in sorted(auth_data.keys()):
+        if key == "hash":
+            continue
+        val = auth_data[key]
+        if isinstance(val, bool):
+            val = str(val).lower()
+        data_check.append(f"{key}={val}")
+    data_check_string = "\n".join(data_check)
+    secret_key = _hashlib.sha256(bot_token.encode()).digest()
+    computed = _hmac.new(secret_key, data_check_string.encode(), _hashlib.sha256).hexdigest()
+    return _hmac.compare_digest(computed, check_hash)
+
+
+@app.get("/auth/telegram/info", summary="Инфо о TG боте для Login Widget")
+async def telegram_bot_info():
+    token = _get_bot_token()
+    if not token:
+        return {"configured": False, "bot_id": "", "bot_username": ""}
+    try:
+        resp = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=5)
+        if resp.ok:
+            r = resp.json().get("result", {})
+            return {"configured": True, "bot_id": str(r.get("id", "")), "bot_username": r.get("username", "")}
+    except:
+        pass
+    bot_id = token.split(":")[0] if ":" in token else ""
+    return {"configured": bool(bot_id), "bot_id": bot_id, "bot_username": ""}
+
+
+@app.post("/auth/telegram/callback", summary="Telegram Login Widget — верификация и вход")
+async def telegram_auth_callback(data: dict = Body(...), db: Session = Depends(get_db)):
+    bot_token = _get_bot_token()
+    if not bot_token:
+        raise HTTPException(status_code=501, detail="Telegram Login не настроен")
+    if not _verify_telegram_hash(data, bot_token):
+        raise HTTPException(status_code=401, detail="Неверная подпись Telegram")
+    auth_date = data.get("auth_date", 0)
+    try:
+        if time() - int(auth_date) > 86400:
+            raise HTTPException(status_code=401, detail="Сессия Telegram истекла")
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=401, detail="Некорректная дата авторизации")
+    tg_id = str(data.get("id", ""))
+    tg_username = data.get("username", "")
+    tg_first = data.get("first_name", "")
+    tg_last = data.get("last_name", "")
+    tg_photo = data.get("photo_url", "")
+    if not tg_id:
+        raise HTTPException(status_code=400, detail="Нет Telegram ID")
+    user = db.query(User).filter(User.telegram_id == tg_id).first()
+    if user:
+        if user.status == "banned":
+            raise HTTPException(status_code=403, detail="Аккаунт заблокирован")
+        if user.status == "frozen":
+            raise HTTPException(status_code=403, detail="Аккаунт заморожен")
+        if tg_username and user.telegram_username != tg_username:
+            user.telegram_username = tg_username
+        if tg_photo and not user.avatar_url:
+            user.avatar_url = tg_photo
+        user.last_seen = datetime.utcnow()
+        db.commit()
+    else:
+        name = tg_username or f"{tg_first} {tg_last}".strip() or f"User{tg_id}"
+        email = f"tg_{tg_id}@telegram.springmanga"
+        user = User(
+            username=name,
+            email=email,
+            hashed_password="",
+            telegram_id=tg_id,
+            telegram_username=tg_username,
+            avatar_url=tg_photo or "",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.post("/auth/telegram/link", summary="Привязать Telegram к текущему аккаунту")
+async def telegram_link_account(data: dict = Body(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    bot_token = _get_bot_token()
+    if not bot_token:
+        raise HTTPException(status_code=501, detail="Telegram Login не настроен")
+    if not _verify_telegram_hash(data, bot_token):
+        raise HTTPException(status_code=401, detail="Неверная подпись Telegram")
+    tg_id = str(data.get("id", ""))
+    tg_username = data.get("username", "")
+    tg_photo = data.get("photo_url", "")
+    if not tg_id:
+        raise HTTPException(status_code=400, detail="Нет Telegram ID")
+    existing = db.query(User).filter(User.telegram_id == tg_id, User.id != current_user.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Этот Telegram уже привязан к другому аккаунту")
+    current_user.telegram_id = tg_id
+    current_user.telegram_username = tg_username
+    if tg_photo and not current_user.avatar_url:
+        current_user.avatar_url = tg_photo
+    db.commit()
+    return {"ok": True, "telegram_username": tg_username}
+
+
+@app.post("/auth/telegram/unlink", summary="Отвязать Telegram от аккаунта")
+async def telegram_unlink_account(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not current_user.telegram_id and not current_user.google_id and not current_user.yandex_id and not current_user.hashed_password:
+        raise HTTPException(status_code=400, detail="Нельзя отвязать единственный способ входа")
+    current_user.telegram_id = ""
+    current_user.telegram_username = ""
+    db.commit()
+    return {"ok": True}
+
+
 @app.post("/chapters/{chapter_id}/view", summary="Засчитать просмотр")
 async def add_view(
     chapter_id: str,
@@ -3758,6 +5291,10 @@ async def rate_manga(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    _item = resolve_manga(db, manga_id)
+    if _item: manga_id = _item.manga_id
+    if get_setting_value("allow_ratings", "true") != "true":
+        raise HTTPException(status_code=403, detail="Оценки временно отключены")
     existing = db.query(MangaRating).filter(
         MangaRating.manga_id == manga_id,
         MangaRating.user_id == current_user.id
@@ -3799,6 +5336,8 @@ async def set_bookmark(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    _item = resolve_manga(db, manga_id)
+    if _item: manga_id = _item.manga_id
     valid_statuses = ['Читаю', 'Буду читать', 'Прочитано', 'Отложено', 'Не интересно', 'Брошено']
     if status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Недопустимый статус. Допустимые: {valid_statuses}")
@@ -3819,6 +5358,8 @@ async def remove_bookmark(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    _item = resolve_manga(db, manga_id)
+    if _item: manga_id = _item.manga_id
     existing = db.query(MangaBookmark).filter(
         MangaBookmark.manga_id == manga_id,
         MangaBookmark.user_id == current_user.id
@@ -4014,6 +5555,7 @@ def _build_comment_tree(comments, likes_map, current_user_id=None, db=None):
             "likedBy": liked_by,
             "replies": [],
             "parentId": c.parent_id,
+            "status": getattr(c, 'status', 'approved'),
         }
         by_id[c.id] = node
 
@@ -4031,15 +5573,21 @@ async def get_manga_comments(
     manga_id: str,
     chapter_id: str = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_optional_user),
 ):
+    _item = resolve_manga(db, manga_id)
+    if _item: manga_id = _item.manga_id
     q = db.query(MangaComment).filter(MangaComment.manga_id == manga_id)
+    if current_user and current_user.role in ("admin", "moderator"):
+        pass
+    else:
+        q = q.filter(MangaComment.status == "approved")
     if chapter_id:
         q = q.filter(MangaComment.chapter_id == chapter_id)
     else:
         q = q.filter(MangaComment.chapter_id == None)
     comments = q.order_by(MangaComment.created_at.asc()).all()
 
-    # Загружаем лайки
     comment_ids = [c.id for c in comments]
     likes = db.query(CommentLike).filter(CommentLike.comment_id.in_(comment_ids)).all() if comment_ids else []
     likes_map = {}
@@ -4048,7 +5596,11 @@ async def get_manga_comments(
         if u:
             likes_map.setdefault(lk.comment_id, []).append(u.email)
 
-    return _build_comment_tree(comments, likes_map, db=db)
+    tree = _build_comment_tree(comments, likes_map, current_user_id=current_user.id if current_user else None, db=db)
+    if current_user and current_user.role in ("admin", "moderator"):
+        pending_count = db.query(MangaComment).filter(MangaComment.manga_id == manga_id, MangaComment.status == "pending").count()
+        tree = {"comments": tree if isinstance(tree, list) else tree, "pending_count": pending_count}
+    return tree
 
 
 class CommentCreate(BaseModel):
@@ -4064,14 +5616,63 @@ async def add_manga_comment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _item = resolve_manga(db, manga_id)
+    if _item: manga_id = _item.manga_id
+    if current_user.status == "frozen":
+        raise HTTPException(status_code=403, detail="Аккаунт заморожен")
+    if current_user.muted_until and current_user.muted_until > datetime.utcnow():
+        remaining = current_user.muted_until - datetime.utcnow()
+        days = remaining.days
+        hours = remaining.seconds // 3600
+        raise HTTPException(status_code=403, detail=f"Вы замьючены. Мут снимется через {days}д {hours}ч")
+    if get_setting_value("allow_comments", "true") != "true":
+        raise HTTPException(status_code=403, detail="Комментарии временно отключены")
     if not data.text.strip():
         raise HTTPException(status_code=400, detail="Текст не может быть пустым")
 
-    # Проверяем parent если есть
+    if get_setting_value("spam_filter", "true") == "true":
+        if len(data.text.strip()) < 2:
+            raise HTTPException(status_code=400, detail="Комментарий слишком короткий")
+
+    bw_result = check_comment(data.text, extra_banned=[w.strip().lower() for w in get_setting_value("banned_words", "").split(",") if w.strip()], word_overrides={
+        "badwords_shadow": get_setting_value("badwords_shadow", ""),
+        "badwords_warn_links": get_setting_value("badwords_warn_links", ""),
+        "badwords_warn_scam": get_setting_value("badwords_warn_scam", ""),
+        "badwords_freeze": get_setting_value("badwords_freeze", ""),
+    })
+    if bw_result:
+        severity = bw_result['severity']
+        if severity == 'freeze':
+            current_user.status = "frozen"
+            current_user.warnings_count = (current_user.warnings_count or 0) + 1
+            current_user.warning_shown_at = datetime.utcnow()
+            log_admin_action(db, None, "АВТО-ЗАМОРОЗКА", f"{current_user.username}: {bw_result['reason']} ({bw_result['matched']})")
+            db.commit()
+            raise HTTPException(status_code=403, detail="Аккаунт заморожен за нарушение правил")
+        elif severity == 'warn':
+            current_user.warnings_count = (current_user.warnings_count or 0) + 1
+            current_user.warning_shown_at = datetime.utcnow()
+            if current_user.warnings_count >= 3:
+                current_user.status = "banned"
+                log_admin_action(db, None, "АВТО-БАН", f"{current_user.username}: {current_user.warnings_count} предупреждений")
+                db.commit()
+                raise HTTPException(status_code=403, detail="Аккаунт заблокирован")
+            log_admin_action(db, None, "ПРЕДУПРЕЖДЕНИЕ", f"{current_user.username}: {bw_result['reason']} ({bw_result['matched']})")
+            db.commit()
+            raise HTTPException(status_code=400, detail=f"Комментарий отклонён: {bw_result['reason']} (предупреждение {current_user.warnings_count}/3)")
+        elif severity == 'shadow':
+            data.text = shadow_replace(data.text, word_overrides={
+                "badwords_shadow": get_setting_value("badwords_shadow", ""),
+            })
+
     if data.parent_id:
         parent = db.query(MangaComment).filter(MangaComment.id == data.parent_id).first()
         if not parent:
             raise HTTPException(status_code=404, detail="Родительский комментарий не найден")
+
+    is_admin_or_mod = current_user.role in ("admin", "moderator")
+    pre_moderation = get_setting_value("pre_moderation", "false") == "true"
+    comment_status = "approved" if (is_admin_or_mod or not pre_moderation) else "pending"
 
     comment = MangaComment(
         manga_id=manga_id,
@@ -4079,30 +5680,30 @@ async def add_manga_comment(
         parent_id=data.parent_id,
         user_id=current_user.id,
         text=data.text.strip(),
+        status=comment_status,
     )
     db.add(comment)
     db.commit()
     db.refresh(comment)
 
-    # Notify parent comment author about reply
-    if data.parent_id:
+    if data.parent_id and comment_status == "approved":
         parent = db.query(MangaComment).filter(MangaComment.id == data.parent_id).first()
         if parent and parent.user_id != current_user.id:
             notif_msg = f'<a href="/user/{current_user.id}" class="text-brand-accent hover:underline font-bold">{current_user.username}</a> ответил на ваш <a href="/manga/{manga_id}" class="text-brand-accent hover:underline">комментарий</a>'
             create_notification(db, parent.user_id, notif_msg, f"/manga/{manga_id}", "social")
 
-    # ── Scrap for comment (max 5/day) ──
     from datetime import date as _date
     today = _date.today()
     scrap_earned = 0
-    if current_user.scrap_comments_date is None or current_user.scrap_comments_date != today:
-        current_user.scrap_comments_today = 0
-        current_user.scrap_comments_date = today
-    if (current_user.scrap_comments_today or 0) < 5:
-        scrap_earned = int(10 * (1.5 if is_springpro_active(current_user) else 1.0))
-        current_user.scrap = (current_user.scrap or 0) + scrap_earned
-        current_user.scrap_comments_today = (current_user.scrap_comments_today or 0) + 1
-        db.commit()
+    if comment_status == "approved":
+        if current_user.scrap_comments_date is None or current_user.scrap_comments_date != today:
+            current_user.scrap_comments_today = 0
+            current_user.scrap_comments_date = today
+        if (current_user.scrap_comments_today or 0) < 5:
+            scrap_earned = int(10 * (1.5 if is_springpro_active(current_user) else 1.0))
+            current_user.scrap = (current_user.scrap or 0) + scrap_earned
+            current_user.scrap_comments_today = (current_user.scrap_comments_today or 0) + 1
+            db.commit()
 
     return {
         "id": comment.id,
@@ -4114,6 +5715,7 @@ async def add_manga_comment(
         "likedBy": [],
         "replies": [],
         "parentId": comment.parent_id,
+        "status": comment.status,
         "scrap_earned": scrap_earned,
     }
 
@@ -4170,25 +5772,303 @@ async def toggle_comment_like(
         return {"status": "liked"}
 
 
-@app.get("/auth/my-comments", summary="Получить все комментарии текущего пользователя")
-async def get_my_comments(
+class ReportCreate(BaseModel):
+    reason: str = "spam"
+    message: str = ""
+
+
+AUTO_VERIFIABLE_REASONS = {"profanity", "ads", "spam"}
+
+
+@app.post("/manga/comments/{comment_id}/report", summary="Пожаловаться на комментарий")
+async def report_comment(
+    comment_id: int,
+    data: ReportCreate = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    comments = db.query(MangaComment).filter(
-        MangaComment.user_id == current_user.id
-    ).order_by(MangaComment.created_at.desc()).limit(50).all()
+    if data is None:
+        data = ReportCreate()
+    comment = db.query(MangaComment).filter(MangaComment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Комментарий не найден")
+    if comment.status in ("rejected", "under_review"):
+        raise HTTPException(status_code=400, detail="Комментарий уже на рассмотрении")
+    existing = db.query(CommentReport).filter(
+        CommentReport.comment_id == comment_id,
+        CommentReport.reporter_id == current_user.id,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Вы уже пожаловались на этот комментарий")
+    db.add(CommentReport(comment_id=comment_id, reporter_id=current_user.id, reason=data.reason))
+    db.commit()
 
+    report_count = db.query(CommentReport).filter(CommentReport.comment_id == comment_id).count()
+    auto_threshold = int(get_setting_value("auto_ban_after_reports", "3") or "3")
+    if auto_threshold == 0 or report_count < auto_threshold:
+        return {"status": "reported", "report_count": report_count, "comment_deleted": False, "under_review": False}
+
+    author = db.query(User).filter(User.id == comment.user_id).first()
+    if not author or author.role in ("admin", "moderator"):
+        return {"status": "reported", "report_count": report_count, "comment_deleted": False, "under_review": False}
+
+    manga = db.query(MangaItem).filter(MangaItem.manga_id == comment.manga_id).first()
+    manga_title = manga.title if manga else comment.manga_id
+    reason_labels = {
+        "profanity": "Маты", "illegal": "Нарушение законов РФ",
+        "suicide": "Призыв к суициду", "ads": "Реклама",
+        "spam": "Спам", "spoiler": "Спойлер",
+    }
+    reason_text = reason_labels.get(data.reason, data.reason)
+
+    auto_verified = False
+    if data.reason in AUTO_VERIFIABLE_REASONS:
+        from badword_filter import check_comment
+        bw = check_comment(comment.text, word_overrides={
+            "badwords_shadow": get_setting_value("badwords_shadow", ""),
+            "badwords_warn_links": get_setting_value("badwords_warn_links", ""),
+            "badwords_warn_scam": get_setting_value("badwords_warn_scam", ""),
+            "badwords_freeze": get_setting_value("badwords_freeze", ""),
+        })
+        if data.reason == "profanity" and bw and bw.get('severity') == 'shadow':
+            auto_verified = True
+        elif data.reason in ("ads", "spam") and bw and bw.get('severity') in ('warn', 'freeze'):
+            auto_verified = True
+
+    if auto_verified:
+        db.query(CommentLike).filter(CommentLike.comment_id == comment_id).delete()
+        def _del_children(pid):
+            for ch in db.query(MangaComment).filter(MangaComment.parent_id == pid).all():
+                db.query(CommentLike).filter(CommentLike.comment_id == ch.id).delete()
+                _del_children(ch.id)
+                db.delete(ch)
+        _del_children(comment_id)
+        db.delete(comment)
+
+        apply_mute(author, db, reason_text, manga_title, comment.text, comment.manga_id)
+        db.commit()
+        return {"status": "reported", "report_count": report_count, "comment_deleted": True, "under_review": False}
+    else:
+        comment.status = "under_review"
+        db.commit()
+        return {"status": "reported", "report_count": report_count, "comment_deleted": False, "under_review": True}
+
+
+@app.put("/admin/comments/{comment_id}/moderate", summary="Модерация комментария")
+async def moderate_comment(
+    comment_id: int,
+    action: str = Query(..., description="approve или reject"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Нет прав")
+    comment = db.query(MangaComment).filter(MangaComment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Комментарий не найден")
+    if action == "approve":
+        comment.status = "approved"
+    elif action == "reject":
+        comment.status = "rejected"
+    else:
+        raise HTTPException(status_code=400, detail="Действие: approve или reject")
+    db.commit()
+    return {"ok": True, "status": comment.status}
+
+
+@app.get("/admin/comments/pending", summary="Комментарии, ожидающие модерации")
+async def get_pending_comments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Нет прав")
+    comments = db.query(MangaComment).filter(MangaComment.status == "pending").order_by(MangaComment.created_at.desc()).limit(100).all()
     result = []
     for c in comments:
+        u = db.query(User).filter(User.id == c.user_id).first()
+        manga = db.query(MangaItem).filter(MangaItem.manga_id == c.manga_id).first()
         result.append({
             "id": c.id,
-            "mangaId": c.manga_id,
-            "chapterId": c.chapter_id,
             "text": c.text,
-            "timestamp": c.created_at.strftime("%d.%m.%Y %H:%M") if c.created_at else "",
+            "status": c.status,
+            "manga_id": c.manga_id,
+            "manga_title": manga.title if manga else c.manga_id,
+            "user_id": c.user_id,
+            "username": u.username if u else "Удалён",
+            "created_at": c.created_at.strftime("%d.%m.%Y %H:%M") if c.created_at else "",
         })
     return result
+
+
+@app.get("/admin/comments/reports", summary="Жалобы на модерации")
+async def get_reported_comments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Нет прав")
+    comments = db.query(MangaComment).filter(MangaComment.status == "under_review").order_by(MangaComment.created_at.desc()).limit(100).all()
+    result = []
+    for c in comments:
+        u = db.query(User).filter(User.id == c.user_id).first()
+        manga = db.query(MangaItem).filter(MangaItem.manga_id == c.manga_id).first()
+        reports = db.query(CommentReport).filter(CommentReport.comment_id == c.id).all()
+        report_reasons = [r.reason for r in reports]
+        reason_labels = {
+            "profanity": "Маты", "illegal": "Нарушение законов РФ",
+            "suicide": "Призыв к суициду", "ads": "Реклама",
+            "spam": "Спам", "spoiler": "Спойлер",
+        }
+        result.append({
+            "id": c.id,
+            "text": c.text,
+            "status": c.status,
+            "manga_id": c.manga_id,
+            "manga_title": manga.title if manga else c.manga_id,
+            "user_id": c.user_id,
+            "username": u.username if u else "Удалён",
+            "warnings_count": u.warnings_count if u else 0,
+            "report_count": len(reports),
+            "report_reasons": [reason_labels.get(r, r) for r in report_reasons],
+            "created_at": c.created_at.strftime("%d.%m.%Y %H:%M") if c.created_at else "",
+        })
+    return result
+
+
+@app.put("/admin/comments/{comment_id}/review", summary="Рассмотреть жалобу (админ)")
+async def review_reported_comment(
+    comment_id: int,
+    action: str = Query(..., description="approve — отклонить жалобу, reject — удалить коммент + предупредить"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Нет прав")
+    comment = db.query(MangaComment).filter(MangaComment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Комментарий не найден")
+
+    if action == "approve":
+        comment.status = "approved"
+        db.query(CommentReport).filter(CommentReport.comment_id == comment_id).delete()
+        log_admin_action(db, current_user, "ЖАЛОБА ОТКЛОНЕНА", f"Комментарий #{comment_id} восстановлен")
+        db.commit()
+        return {"ok": True, "action": "approved"}
+
+    elif action == "reject":
+        reports = db.query(CommentReport).filter(CommentReport.comment_id == comment_id).all()
+        report_reasons = [r.reason for r in reports]
+        reason_labels = {
+            "profanity": "Маты", "illegal": "Нарушение законов РФ",
+            "suicide": "Призыв к суициду", "ads": "Реклама",
+            "spam": "Спам", "spoiler": "Спойлер",
+        }
+        reason_text = ", ".join(set(reason_labels.get(r, r) for r in report_reasons))
+
+        author = db.query(User).filter(User.id == comment.user_id).first()
+        manga = db.query(MangaItem).filter(MangaItem.manga_id == comment.manga_id).first()
+        manga_title = manga.title if manga else comment.manga_id
+
+        db.query(CommentLike).filter(CommentLike.comment_id == comment_id).delete()
+        def _del_children(pid):
+            for ch in db.query(MangaComment).filter(MangaComment.parent_id == pid).all():
+                db.query(CommentLike).filter(CommentLike.comment_id == ch.id).delete()
+                _del_children(ch.id)
+                db.delete(ch)
+        _del_children(comment_id)
+        db.delete(comment)
+        db.query(CommentReport).filter(CommentReport.comment_id == comment_id).delete()
+
+        if author and author.role not in ("admin", "moderator"):
+            apply_mute(author, db, reason_text, manga_title, comment.text, comment.manga_id, current_user)
+
+        db.commit()
+        return {"ok": True, "action": "rejected"}
+
+    raise HTTPException(status_code=400, detail="Действие: approve или reject")
+async def warn_user(
+    user_id: int,
+    reason: str = Query("", description="Причина предупреждения"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Нет прав")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if target.role in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Нельзя предупредить админа/модератора")
+    target.warnings_count = (target.warnings_count or 0) + 1
+    target.warning_shown_at = datetime.utcnow()
+    db.add(UserWarning(user_id=user_id, admin_id=current_user.id, reason=reason))
+
+    stages_raw = get_setting_value("mute_stages", "1,7,30,0")
+    stages = [int(s.strip()) for s in stages_raw.split(",") if s.strip()]
+    stage_idx = min(target.warnings_count - 1, len(stages) - 1)
+    mute_days = stages[stage_idx] if stage_idx < len(stages) else 0
+    if mute_days == 0:
+        from datetime import timedelta as _td
+        target.muted_until = datetime(2099, 1, 1)
+        mute_label = "вечный мут"
+    else:
+        from datetime import timedelta as _td
+        target.muted_until = datetime.utcnow() + _td(days=mute_days)
+        mute_label = f"мут на {mute_days} дн."
+    log_admin_action(db, current_user, f"МУТ {mute_label}", f"{target.username}: {target.warnings_count}/{len(stages)} (причина: {reason})")
+    db.commit()
+    return {"ok": True, "warnings": target.warnings_count, "mute_label": mute_label}
+
+
+@app.put("/admin/users/{user_id}/freeze", summary="Заморозить/разморозить аккаунт")
+async def freeze_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Только админ")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if target.status == "frozen":
+        target.status = "active"
+        log_admin_action(db, current_user, "РАЗМОРОЗКА", target.username)
+    else:
+        target.status = "frozen"
+        log_admin_action(db, current_user, "ЗАМОРОЗКА", target.username)
+    db.commit()
+    return {"ok": True, "status": target.status}
+
+
+@app.get("/auth/warning", summary="Получить активное предупреждение")
+async def get_active_warning(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.warning_shown_at:
+        return {"active": False}
+    elapsed = (datetime.utcnow() - current_user.warning_shown_at).total_seconds()
+    if elapsed < 300:
+        latest = db.query(UserWarning).filter(UserWarning.user_id == current_user.id).order_by(UserWarning.created_at.desc()).first()
+        return {
+            "active": True,
+            "reason": latest.reason if latest else "Нарушение правил сообщества",
+            "warnings_count": current_user.warnings_count,
+            "dismiss_after": int(300 - elapsed),
+        }
+    return {"active": False}
+
+
+@app.post("/auth/warning/dismiss", summary="Скрыть предупреждение")
+async def dismiss_warning(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_user.warning_shown_at = None
+    db.commit()
+    return {"ok": True}
 
 
 # ========== Reading History ==========
@@ -4653,6 +6533,10 @@ async def import_catalog(db: Session = Depends(get_db)):
                     existing.year = year or existing.year
                     existing.status = status
                     existing.additional_info = json.dumps(additional, ensure_ascii=False)
+                    if not existing.slug and title:
+                        new_slug = generate_slug(title)
+                        if new_slug and not db.query(MangaItem).filter(MangaItem.slug == new_slug, MangaItem.manga_id != manga_id).first():
+                            existing.slug = new_slug
                 else:
                     # Новый тайтл — скачиваем обложку
                     local_cover_url = cover
@@ -4672,8 +6556,15 @@ async def import_catalog(db: Session = Depends(get_db)):
                                         print(f"[CATALOG] Обложка сохранена: {slug}")
                         except Exception as e:
                             print(f"[CATALOG] Не удалось скачать обложку {slug}: {e}")
+                    new_slug = generate_slug(title)
+                    if not new_slug:
+                        new_slug = manga_id[:16]
+                    # Check uniqueness
+                    if db.query(MangaItem).filter(MangaItem.slug == new_slug).first():
+                        new_slug = f"{new_slug}-{manga_id[:8]}"
                     db.add(MangaItem(
                         manga_id=manga_id,
+                        slug=new_slug,
                         title=title,
                         description=description,
                         cover_url=local_cover_url,
@@ -4686,6 +6577,10 @@ async def import_catalog(db: Session = Depends(get_db)):
                         chapters="[]",
                     ))
                 db.commit()
+                _fts_conn = sqlite3.connect(DB_PATH)
+                _fts_conn.execute("INSERT INTO manga_fts(rowid, title) VALUES(?, ?)", (db.query(MangaItem).filter(MangaItem.manga_id == manga_id).first().id, title))
+                _fts_conn.commit()
+                _fts_conn.close()
                 imported += 1
             except Exception as e:
                 db.rollback()
@@ -4902,10 +6797,16 @@ async def background_chapter_crawler(force: bool = False, update: bool = False):
     except Exception as e:
         print(f"[CRAWLER] Fatal error: {e}")
     finally:
+        processed = crawler_status['processed']
+        errors = crawler_status['errors']
+        try:
+            notify_telegram_event(db, "new_chapter", f"📦 <b>Краулер завершён</b>\nОбработано: {processed}\nОшибок: {errors}")
+        except Exception:
+            pass
         db.close()
         crawler_status["running"] = False
         crawler_status["current_title"] = ""
-        print(f"[CRAWLER] Done. Processed: {crawler_status['processed']}, Errors: {crawler_status['errors']}")
+        print(f"[CRAWLER] Done. Processed: {processed}, Errors: {errors}")
 
 
 @app.post("/catalog/crawl-chapters", summary="Запустить фоновый краулер глав")
@@ -5055,9 +6956,8 @@ async def recrawl_single_manga(manga_id: str, db: Session = Depends(get_db)):
                 "pages": [],
             })
 
-        # Delete old chapters and insert new
-        db.query(Chapter).filter(Chapter.manga_id == manga_id).delete()
-        upsert_chapters(db, manga_id, formatted)
+        # Upsert chapters (add new, update existing — no delete)
+        new_count = upsert_chapters(db, manga_id, formatted)
         db.commit()
 
     return {
@@ -5065,6 +6965,7 @@ async def recrawl_single_manga(manga_id: str, db: Session = Depends(get_db)):
         "manga_id": manga_id,
         "year": year,
         "chapters_count": len(formatted),
+        "new_chapters": new_count,
     }
 
 
@@ -5076,6 +6977,11 @@ async def get_crawler_status():
 @app.get("/catalog/chapter-pages/{chapter_slug:path}", summary="Lazy-load страниц главы по slug")
 async def get_chapter_pages(chapter_slug: str, manga_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
     """Подгружает страницы главы через HTML-парсинг mangabuff, кеширует в БД."""
+    # Resolve slug to real manga_id if needed
+    if manga_id:
+        resolved = resolve_manga(db, manga_id)
+        if resolved:
+            manga_id = resolved.manga_id
     # Check if already cached in DB (try both dash and slash variants)
     if manga_id:
         existing = db.query(Chapter).filter(Chapter.chapter_id == chapter_slug, Chapter.manga_id == manga_id).first()
@@ -5548,13 +7454,25 @@ async def _do_scrape_views():
 
 @app.get("/manga/home-sections", summary="Секции для главной страницы")
 async def get_home_sections(db: Session = Depends(get_db)):
-    """Возвращает тайтлы для секций главной страницы, отсортированные по локальным метрикам пользователей."""
+    if redis_client:
+        cached = redis_client.get("home_sections")
+        if cached:
+            return json.loads(cached)
+    try:
+        return await _get_home_sections_inner(db)
+    except Exception as e:
+        print(f"[HOME_SECTIONS] Fatal error: {e}")
+        raise
+
+async def _get_home_sections_inner(db: Session):
     from sqlalchemy import func as sa_fn, desc as sa_desc, case as sa_case
     from collections import defaultdict
 
     now = datetime.utcnow()
     seven_days_ago = now - timedelta(days=7)
     thirty_days_ago = now - timedelta(days=30)
+    forty_eight_hours_ago = now - timedelta(hours=48)
+    twenty_four_hours_ago = now - timedelta(hours=24)
 
     # Предрасчёт пользовательских рейтингов для всех манг
     user_ratings_agg = dict(
@@ -5582,6 +7500,7 @@ async def get_home_sections(db: Session = Depends(get_db)):
             user_total = user_ratings_count.get(item.manga_id, 0)
             result.append({
                 "manga_id": item.manga_id,
+                "slug": item.slug or item.manga_id,
                 "title": item.title,
                 "cover_url": item.cover_url,
                 "manga_type": item.manga_type,
@@ -5624,12 +7543,36 @@ async def get_home_sections(db: Session = Depends(get_db)):
         sa_fn.count(MangaRating.id).label("r_cnt")
     ).group_by(MangaRating.manga_id).having(sa_fn.count(MangaRating.id) >= 20).subquery()
 
-    # --- "Горячие новинки": добавлены за 30 дней, по просмотрам ---
+    # Просмотры за 48 часов (для "В тренде")
+    views_48h_sq = db.query(
+        MangaView.manga_id, sa_fn.count(MangaView.id).label("v48")
+    ).filter(MangaView.created_at >= forty_eight_hours_ago).group_by(MangaView.manga_id).subquery()
+
+    # Закладки за 48 часов
+    bookmarks_48h_sq = db.query(
+        MangaBookmark.manga_id, sa_fn.count(MangaBookmark.id).label("b48")
+    ).filter(MangaBookmark.created_at >= forty_eight_hours_ago).group_by(MangaBookmark.manga_id).subquery()
+
+    # Просмотры за 24 часа (для "Популярно сегодня")
+    views_24h_sq = db.query(
+        MangaView.manga_id, sa_fn.count(MangaView.id).label("v24")
+    ).filter(MangaView.created_at >= twenty_four_hours_ago).group_by(MangaView.manga_id).subquery()
+
+    # Закладки за 24 часа
+    bookmarks_24h_sq = db.query(
+        MangaBookmark.manga_id, sa_fn.count(MangaBookmark.id).label("b24")
+    ).filter(MangaBookmark.created_at >= twenty_four_hours_ago).group_by(MangaBookmark.manga_id).subquery()
+
+    # --- "Горячие новинки": добавлены за 7 дней, по скачку интереса (7d views + bookmarks) ---
     hot_new_items = db.query(MangaItem).outerjoin(
-        views_all_sq, MangaItem.manga_id == views_all_sq.c.manga_id
+        views_7d_sq, MangaItem.manga_id == views_7d_sq.c.manga_id
+    ).outerjoin(
+        bookmarks_7d_sq, MangaItem.manga_id == bookmarks_7d_sq.c.manga_id
     ).filter(
-        MangaItem.created_at >= thirty_days_ago
-    ).order_by(sa_fn.coalesce(views_all_sq.c.v_all, 0).desc()).limit(10).all()
+        MangaItem.created_at >= seven_days_ago
+    ).order_by(
+        (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
+    ).limit(10).all()
 
     # --- "Популярное": активность за 7 дней (просмотры + закладки) ---
     popular_q = db.query(MangaItem).outerjoin(
@@ -5713,13 +7656,14 @@ async def get_home_sections(db: Session = Depends(get_db)):
             "total_chapters": len(manga_chapters),
         })
 
-    # --- "Новый сезон": год >= 2024, по популярности за 7 дней ---
+    # --- "Новый сезон": обновлённые за 30 дней онгоинги, по активности за 7 дней ---
     new_season_q = db.query(MangaItem).outerjoin(
         views_7d_sq, MangaItem.manga_id == views_7d_sq.c.manga_id
     ).outerjoin(
         bookmarks_7d_sq, MangaItem.manga_id == bookmarks_7d_sq.c.manga_id
     ).filter(
-        MangaItem.year >= 2024
+        MangaItem.updated_at >= thirty_days_ago,
+        MangaItem.status == "В процессе",
     ).order_by(
         (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
     )
@@ -5728,6 +7672,24 @@ async def get_home_sections(db: Session = Depends(get_db)):
     fresh_q = db.query(MangaItem).filter(
         MangaItem.updated_at != None
     ).order_by(MangaItem.updated_at.desc())
+
+    # --- "В тренде": быстрый рост за 48 часов ---
+    trending_q = db.query(MangaItem).outerjoin(
+        views_48h_sq, MangaItem.manga_id == views_48h_sq.c.manga_id
+    ).outerjoin(
+        bookmarks_48h_sq, MangaItem.manga_id == bookmarks_48h_sq.c.manga_id
+    ).order_by(
+        (sa_fn.coalesce(views_48h_sq.c.v48, 0) + sa_fn.coalesce(bookmarks_48h_sq.c.b48, 0)).desc()
+    )
+
+    # --- "Популярно сегодня": активность за 24 часа ---
+    popular_today_q = db.query(MangaItem).outerjoin(
+        views_24h_sq, MangaItem.manga_id == views_24h_sq.c.manga_id
+    ).outerjoin(
+        bookmarks_24h_sq, MangaItem.manga_id == bookmarks_24h_sq.c.manga_id
+    ).order_by(
+        (sa_fn.coalesce(views_24h_sq.c.v24, 0) + sa_fn.coalesce(bookmarks_24h_sq.c.b24, 0)).desc()
+    )
 
     # --- Топ по типам: средний рейтинг с порогом >= 20 голосов ---
     def top_by_type(manga_type, limit=5):
@@ -5738,20 +7700,29 @@ async def get_home_sections(db: Session = Depends(get_db)):
         ).order_by(rating_sq.c.avg_r.desc()).limit(limit).all()
         return build_section_from_items(items, limit)
 
-    return {
+    result = {
         "popular": build_section(popular_q, 10),
         "top_rated": build_section_from_items(top_rated_items, 10),
         "newest": build_section(newest_q, 10),
         "updated": latest_updates,
         "hot_new": build_section_from_items(hot_new_items, 10),
         "new_season": build_section(new_season_q, 5),
-        "popular_today": build_section(popular_q.offset(10), 5),
+        "trending": build_section(trending_q, 5),
+        "popular_today": build_section(popular_today_q, 5),
         "fresh_chapters": build_section(fresh_q, 10),
         "featured": build_section(popular_q, 5),
         "top_manhwa": top_by_type("Manhwa", 5),
         "top_manga": top_by_type("Manga", 5),
         "top_manhua": top_by_type("Manhua", 5),
     }
+
+    try:
+        if redis_client:
+            serialized = json.dumps(result, default=str)
+            redis_client.setex("home_sections", 120, serialized)
+    except Exception as e:
+        print(f"[HOME_SECTIONS] Redis cache error: {e}")
+    return result
 
 
 @app.get("/manga/section/{section_key}", summary="Данные секции для страницы списка")
@@ -5763,6 +7734,8 @@ async def get_section_list(section_key: str, db: Session = Depends(get_db)):
     now = datetime.utcnow()
     seven_days_ago = now - timedelta(days=7)
     thirty_days_ago = now - timedelta(days=30)
+    forty_eight_hours_ago = now - timedelta(hours=48)
+    twenty_four_hours_ago = now - timedelta(hours=24)
 
     # Пользовательские рейтинги
     user_ratings_agg = dict(
@@ -5791,6 +7764,7 @@ async def get_section_list(section_key: str, db: Session = Depends(get_db)):
             user_total = user_ratings_count.get(item.manga_id, 0)
             result.append({
                 "manga_id": item.manga_id,
+                "slug": item.slug or item.manga_id,
                 "title": item.title,
                 "cover_url": item.cover_url,
                 "manga_type": item.manga_type,
@@ -5825,6 +7799,22 @@ async def get_section_list(section_key: str, db: Session = Depends(get_db)):
         sa_fn.count(MangaRating.id).label("r_cnt")
     ).group_by(MangaRating.manga_id).having(sa_fn.count(MangaRating.id) >= 20).subquery()
 
+    views_48h_sq = db.query(
+        MangaView.manga_id, sa_fn.count(MangaView.id).label("v48")
+    ).filter(MangaView.created_at >= forty_eight_hours_ago).group_by(MangaView.manga_id).subquery()
+
+    bookmarks_48h_sq = db.query(
+        MangaBookmark.manga_id, sa_fn.count(MangaBookmark.id).label("b48")
+    ).filter(MangaBookmark.created_at >= forty_eight_hours_ago).group_by(MangaBookmark.manga_id).subquery()
+
+    views_24h_sq = db.query(
+        MangaView.manga_id, sa_fn.count(MangaView.id).label("v24")
+    ).filter(MangaView.created_at >= twenty_four_hours_ago).group_by(MangaView.manga_id).subquery()
+
+    bookmarks_24h_sq = db.query(
+        MangaBookmark.manga_id, sa_fn.count(MangaBookmark.id).label("b24")
+    ).filter(MangaBookmark.created_at >= twenty_four_hours_ago).group_by(MangaBookmark.manga_id).subquery()
+
     def popular_7d_query():
         return db.query(MangaItem).outerjoin(
             views_7d_sq, MangaItem.manga_id == views_7d_sq.c.manga_id
@@ -5844,10 +7834,14 @@ async def get_section_list(section_key: str, db: Session = Depends(get_db)):
     section_map = {
         "hot": lambda: build_items(
             db.query(MangaItem).outerjoin(
-                views_all_sq, MangaItem.manga_id == views_all_sq.c.manga_id
+                views_7d_sq, MangaItem.manga_id == views_7d_sq.c.manga_id
+            ).outerjoin(
+                bookmarks_7d_sq, MangaItem.manga_id == bookmarks_7d_sq.c.manga_id
             ).filter(
-                MangaItem.created_at >= thirty_days_ago
-            ).order_by(sa_fn.coalesce(views_all_sq.c.v_all, 0).desc()).limit(LIMIT).all()
+                MangaItem.created_at >= seven_days_ago
+            ).order_by(
+                (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
+            ).limit(LIMIT).all()
         ),
         "fresh": lambda: build_items(
             db.query(MangaItem).filter(
@@ -5861,20 +7855,29 @@ async def get_section_list(section_key: str, db: Session = Depends(get_db)):
             ).outerjoin(
                 bookmarks_7d_sq, MangaItem.manga_id == bookmarks_7d_sq.c.manga_id
             ).filter(
-                MangaItem.year >= 2024
+                MangaItem.updated_at >= thirty_days_ago,
+                MangaItem.status == "В процессе",
             ).order_by(
                 (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
             ).limit(LIMIT).all()
         ),
-        "trending": lambda: build_items(popular_7d_query()),
+        "trending": lambda: build_items(
+            db.query(MangaItem).outerjoin(
+                views_48h_sq, MangaItem.manga_id == views_48h_sq.c.manga_id
+            ).outerjoin(
+                bookmarks_48h_sq, MangaItem.manga_id == bookmarks_48h_sq.c.manga_id
+            ).order_by(
+                (sa_fn.coalesce(views_48h_sq.c.v48, 0) + sa_fn.coalesce(bookmarks_48h_sq.c.b48, 0)).desc()
+            ).limit(LIMIT).all()
+        ),
         "popular-today": lambda: build_items(
             db.query(MangaItem).outerjoin(
-                views_7d_sq, MangaItem.manga_id == views_7d_sq.c.manga_id
+                views_24h_sq, MangaItem.manga_id == views_24h_sq.c.manga_id
             ).outerjoin(
-                bookmarks_7d_sq, MangaItem.manga_id == bookmarks_7d_sq.c.manga_id
+                bookmarks_24h_sq, MangaItem.manga_id == bookmarks_24h_sq.c.manga_id
             ).order_by(
-                (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
-            ).offset(10).limit(LIMIT).all()
+                (sa_fn.coalesce(views_24h_sq.c.v24, 0) + sa_fn.coalesce(bookmarks_24h_sq.c.b24, 0)).desc()
+            ).limit(LIMIT).all()
         ),
         "top-manhwa": lambda: build_items(top_by_type_query("Manhwa")),
         "top-manga": lambda: build_items(top_by_type_query("Manga")),
@@ -6229,13 +8232,34 @@ async def send_message(user_id: int, data: SendMessageBody, current_user: User =
 async def get_wall_comments_with_replies(user_id: int, offset: int = 0, limit: int = 10, db: Session = Depends(get_db)):
     total = db.query(WallComment).filter(WallComment.profile_user_id == user_id).count()
     comments = db.query(WallComment).filter(WallComment.profile_user_id == user_id).order_by(WallComment.created_at.desc()).offset(offset).limit(limit).all()
+    if not comments:
+        return {"comments": [], "total": total, "has_more": offset + limit < total}
+
+    comment_ids = [c.id for c in comments]
+    # Batch load all replies for these comments
+    all_replies = (
+        db.query(WallCommentReply)
+        .filter(WallCommentReply.wall_comment_id.in_(comment_ids))
+        .order_by(WallCommentReply.created_at.asc())
+        .all()
+    )
+    # Collect all author IDs and batch load users
+    author_ids = set(c.author_id for c in comments)
+    for r in all_replies:
+        author_ids.add(r.author_id)
+    authors_map = {u.id: u for u in db.query(User).filter(User.id.in_(author_ids)).all()}
+
+    # Group replies by comment
+    replies_by_comment = {}
+    for r in all_replies:
+        replies_by_comment.setdefault(r.wall_comment_id, []).append(r)
+
     result = []
     for c in comments:
-        author = db.query(User).filter(User.id == c.author_id).first()
-        replies_db = db.query(WallCommentReply).filter(WallCommentReply.wall_comment_id == c.id).order_by(WallCommentReply.created_at.asc()).all()
+        author = authors_map.get(c.author_id)
         replies = []
-        for r in replies_db:
-            r_author = db.query(User).filter(User.id == r.author_id).first()
+        for r in replies_by_comment.get(c.id, []):
+            r_author = authors_map.get(r.author_id)
             replies.append({
                 "id": r.id,
                 "author_id": r.author_id,
@@ -6342,31 +8366,38 @@ async def get_user_profile_full(user_id: int, db: Session = Depends(get_db)):
                 "level": fu.level or 1,
             })
 
-    # Recent comments
-    recent_comments = db.query(MangaComment).filter(MangaComment.user_id == u.id).order_by(MangaComment.created_at.desc()).limit(5).all()
-    comments_data = []
-    for c in recent_comments:
-        manga = db.query(MangaItem).filter(MangaItem.manga_id == c.manga_id).first()
-        comments_data.append({
-            "text": c.text[:200],
-            "manga_id": c.manga_id,
-            "manga_title": manga.title if manga else c.manga_id,
-            "manga_cover": manga.cover_url if manga else "",
-            "timestamp": c.created_at.strftime("%d.%m.%y %H:%M") if c.created_at else "",
-        })
+    # Recent comments (single JOIN instead of N+1)
+    recent_comments_raw = (
+        db.query(MangaComment, MangaItem.title, MangaItem.cover_url)
+        .outerjoin(MangaItem, MangaComment.manga_id == MangaItem.manga_id)
+        .filter(MangaComment.user_id == u.id)
+        .order_by(MangaComment.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    comments_data = [{
+        "text": c.text[:200],
+        "manga_id": c.manga_id,
+        "manga_title": title or c.manga_id,
+        "manga_cover": cover or "",
+        "timestamp": c.created_at.strftime("%d.%m.%y %H:%M") if c.created_at else "",
+    } for c, title, cover in recent_comments_raw]
 
-    # Bookmarks
-    bookmarks = db.query(MangaBookmark).filter(MangaBookmark.user_id == u.id).order_by(MangaBookmark.created_at.desc()).limit(10).all()
-    bookmarks_data = []
-    for b in bookmarks:
-        manga = db.query(MangaItem).filter(MangaItem.manga_id == b.manga_id).first()
-        if manga:
-            bookmarks_data.append({
-                "manga_id": b.manga_id,
-                "title": manga.title,
-                "cover": manga.cover_url or "",
-                "status": b.status,
-            })
+    # Bookmarks (single JOIN instead of N+1)
+    bookmarks_raw = (
+        db.query(MangaBookmark, MangaItem.title, MangaItem.cover_url)
+        .join(MangaItem, MangaBookmark.manga_id == MangaItem.manga_id)
+        .filter(MangaBookmark.user_id == u.id)
+        .order_by(MangaBookmark.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    bookmarks_data = [{
+        "manga_id": b.manga_id,
+        "title": title,
+        "cover": cover or "",
+        "status": b.status,
+    } for b, title, cover in bookmarks_raw]
 
     # Heatmap
     from sqlalchemy import func
@@ -6393,27 +8424,29 @@ async def get_user_profile_full(user_id: int, db: Session = Depends(get_db)):
         xp_current_level += 50 * lv * lv
     xp_next_level = xp_current_level + 50 * level * level
 
-    # Corruption
-    from collections import Counter
+    # Corruption (single JOIN instead of N+1)
     dark_genres = ['Хоррор', 'Ужасы', 'Трагедия', 'Психология', 'Триллер', 'Драма', 'Тёмное фэнтези', 'Мистика', 'Детектив']
     light_genres = ['Комедия', 'Повседневность', 'Романтика', 'Сёнэн', 'Школа', 'Спорт']
     dark_count = 0
     light_count = 0
     total_genres = 0
-    user_bookmarks = db.query(MangaBookmark).filter(MangaBookmark.user_id == u.id).all()
-    for bm in user_bookmarks:
-        manga = db.query(MangaItem).filter(MangaItem.manga_id == bm.manga_id).first()
-        if manga:
-            try:
-                genres = json.loads(manga.genres) if isinstance(manga.genres, str) else manga.genres
-            except:
-                genres = []
-            for g in genres:
-                total_genres += 1
-                if any(dg.lower() in g.lower() for dg in dark_genres):
-                    dark_count += 1
-                if any(lg.lower() in g.lower() for lg in light_genres):
-                    light_count += 1
+    corruption_rows = (
+        db.query(MangaItem.genres)
+        .join(MangaBookmark, MangaBookmark.manga_id == MangaItem.manga_id)
+        .filter(MangaBookmark.user_id == u.id)
+        .all()
+    )
+    for (genres_str,) in corruption_rows:
+        try:
+            genres = json.loads(genres_str) if isinstance(genres_str, str) else (genres_str or [])
+        except:
+            genres = []
+        for g in genres:
+            total_genres += 1
+            if any(dg.lower() in g.lower() for dg in dark_genres):
+                dark_count += 1
+            if any(lg.lower() in g.lower() for lg in light_genres):
+                light_count += 1
     if total_genres > 0:
         ratio = (dark_count - light_count * 0.5) / max(total_genres, 1)
         corruption = max(0, min(100, round((ratio + 0.3) * 100)))
@@ -6740,6 +8773,7 @@ class ShopItemUpdate(BaseModel):
 
 class ScrapGrant(BaseModel):
     amount: int
+    reason: str = ""
 
 @app.post("/admin/shop/items", summary="Создать товар (админ)")
 async def admin_create_shop_item(data: ShopItemCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -6793,7 +8827,10 @@ async def admin_grant_scrap(user_id: int, data: ScrapGrant, current_user: User =
     if not target:
         raise HTTPException(404, "Пользователь не найден")
     target.donated_scrap = max(0, (target.donated_scrap or 0) + data.amount)
+    tx = ScrapTransaction(user_id=target.id, username=target.username, amount=data.amount, reason=data.reason, admin_id=current_user.id)
+    db.add(tx)
     db.commit()
+    log_admin_action(db, current_user, "НАЧИСЛЕНИЕ SCRAP" if data.amount >= 0 else "СПИСАНИЕ SCRAP", f"{target.username}: {data.amount:+d}")
     return {"ok": True, "donated_scrap": target.donated_scrap}
 
 
@@ -6938,6 +8975,7 @@ async def admin_approve_personalization(req_id: int, current_user: User = Depend
         purchase = UserPurchase(user_id=req.user_id, item_key=item_key)
         db.add(purchase)
     db.commit()
+    log_admin_action(db, current_user, "ОДОБРЕНИЕ ЗАЯВКИ", f"#{req_id} ({req.type}) для user_id={req.user_id}")
     return {"ok": True}
 
 @app.put("/admin/personalization/{req_id}/reject", summary="Отклонить заявку (админ)")
@@ -6956,6 +8994,7 @@ async def admin_reject_personalization(req_id: int, current_user: User = Depends
     if target:
         target.scrap = (target.scrap or 0) + req.price
     db.commit()
+    log_admin_action(db, current_user, "ОТКЛОНЕНИЕ ЗАЯВКИ", f"#{req_id} ({req.type}) для user_id={req.user_id}")
     return {"ok": True}
 
 

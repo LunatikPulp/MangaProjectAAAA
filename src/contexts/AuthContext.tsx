@@ -2,7 +2,7 @@ import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
 import { API_BASE } from '../services/externalApiService';
 
-type AuthModalView = 'login' | 'register';
+type AuthModalView = 'login' | 'register' | 'forgot';
 
 interface AuthContextType {
   user: User | null;
@@ -73,6 +73,10 @@ async function fetchMe(token: string): Promise<User | null> {
       showcase_manga_ids: data.showcase_manga_ids || '[]',
       xp: data.xp || 0,
       level: data.level || 1,
+      telegram_id: data.telegram_id || '',
+      telegram_username: data.telegram_username || '',
+      google_id: data.google_id || '',
+      yandex_id: data.yandex_id || '',
     };
   } catch {
     return null;
@@ -96,10 +100,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const storedUser = localStorage.getItem('user');
 
         if (token) {
-          // Проверяем токен через /auth/me
           const backendUser = await fetchMe(token);
           if (backendUser) {
-            // Восстанавливаем подписки из localStorage
             if (storedUser) {
               try {
                 const parsed = JSON.parse(storedUser);
@@ -110,13 +112,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             localStorage.setItem('user', JSON.stringify(backendUser));
             return;
           }
-          // Токен протух — удаляем
           localStorage.removeItem('backend_token');
         }
 
-        // Нет валидного токена — пользователь не залогинен
         if (storedUser) {
-          // Старая сессия без токена — чистим
           localStorage.removeItem('user');
         }
       } catch (error) {
@@ -128,6 +127,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
     init();
+
+    const handleAuthChange = () => {
+      const token = localStorage.getItem('backend_token');
+      if (token) {
+        fetchMe(token).then(u => {
+          if (u) {
+            setUser(prev => {
+              if (prev) u.subscribedMangaIds = prev.subscribedMangaIds || [];
+              return u;
+            });
+            localStorage.setItem('user', JSON.stringify(u));
+          }
+        });
+      }
+    };
+    window.addEventListener('auth-change', handleAuthChange);
+    return () => window.removeEventListener('auth-change', handleAuthChange);
   }, []);
 
   const updateUserState = (updatedUser: User) => {

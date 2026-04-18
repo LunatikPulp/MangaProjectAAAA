@@ -86,11 +86,11 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
     if (isReportOpen) {
       document.body.style.overflow = 'hidden';
       document.documentElement.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = '';
-        document.documentElement.style.overflow = '';
-      };
     }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
   }, [isReportOpen]);
 
   const handleSubmitReport = () => {
@@ -293,7 +293,7 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
                             </>
                           )}
                           {user.role === 'moderator' && (
-                            <Link to="/moderator" className="block px-4 py-2 text-sm text-text-primary hover:bg-brand-10 hover:text-brand-accent transition-colors font-mono" onClick={() => setProfileOpen(false)}>{'>'} Модератор</Link>
+                            <Link to="/admin" className="block px-4 py-2 text-sm text-text-primary hover:bg-brand-10 hover:text-brand-accent transition-colors font-mono" onClick={() => setProfileOpen(false)}>{'>'} Модератор</Link>
                           )}
                           <div className="border-t border-overlay mt-1 pt-1">
                             <button onClick={() => { logout(); setProfileOpen(false); }} className="w-full text-left px-4 py-2 text-sm font-mono text-brand-accent hover:bg-brand-accent-10 transition-colors">[ВЫХОД]</button>

@@ -191,6 +191,7 @@ const ShopModal: React.FC<ShopModalProps> = ({
     const getThumbSrc = (item: ShopItem): string | null => {
         if (item.preview.startsWith('#')) return null;
         if (item.preview.startsWith('http')) return item.preview;
+        if (item.preview.startsWith('/Frames_shop/')) return item.preview;
         if (item.preview.startsWith('/')) return `${API_BASE}${item.preview}`;
         return null;
     };

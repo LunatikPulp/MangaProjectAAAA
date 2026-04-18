@@ -46,13 +46,13 @@ const MangaListTab: React.FC = () => {
                             <img src={manga.cover} alt={manga.title} className="w-12 h-16 object-cover rounded-md" />
                             </td>
                             <td className="p-4 font-medium text-text-primary">
-                            <Link to={`/manga/${manga.id}`} className="hover:text-brand">{manga.title}</Link>
+                            <Link to={`/manga/${manga.slug || manga.id}`} className="hover:text-brand">{manga.title}</Link>
                             </td>
                             <td className="p-4 text-text-secondary">{manga.year}</td>
                             <td className="p-4 text-text-secondary">{manga.rating.toFixed(1)}</td>
                             <td className="p-4">
                             <div className="flex gap-2">
-                                <button onClick={() => navigate(`/manga/${manga.id}/edit`)} className="text-sm bg-base hover:bg-brand-10 text-brand font-semibold py-1 px-3 rounded-md transition-colors">Редактировать</button>
+                                <button onClick={() => navigate(`/manga/${manga.slug || manga.id}/edit`)} className="text-sm bg-base hover:bg-brand-10 text-brand font-semibold py-1 px-3 rounded-md transition-colors">Редактировать</button>
                                 <button onClick={() => openDeleteModal(manga)} className="text-sm bg-base hover:bg-brand-accent-10 text-brand-accent font-semibold py-1 px-3 rounded-md transition-colors">Удалить</button>
                             </div>
                             </td>

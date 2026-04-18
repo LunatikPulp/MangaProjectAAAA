@@ -236,7 +236,7 @@ const Header: React.FC = () => {
                           {searchResults.map(manga => (
                             <li key={manga.id}>
                               <Link
-                                to={`/manga/${manga.id}`}
+                                to={`/manga/${manga.slug || manga.id}`}
                                 onClick={() => setSearchQuery('')}
                                 className="flex items-center gap-3 p-3 hover:bg-brand-10 border-b border-overlay-30 transition-colors group/item"
                               >
@@ -370,7 +370,7 @@ const Header: React.FC = () => {
                         </>
                       )}
                       {user.role === 'moderator' && (
-                        <Link to="/moderator" className="block px-4 py-2 text-sm text-text-primary hover:bg-brand-10 hover:text-brand-accent transition-colors font-mono" onClick={() => setProfileOpen(false)}>{'>'} Модератор</Link>
+                        <Link to="/admin" className="block px-4 py-2 text-sm text-text-primary hover:bg-brand-10 hover:text-brand-accent transition-colors font-mono" onClick={() => setProfileOpen(false)}>{'>'} Модератор</Link>
                       )}
                       <div className="border-t border-overlay mt-1 pt-1">
                         <button onClick={() => { logout(); setProfileOpen(false); }} className="w-full text-left px-4 py-2 text-sm font-mono text-brand-accent hover:bg-brand-accent-10 transition-colors">[ВЫХОД]</button>
@@ -532,7 +532,7 @@ const Header: React.FC = () => {
                       </>
                     )}
                     {user.role === 'moderator' && (
-                      <Link to="/moderator" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 font-mono text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors">{'>'} Модератор</Link>
+                      <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 font-mono text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors">{'>'} Модератор</Link>
                     )}
                     <div className="border-t border-overlay my-2"></div>
                   </>

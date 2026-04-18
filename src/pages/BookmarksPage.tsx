@@ -26,7 +26,7 @@ const BookmarksPage: React.FC = () => {
     const { mangaList, loading, fetchMangaById } = useContext(MangaContext);
     const [loadingMissing, setLoadingMissing] = useState(false);
     // Randomizer state
-    const [randomResult, setRandomResult] = useState<{ manga_id: string; title: string; cover_url: string; status: string; last_read: string | null } | null>(null);
+    const [randomResult, setRandomResult] = useState<{ manga_id: string; slug?: string; title: string; cover_url: string; status: string; last_read: string | null } | null>(null);
     const [randomLoading, setRandomLoading] = useState(false);
     const [showRandom, setShowRandom] = useState(false);
 
@@ -165,7 +165,7 @@ const BookmarksPage: React.FC = () => {
                                         </div>
                                         <div className="flex gap-2">
                                             <Link
-                                                to={`/manga/${randomResult.manga_id}`}
+                                                to={`/manga/${randomResult.slug || randomResult.manga_id}`}
                                                 className="flex-1 py-2.5 text-center text-sm font-mono font-bold transition-all"
                                                 style={{
                                                     background: '#A9FF00',
@@ -229,12 +229,12 @@ const BookmarksPage: React.FC = () => {
             </div>
 
             {(loading || loadingMissing) ? (
-                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-8">
+                 <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-5 sm:gap-x-4 sm:gap-y-8">
                     {Array.from({ length: 6 }).map((_, i) => <MangaCardSkeleton key={i} />)}
                 </div>
             ) : bookmarkedManga.length > 0 ? (
                 <motion.div 
-                    className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-8"
+                    className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-5 sm:gap-x-4 sm:gap-y-8"
                     variants={containerVariants}
                     initial="hidden"
                     animate="visible"

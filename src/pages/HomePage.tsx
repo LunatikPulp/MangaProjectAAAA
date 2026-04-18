@@ -30,9 +30,13 @@ const getLatestChapterDate = (manga: Manga): Date => {
 
 const timeAgo = (dateStr: string | null): string => {
     if (!dateStr) return '';
-    const date = new Date(dateStr);
+    let date = new Date(dateStr);
+    if (!dateStr.endsWith('Z') && !dateStr.includes('+')) {
+        date = new Date(dateStr + 'Z');
+    }
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
+    if (diffMs < 0) return 'только что';
     const minutes = Math.floor(diffMs / 60000);
     if (minutes < 1) return 'только что';
     if (minutes < 60) return `${minutes} мин. назад`;
@@ -54,6 +58,7 @@ const formatViews = (views: number): string => {
 
 interface HomeSectionItem {
     manga_id: string;
+    slug?: string;
     title: string;
     cover_url: string;
     manga_type: string;
@@ -86,6 +91,7 @@ interface HomeSections {
     updated: LatestUpdateItem[];
     hot_new: HomeSectionItem[];
     new_season: HomeSectionItem[];
+    trending: HomeSectionItem[];
     popular_today: HomeSectionItem[];
     fresh_chapters: HomeSectionItem[];
     featured: HomeSectionItem[];
@@ -116,8 +122,8 @@ const sectionItemToManga = (item: HomeSectionItem): Manga => ({
 const ContinueReadingCard: React.FC<{ manga: Manga; chapterId: number }> = ({ manga, chapterId }) => {
     const percentage = manga.chapters.length > 0 ? (chapterId / manga.chapters.length) * 100 : 0;
     return (
-        <Link to={`/manga/${manga.id}`} className="block group bg-surface p-3 flex items-center gap-4 hover:bg-surface-hover border border-overlay hover:border-brand-accent-30 transition-all">
-            <img src={manga.cover} alt={manga.title} className="w-12 h-16 object-cover border border-overlay" />
+        <Link to={`/manga/${manga.slug || manga.id}`} className="block group bg-surface p-3 flex items-center gap-4 hover:bg-surface-hover border border-overlay hover:border-brand-accent-30 transition-all">
+            <img src={manga.cover} alt={manga.title} className="w-12 h-16 object-cover border border-overlay" loading="lazy" decoding="async" />
             <div className="flex-1 overflow-hidden">
                 <h4 className="text-md font-semibold truncate text-text-primary group-hover:text-brand-accent transition-colors">{manga.title}</h4>
                 <p className="text-sm font-mono text-muted mt-1">Глава {chapterId} / {manga.chapters.length}</p>
@@ -190,28 +196,28 @@ const LatestUpdatesSection: React.FC<{ items: LatestUpdateItem[] }> = ({ items }
 
                     return (
                         <div key={item.manga_id} className="flex items-start gap-4 p-3 text-text-primary hover:bg-surface-hover transition-all duration-300 border border-transparent hover:border-overlay">
-                            <Link to={`/manga/${item.manga_id}`} className="flex-shrink-0 relative">
-                                <img src={coverUrl} alt={item.title} className="w-14 h-20 object-cover border border-overlay" />
+                            <Link to={`/manga/${item.slug || item.manga_id}`} className="flex-shrink-0 relative">
+                                <img src={coverUrl} alt={item.title} className="w-14 h-20 object-cover border border-overlay" loading="lazy" decoding="async" />
                                 <span className="absolute top-1 left-1 text-[9px] font-mono font-bold text-white bg-brand-80 px-1.5 py-0.5 max-w-[calc(100%-0.5rem)] truncate">
                                     {typeDisplayNames[mangaType] || mangaType}
                                 </span>
                             </Link>
                             <div className="flex-1 min-w-0">
-                                <Link to={`/manga/${item.manga_id}`} className="font-bold text-text-primary hover:text-brand-accent transition-colors text-sm md:text-base truncate block">
+                                <Link to={`/manga/${item.slug || item.manga_id}`} className="font-bold text-text-primary hover:text-brand-accent transition-colors text-sm md:text-base truncate block">
                                     {item.title}
                                 </Link>
                                 {ch && (
-                                    <div className="mt-2 flex items-center justify-between text-xs text-text-secondary">
+                                    <div className="mt-1.5 flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-text-secondary gap-0.5 sm:gap-0">
                                         <Link
-                                            to={`/manga/${item.manga_id}/chapter/${encodeURIComponent(ch.chapter_id)}`}
+                                            to={`/manga/${item.slug || item.manga_id}/chapter/${encodeURIComponent(ch.chapter_id)}`}
                                             className="hover:text-brand transition-colors"
                                         >
                                             <span>Том 1 Глава {ch.chapter_number}</span>
                                         </Link>
-                                        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                        <div className="flex items-center gap-2 flex-shrink-0">
                                             {extraCount > 0 && (
-                                                <span className="text-brand-accent font-mono font-semibold bg-brand-accent-10 px-1.5 py-0.5 text-[10px]">
-                                                    + {extraCount} {extraCount === 1 ? 'глава' : extraCount < 5 ? 'главы' : 'глав'}
+                                                <span className="text-brand-accent font-mono font-semibold bg-brand-accent-10 px-1.5 py-0.5 text-[10px] whitespace-nowrap">
+                                                    +{extraCount} {extraCount === 1 ? 'глава' : extraCount < 5 ? 'главы' : 'глав'}
                                                 </span>
                                             )}
                                             <span className="text-muted">{ago}</span>
@@ -253,10 +259,10 @@ const VerticalMangaList: React.FC<{ title: string; mangaList: Manga[]; viewAllLi
         </div>
         <div className="space-y-3">
             {list.map((manga, index) => (
-                <Link to={`/manga/${manga.id}`} key={manga.id} className="flex items-center gap-4 group p-3 text-text-primary hover:bg-surface-hover transition-all duration-300 border border-transparent hover:border-overlay">
+                <Link to={`/manga/${manga.slug || manga.id}`} key={manga.id} className="flex items-center gap-4 group p-3 text-text-primary hover:bg-surface-hover transition-all duration-300 border border-transparent hover:border-overlay">
                     <div className="relative">
                         <span className="absolute -left-2 -top-2 w-6 h-6 flex items-center justify-center bg-base text-xs font-mono font-bold text-brand-accent border border-overlay z-10">{String(index + 1).padStart(2, '0')}</span>
-                        <img src={manga.cover} alt={manga.title} className="w-16 h-24 object-cover border border-overlay group-hover:border-brand-accent-30 transition-all duration-300" />
+                        <img src={manga.cover} alt={manga.title} className="w-16 h-24 object-cover border border-overlay group-hover:border-brand-accent-30 transition-all duration-300" loading="lazy" decoding="async" />
                     </div>
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
@@ -313,37 +319,30 @@ const HomePage: React.FC = () => {
         ? s.hot_new.map(sectionItemToManga)
         : [...mangaList].filter(m => m.chapters.length > 0).sort((a, b) => getLatestChapterDate(b).getTime() - getLatestChapterDate(a).getTime()).slice(0, 10);
 
-    // Новый сезон: 2024+ по популярности
     const newSeason = s?.new_season?.length
         ? s.new_season.map(sectionItemToManga)
         : [...mangaList].filter(m => m.year >= 2024).sort((a, b) => b.rating - a.rating).slice(0, 5);
 
-    // В тренде: популярные (top 5)
-    const trending = s?.popular?.length
-        ? s.popular.slice(0, 5).map(sectionItemToManga)
+    const trending = s?.trending?.length
+        ? s.trending.map(sectionItemToManga)
         : [...mangaList].sort((a, b) => b.rating - a.rating).slice(0, 5);
 
-    // Популярно сегодня: популярные (6–10)
     const popularToday = s?.popular_today?.length
         ? s.popular_today.map(sectionItemToManga)
         : [...mangaList].sort((a, b) => b.rating - a.rating).slice(5, 10);
 
-    // Популярное (карусель)
     const popularCarousel = s?.popular?.length
         ? s.popular.map(sectionItemToManga)
         : [...mangaList].sort((a, b) => parseFloat(b.views) - parseFloat(a.views)).slice(0, 10);
 
-    // Свежие главы
     const freshChapters = s?.fresh_chapters?.length
         ? s.fresh_chapters.map(sectionItemToManga)
         : [...mangaList].filter(m => m.chapters.length > 0).sort((a, b) => getLatestChapterDate(b).getTime() - getLatestChapterDate(a).getTime()).slice(0, 10);
 
-    // Герои карусели
     const featuredManga = s?.featured?.length
         ? s.featured.map(sectionItemToManga)
         : [...mangaList].sort((a, b) => b.rating - a.rating).slice(0, 5);
 
-    // Топы по типам
     const topManhwa = s?.top_manhwa?.length ? s.top_manhwa.map(sectionItemToManga) : mangaList.filter(m => m.type === 'Manhwa').sort((a, b) => b.rating - a.rating).slice(0, 5);
     const topManga = s?.top_manga?.length ? s.top_manga.map(sectionItemToManga) : mangaList.filter(m => m.type === 'Manga').sort((a, b) => b.rating - a.rating).slice(0, 5);
     const topManhua = s?.top_manhua?.length ? s.top_manhua.map(sectionItemToManga) : mangaList.filter(m => m.type === 'Manhua').sort((a, b) => b.rating - a.rating).slice(0, 5);

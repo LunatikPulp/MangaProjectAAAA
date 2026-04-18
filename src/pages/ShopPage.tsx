@@ -101,6 +101,10 @@ const ShopPage: React.FC = () => {
     const [selectedScrapPkg, setSelectedScrapPkg] = useState<ScrapPackage | null>(null);
     const [username, setUsername] = useState('');
 
+    // Lazy load limit for items
+    const ITEMS_PER_PAGE = 30;
+    const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+
     // Purchase confirm modal
     const [confirmItem, setConfirmItem] = useState<ShopItem | null>(null);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -158,6 +162,7 @@ const ShopPage: React.FC = () => {
 
     const handleCategoryChange = (category: ShopCategory) => {
         setActiveCategory(category);
+        setVisibleCount(ITEMS_PER_PAGE);
         localStorage.setItem('shop_active_category', category);
     };
 
@@ -205,7 +210,7 @@ const ShopPage: React.FC = () => {
         };
     }, [showConfirmModal]);
 
-    const filteredItems = items
+    const allFilteredItems = items
         .filter(i => {
             // Фильтруем по категории
             if (i.category !== activeCategory) return false;
@@ -221,6 +226,24 @@ const ShopPage: React.FC = () => {
             if (!aOwned && bOwned) return 1;
             return 0;
         });
+
+    const filteredItems = allFilteredItems.slice(0, visibleCount);
+    const hasMore = visibleCount < allFilteredItems.length;
+
+    // Infinite scroll — load more when sentinel is visible
+    const loadMoreRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!hasMore) return;
+        const el = loadMoreRef.current;
+        if (!el) return;
+        const observer = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting) {
+                setVisibleCount(prev => prev + ITEMS_PER_PAGE);
+            }
+        }, { rootMargin: '200px' });
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [hasMore, activeCategory]);
 
     const handleBuy = (item: ShopItem) => {
         setConfirmItem(item);
@@ -872,13 +895,14 @@ const ShopPage: React.FC = () => {
                                     </div>
                                 ) : activeCategory === 'frame' ? (
                                     /* Frames — Steam-style cards */
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 sm:gap-3">
                                         {filteredItems.map(item => {
                                             const owned = myPurchases.includes(item.key);
                                             const active = owned && isItemActive(item);
                                             const canActivate = owned && ACTIVATABLE_CATEGORIES.includes(item.category);
                                             const isFree = item.price === 0;
                                             const frameSrc = item.preview.startsWith('/Frames_shop/') ? item.preview : (item.preview.startsWith('/Frames_lvl/') ? `${API_BASE}${item.preview}` : item.preview);
+                                            console.log('Frame item:', item.key, 'preview:', item.preview, 'frameSrc:', frameSrc);
                                             return (
                                                 <div key={item.key} className={`group relative overflow-hidden rounded transition-all duration-200 hover:scale-[1.02] ${active ? 'ring-2 ring-green-500/60' : owned ? 'ring-1 ring-brand-accent/30' : 'ring-1 ring-white/5 hover:ring-white/15'}`}>
                                                     {/* Steam-style dark card */}
@@ -1200,6 +1224,7 @@ const ShopPage: React.FC = () => {
                                         )}
                                     </div>
                                 )}
+                                {hasMore && <div ref={loadMoreRef} className="h-10" />}
                             </motion.div>
                         </AnimatePresence>
                     )}

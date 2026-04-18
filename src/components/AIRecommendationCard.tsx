@@ -14,7 +14,7 @@ const AIRecommendationCard: React.FC<AIRecommendationCardProps> = ({ recommendat
     }
 
     return (
-        <Link to={`/manga/${manga.id}`} className="block group w-full">
+        <Link to={`/manga/${manga.slug || manga.id}`} className="block group w-full">
             <div className="relative aspect-[2/3] w-full rounded-md overflow-hidden bg-surface">
                 <img 
                     src={manga.cover} 

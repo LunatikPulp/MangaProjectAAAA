@@ -52,6 +52,7 @@ interface ReaderSidebarProps {
     bookmarkStatuses: string[];
     onBookmarkStatusSelect: (status: string) => void;
     onBookmarkRemove: () => void;
+    showPageIndicator?: boolean;
 }
 
 const SidebarButton: React.FC<{ onClick: () => void; 'aria-label': string; children: React.ReactNode; active?: boolean }> = ({ onClick, children, active, ...props }) => (
@@ -106,6 +107,7 @@ const ReaderSidebar: React.FC<ReaderSidebarProps> = ({
     bookmarkStatuses,
     onBookmarkStatusSelect,
     onBookmarkRemove,
+    showPageIndicator = true,
 }) => {
     const [collapsed, setCollapsed] = useState(false);
     const [isBookmarkMenuOpen, setBookmarkMenuOpen] = useState(false);
@@ -133,11 +135,11 @@ const ReaderSidebar: React.FC<ReaderSidebarProps> = ({
         if (isReportPanelOpen) {
             document.body.style.overflow = 'hidden';
             document.documentElement.style.overflow = 'hidden';
-            return () => {
-                document.body.style.overflow = '';
-                document.documentElement.style.overflow = '';
-            };
         }
+        return () => {
+            document.body.style.overflow = '';
+            document.documentElement.style.overflow = '';
+        };
     }, [isReportPanelOpen]);
 
     const handleSubmitReport = () => {
@@ -193,11 +195,13 @@ const ReaderSidebar: React.FC<ReaderSidebarProps> = ({
 
                                 <div className="h-px w-full bg-white/10 my-1"></div>
 
+                                {showPageIndicator && (
                                 <div className="flex flex-col items-center justify-center py-2 bg-surface-50 rounded-none border border-white/5">
                                     <span className="text-sm font-bold text-text-primary">{currentPage}</span>
                                     <div className="w-4 h-px bg-muted-30 my-0.5"></div>
                                     <span className="text-xs text-muted">{totalPages}</span>
                                 </div>
+                                )}
 
                                 <div className="h-px w-full bg-white/10 my-1"></div>
 
@@ -264,9 +268,11 @@ const ReaderSidebar: React.FC<ReaderSidebarProps> = ({
                         className="reader-bottom-bar fixed bottom-0 left-0 right-0 z-[100] md:hidden"
                     >
                         <div className="bg-base-90 backdrop-blur-xl border-t border-overlay shadow-[0_-4px_20px_rgba(0,0,0,0.3)] px-2 pb-[env(safe-area-inset-bottom)] safe-area-pb">
+                            {showPageIndicator && (
                             <div className="flex items-center justify-center pt-1.5 pb-0.5">
                                 <span className="text-[11px] font-medium text-muted tabular-nums">{currentPage} / {totalPages}</span>
                             </div>
+                            )}
                             <div className="flex items-center justify-evenly py-1">
                                 {readerType === 'paged' && onPrevChapterClick && (
                                     <BottomBarButton onClick={onPrevChapterClick} aria-label="Пред. глава">

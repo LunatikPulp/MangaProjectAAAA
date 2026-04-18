@@ -32,7 +32,7 @@ const TopsPage: React.FC = () => {
 
             <div className="space-y-4">
                 {sortedManga.map(manga => (
-                    <Link to={`/manga/${manga.id}`} key={manga.id} className="block bg-surface rounded-lg p-4 flex gap-4 items-center group hover:bg-overlay transition-colors">
+                    <Link to={`/manga/${manga.slug || manga.id}`} key={manga.id} className="block bg-surface rounded-lg p-4 flex gap-4 items-center group hover:bg-overlay transition-colors">
                         <img src={manga.cover} alt={manga.title} className="w-20 h-28 object-cover rounded-md flex-shrink-0" />
                         <div className="flex-1">
                             <p className="text-xs text-text-secondary">{typeDisplayNames[manga.type]} {manga.year}</p>

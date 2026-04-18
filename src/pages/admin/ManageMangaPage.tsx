@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Manga, MangaFormData, Chapter, Page } from '../../types';
 import { ToasterContext } from '../../contexts/ToasterContext';
@@ -10,12 +10,21 @@ import ChapterGeneratorModal from '../../components/admin/ChapterGeneratorModal'
 import BulkChapterUploadModal from '../../components/admin/BulkChapterUploadModal';
 import ChapterMetadataModal from '../../components/admin/ChapterMetadataModal';
 import Modal from '../../components/Modal';
+import { API_BASE } from '../../services/externalApiService';
 
 interface ManageMangaPageProps {
     manga: Manga;
 }
 
-type ActiveTab = 'chapters' | 'details';
+interface AuditEntry {
+  id: number;
+  admin: string;
+  action: string;
+  target: string;
+  timestamp: string;
+}
+
+type ActiveTab = 'chapters' | 'details' | 'history';
 
 const ManageMangaPage: React.FC<ManageMangaPageProps> = ({ manga }) => {
     const { showToaster } = useContext(ToasterContext);
@@ -23,6 +32,22 @@ const ManageMangaPage: React.FC<ManageMangaPageProps> = ({ manga }) => {
     const navigate = useNavigate();
 
     const [activeTab, setActiveTab] = useState<ActiveTab>('chapters');
+    const [history, setHistory] = useState<AuditEntry[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+
+    useEffect(() => {
+        if (activeTab === 'history' && history.length === 0) {
+            setHistoryLoading(true);
+            const token = localStorage.getItem('backend_token') || '';
+            fetch(`${API_BASE}/admin/audit-log?target=${encodeURIComponent(manga.id)}&limit=100`, {
+                headers: { Authorization: `Bearer ${token}` },
+            })
+                .then(r => r.ok ? r.json() : [])
+                .then(data => setHistory(Array.isArray(data) ? data : []))
+                .catch(() => setHistory([]))
+                .finally(() => setHistoryLoading(false));
+        }
+    }, [activeTab, manga.id, history.length]);
 
     // Modal states
     const [editingContentChapter, setEditingContentChapter] = useState<Chapter | null>(null);
@@ -112,13 +137,14 @@ const ManageMangaPage: React.FC<ManageMangaPageProps> = ({ manga }) => {
             <div className="flex justify-between items-start mb-6">
                 <div>
                     <h1 className="text-3xl font-bold">Управление: {currentMangaData.title}</h1>
-                    <button onClick={() => navigate(`/manga/${currentMangaData.id}`)} className="text-sm text-brand hover:underline mt-1">Вернуться к просмотру</button>
+                    <button onClick={() => navigate(`/manga/${currentMangaData.slug || currentMangaData.id}`)} className="text-sm text-brand hover:underline mt-1">Вернуться к просмотру</button>
                 </div>
             </div>
 
             <div className="border-b border-surface flex items-center space-x-2">
                 <TabButton name="chapters">Главы</TabButton>
                 <TabButton name="details">Детали</TabButton>
+                <TabButton name="history">История</TabButton>
             </div>
 
             <div className="mt-6">
@@ -134,11 +160,55 @@ const ManageMangaPage: React.FC<ManageMangaPageProps> = ({ manga }) => {
                     />
                 )}
                 {activeTab === 'details' && (
-                    <MangaForm 
-                        onSubmit={handleDetailsSubmit} 
+                    <MangaForm
+                        onSubmit={handleDetailsSubmit}
                         initialData={currentMangaData}
                         onCancel={() => setActiveTab('chapters')}
                     />
+                )}
+                {activeTab === 'history' && (
+                    <div>
+                        {historyLoading ? (
+                            <div className="text-center py-8 text-muted">Загрузка...</div>
+                        ) : history.length === 0 ? (
+                            <div className="text-center py-8 text-muted">Нет записей в журнале аудита для этого тайтла</div>
+                        ) : (
+                            <div className="overflow-x-auto rounded border border-surface">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-surface bg-surface/50">
+                                            <th className="text-left px-4 py-2 font-medium text-muted">Дата</th>
+                                            <th className="text-left px-4 py-2 font-medium text-muted">Админ</th>
+                                            <th className="text-left px-4 py-2 font-medium text-muted">Действие</th>
+                                            <th className="text-left px-4 py-2 font-medium text-muted">Цель</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {history.map(entry => (
+                                            <tr key={entry.id} className="border-b border-surface/50 hover:bg-surface/30">
+                                                <td className="px-4 py-2 text-muted whitespace-nowrap">
+                                                    {entry.timestamp ? new Date(entry.timestamp).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                                </td>
+                                                <td className="px-4 py-2">{entry.admin || '—'}</td>
+                                                <td className="px-4 py-2">
+                                                    <span className={`inline-block px-2 py-0.5 rounded text-xs ${
+                                                        entry.action.includes('УДАЛЕНИЕ') ? 'bg-red-500/10 text-red-400' :
+                                                        entry.action.includes('БЛОКИРОВКА') ? 'bg-red-500/10 text-red-400' :
+                                                        entry.action.includes('ИМПОРТ') ? 'bg-blue-500/10 text-blue-400' :
+                                                        entry.action.includes('ОДОБРЕНИЕ') ? 'bg-green-500/10 text-green-400' :
+                                                        'bg-gray-500/10 text-gray-400'
+                                                    }`}>
+                                                        {entry.action}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2 text-muted">{entry.target}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
 

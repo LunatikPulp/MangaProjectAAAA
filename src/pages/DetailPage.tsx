@@ -291,7 +291,7 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
                         </div>
                         
                         <button 
-                            onClick={() => navigate(`/manga/${manga.id}/chapter/${encodeURIComponent(continueChapterId)}`, { state: { startPage: continueStartPage } })}
+                            onClick={() => navigate(`/manga/${manga.slug || manga.id}/chapter/${encodeURIComponent(continueChapterId)}`, { state: { startPage: continueStartPage } })}
                             className="w-full py-3.5 bg-brand hover:bg-brand-hover text-white rounded-xl font-bold transition-all shadow-lg shadow-brand-20 active:scale-95 flex items-center justify-center gap-2 hidden md:flex"
                         >
                             <span>{continueButtonText}</span>
@@ -305,7 +305,7 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
                         {/* Admin/User Links */}
                          <div className="flex flex-col gap-2 mt-2 hidden md:flex">
                             {user?.role === 'admin' && (
-                                <Link to={`/manga/${manga.id}/edit`} className="text-center text-xs font-medium text-muted hover:text-brand py-1 transition-colors">
+                                <Link to={`/manga/${manga.slug || manga.id}/edit`} className="text-center text-xs font-medium text-muted hover:text-brand py-1 transition-colors">
                                     Редактировать
                                 </Link>
                             )}
@@ -577,7 +577,7 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
                                                 return (
                                                     <Link 
                                                         key={chapter.id} 
-                                                        to={`/manga/${manga.id}/chapter/${encodeURIComponent(chapter.id)}`}
+                                                        to={`/manga/${manga.slug || manga.id}/chapter/${encodeURIComponent(chapter.id)}`}
                                                         className={`group w-full flex items-center justify-between p-3.5 rounded-xl transition-all border ${
                                                             isLastRead 
                                                             ? 'bg-brand-10 border-brand-30' 
@@ -637,7 +637,7 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
                         
                         <div className="flex flex-col gap-3">
                             {similarManga.map(m => (
-                                <Link key={m.id} to={`/manga/${m.id}`} className="flex gap-3 group p-2 rounded-xl hover:bg-surface-50 transition-colors text-text-primary">
+                                <Link key={m.id} to={`/manga/${m.slug || m.id}`} className="flex gap-3 group p-2 rounded-xl hover:bg-surface-50 transition-colors text-text-primary">
                                     <div className="w-16 h-24 rounded-lg overflow-hidden shrink-0 relative">
                                         <img src={m.cover} className="w-full h-full object-cover" />
                                         <div className="absolute top-1 left-1 bg-black/60 backdrop-blur text-[10px] font-bold px-1.5 rounded text-white">
@@ -770,7 +770,7 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
                                     </button>
                                     <div className="h-px bg-white/10"></div>
                                     {user?.role === 'admin' && (
-                                            <Link to={`/manga/${manga.id}/edit`} className="flex items-center gap-3 px-4 py-3 text-sm text-text-secondary hover:bg-surface-hover transition-colors">
+                                            <Link to={`/manga/${manga.slug || manga.id}/edit`} className="flex items-center gap-3 px-4 py-3 text-sm text-text-secondary hover:bg-surface-hover transition-colors">
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
                                                 </svg>
@@ -787,7 +787,7 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
                         </div>
 
                         <button 
-                            onClick={() => navigate(`/manga/${manga.id}/chapter/${encodeURIComponent(continueChapterId)}`, { state: { startPage: continueStartPage } })}
+                            onClick={() => navigate(`/manga/${manga.slug || manga.id}/chapter/${encodeURIComponent(continueChapterId)}`, { state: { startPage: continueStartPage } })}
                             className="flex-1 h-12 bg-brand-accent hover:bg-brand rounded-full flex flex-col items-center justify-center text-black shadow-lg active:scale-95 transition-all"
                         >
                             <span className="text-sm font-bold leading-tight">{continueAction}</span>

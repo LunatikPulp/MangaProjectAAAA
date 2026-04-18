@@ -51,7 +51,8 @@ const ScrollChapterView: React.FC<{
   imageUpscale: 'none' | 'auto';
   imageGap: number;
   mangaId?: string;
-}> = React.memo(({ chapters, onImageVisible, containerWidth, brightness, imageFit, imageUpscale, imageGap, mangaId }) => {
+  onLastChapterReady?: () => void;
+}> = React.memo(({ chapters, onImageVisible, containerWidth, brightness, imageFit, imageUpscale, imageGap, mangaId, onLastChapterReady }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Один глобальный scroll-обработчик определяет какая картинка в центре экрана
@@ -105,6 +106,7 @@ const ScrollChapterView: React.FC<{
           imageUpscale={imageUpscale}
           imageGap={imageGap}
           mangaId={mangaId}
+          onReady={index === chapters.length - 1 ? onLastChapterReady : undefined}
         />
       ))}
     </div>
@@ -120,18 +122,30 @@ const ChapterContent: React.FC<{
   imageUpscale: 'none' | 'auto';
   imageGap: number;
   mangaId?: string;
-}> = React.memo(({ chapter, containerWidth, brightness, imageFit, imageUpscale, imageGap, mangaId }) => {
+  onReady?: () => void;
+}> = React.memo(({ chapter, containerWidth, brightness, imageFit, imageUpscale, imageGap, mangaId, onReady }) => {
   const [lazyPages, setLazyPages] = useState<string[]>([]);
   const [lazyLoading, setLazyLoading] = useState(false);
   const staticImages = useMemo(() => getChapterImages(chapter), [chapter]);
+
+  // Notify parent immediately if chapter already has static images
+  useEffect(() => {
+    if (staticImages.length > 0) onReady?.();
+  }, [staticImages.length]);
 
   // Lazy-load pages if chapter has none
   useEffect(() => {
     if (staticImages.length > 0 || lazyPages.length > 0 || lazyLoading) return;
     setLazyLoading(true);
     fetchChapterPages(chapter.id, mangaId)
-      .then((data) => setLazyPages(data.pages || []))
-      .catch(() => setLazyPages([]))
+      .then((data) => {
+        setLazyPages(data.pages || []);
+        onReady?.();
+      })
+      .catch(() => {
+        setLazyPages([]);
+        onReady?.();
+      })
       .finally(() => setLazyLoading(false));
   }, [chapter.id, staticImages.length, lazyPages.length, lazyLoading, mangaId]);
 
@@ -148,6 +162,21 @@ const ChapterContent: React.FC<{
   }, [lazyPages]);
 
   const images = staticImages.length > 0 ? staticImages : proxiedLazyPages;
+
+  const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set());
+
+  // Reset loaded state when images change (new chapter)
+  useEffect(() => {
+    setLoadedImages(new Set());
+  }, [images]);
+
+  const handleImageLoad = useCallback((idx: number) => {
+    setLoadedImages(prev => {
+      const next = new Set(prev);
+      next.add(idx);
+      return next;
+    });
+  }, []);
 
   const imgClass = imageFit === 'height'
     ? `h-[100vh] w-auto mx-auto block ${imageUpscale === 'none' ? 'max-h-[100vh]' : ''}`
@@ -195,8 +224,9 @@ const ChapterContent: React.FC<{
                 loading="lazy"
                 data-chapter-id={chapter.id}
                 data-page-num={idx + 1}
+                onLoad={() => handleImageLoad(idx)}
               />
-              {showWatermark && (
+              {showWatermark && loadedImages.has(idx) && (
                 <div
                   className="absolute pointer-events-none select-none"
                   style={{
@@ -233,11 +263,20 @@ const ChapterContent: React.FC<{
 const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: number }> = ({
   mangaId: initialMangaId,
   chapterId: initialChapterId,
-  startPage = 1,
+  startPage: startPageProp = 1,
 }) => {
   const { getMangaById, likeChapter, updateManga, fetchMangaById, fetchMangaChapters } = useContext(MangaContext);
   const { addHistoryItem } = useHistory();
-  const { updateProgress } = useReadingProgress(initialMangaId);
+  const { updateProgress, getChapterProgress } = useReadingProgress(initialMangaId);
+
+  // If no explicit startPage was passed (cold open / tab restore), restore from saved progress
+  const startPage = useMemo(() => {
+    if (startPageProp > 1) return startPageProp; // explicit navigation — use it
+    const saved = getChapterProgress(initialChapterId);
+    if (saved && !saved.isComplete && saved.currentPage > 1) return saved.currentPage;
+    return 1;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialChapterId]);
   const navigate = useNavigate();
 
   const { user } = useContext(AuthContext);
@@ -303,11 +342,14 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
     if (isMobile && (isSettingsOpen || isReportOpen)) {
       document.body.style.overflow = 'hidden';
       document.documentElement.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = '';
-        document.documentElement.style.overflow = '';
-      };
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
     }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
   }, [isSettingsOpen, isReportOpen]);
 
   // Scroll Mode State
@@ -365,27 +407,29 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
   }, [isAutoScrolling, scrollSpeed]);
 
 
-  // Track chapter view on backend + update local state
+  // Track chapter view on backend + update local state (debounced — only after 5s on same chapter)
   useEffect(() => {
     if (!visibleChapterId || !initialMangaId || !manga) return;
-    const headers: Record<string, string> = {};
-    const token = localStorage.getItem('backend_token');
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch(`${API_BASE}/chapters/${visibleChapterId}/view?manga_id=${initialMangaId}`, {
-      method: 'POST',
-      headers,
-    })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data && data.status === 'viewed') {
-          // Increment local view count
-          const updatedChapters = manga.chapters.map(ch =>
-            ch.id === visibleChapterId ? { ...ch, views: (ch.views || 0) + 1 } : ch
-          );
-          updateManga(initialMangaId, { chapters: updatedChapters });
-        }
+    const timer = setTimeout(() => {
+      const headers: Record<string, string> = {};
+      const token = localStorage.getItem('backend_token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      fetch(`${API_BASE}/chapters/${visibleChapterId}/view?manga_id=${initialMangaId}`, {
+        method: 'POST',
+        headers,
       })
-      .catch(() => {/* ignore errors */});
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.status === 'viewed') {
+            const updatedChapters = manga.chapters.map(ch =>
+              ch.id === visibleChapterId ? { ...ch, views: (ch.views || 0) + 1 } : ch
+            );
+            updateManga(initialMangaId, { chapters: updatedChapters });
+          }
+        })
+        .catch(() => {/* ignore errors */});
+    }, 5000);
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleChapterId, initialMangaId]);
 
@@ -460,22 +504,38 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
     return () => clearTimeout(timer);
   }, [loadedChapters, startPage, initialChapterId, settings.readerType]);
 
+  // Debounced history sync — only record after 5s on same chapter to prevent false reads
   useEffect(() => {
-    if (settings.readerType === 'scroll' && visibleChapterId) {
-      // Не меняем route во время ленты, чтобы не размонтировать страницу и не терять предыдущие главы
+    if (settings.readerType !== 'scroll' || !visibleChapterId) return;
+    const timer = setTimeout(() => {
       addHistoryItem(initialMangaId, visibleChapterId);
-    }
+    }, 5000);
+    return () => clearTimeout(timer);
   }, [visibleChapterId, settings.readerType, initialMangaId, addHistoryItem]);
+
+  // Block auto-loading next chapter until the last loaded chapter has fetched its pages.
+  // We use a counter that increments when the last chapter becomes ready, which triggers
+  // a re-check of intersection in case the sentinel is already visible.
+  const lastChapterReadyRef = useRef(true);
+  const [readyTick, setReadyTick] = useState(0);
+
+  const handleLastChapterReady = useCallback(() => {
+    lastChapterReadyRef.current = true;
+    setReadyTick(t => t + 1); // Force re-evaluation of loadNextChapter
+  }, []);
 
   const loadNextChapter = useCallback(() => {
     if (isLastChapterLoaded || loadedChapters.length === 0 || !settings.autoLoadNextChapter) return;
+    if (!lastChapterReadyRef.current) return;
+    lastChapterReadyRef.current = false;
     const lastLoadedChapter = loadedChapters[loadedChapters.length - 1];
     const lastLoadedIndex = sortedChapters.findIndex((c) => c.id === lastLoadedChapter.id);
     if (lastLoadedIndex !== -1 && lastLoadedIndex < sortedChapters.length - 1) {
       const nextRaw = sortedChapters[lastLoadedIndex + 1];
       setLoadedChapters((prev) => [...prev, nextRaw]);
     }
-  }, [loadedChapters, sortedChapters, isLastChapterLoaded, settings.autoLoadNextChapter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedChapters, sortedChapters, isLastChapterLoaded, settings.autoLoadNextChapter, readyTick]);
 
   const intersectionRef = useIntersection(loadNextChapter, { rootMargin: '500px' });
 
@@ -592,6 +652,8 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
   useEffect(() => {
     const lastTapRef = { time: 0, x: 0, y: 0 };
     let tapTimer: number | null = null;
+    let touchStartY = 0;
+    let touchStartX = 0;
     let hasMoved = false;
 
     const isInteractive = (el: Node): boolean => {
@@ -610,12 +672,20 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
       return x > w * 0.2 && x < w * 0.8 && y > h * 0.2 && y < h * 0.8;
     };
 
-    const onTouchStart = () => {
+    const onTouchStart = (e: TouchEvent) => {
       hasMoved = false;
+      if (e.touches.length > 0) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      }
     };
 
-    const onTouchMove = () => {
-      hasMoved = true;
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        const dx = Math.abs(e.touches[0].clientX - touchStartX);
+        const dy = Math.abs(e.touches[0].clientY - touchStartY);
+        if (dx > 5 || dy > 5) hasMoved = true;
+      }
     };
 
     const onPointerUp = (e: PointerEvent) => {
@@ -624,6 +694,8 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
         hasMoved = false;
         return;
       }
+      // На мобильных реагируем только на touch, на десктопе — на mouse
+      if (e.pointerType !== 'touch' && e.pointerType !== 'mouse') return;
 
       if (isInteractive(e.target as Node)) return;
       if (isReportOpen) return;
@@ -728,6 +800,7 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
       <ReaderSidebar
         currentPage={visiblePageInfo.page}
         totalPages={visiblePageInfo.total}
+        showPageIndicator={settings.showPageIndicator}
         onChapterListClick={() => setChapterListOpen(true)}
         onCommentsClick={handleCommentsClick}
         onSettingsClick={() => setSettingsOpen(true)}
@@ -804,6 +877,7 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
             imageUpscale={settings.imageUpscale ?? 'none'}
             imageGap={settings.imageGap ?? 0}
             mangaId={initialMangaId}
+            onLastChapterReady={handleLastChapterReady}
           />
           {!isLastChapterLoaded && settings.autoLoadNextChapter && (
             <div ref={intersectionRef} className="h-48 flex items-center justify-center">

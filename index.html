@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/Logo/springmanga.png" />
@@ -41,6 +41,26 @@
         --c-warning: #D4AF37;
         --c-error: #A9FF00;
         --c-reader-bg: #0F0F0F;
+
+        /* ═══ SpringOS Admin Palette ═══ */
+        --spring-base: #11100F;
+        --spring-surface: #241e1a;
+        --spring-surface-hover: #2e2620;
+        --spring-overlay: #3a3028;
+        --spring-muted: #7a7060;
+        --spring-subtle: #5a5040;
+        --spring-text: #d4c8b0;
+        --spring-text-secondary: #a09880;
+        --spring-mustard: #9b8c3b;
+        --spring-mustard-rgb: 155 140 59;
+        --spring-springtrap-green: #5a6638;
+        --spring-springtrap-green-rgb: 90 102 56;
+        --spring-blood: #7a1616;
+        --spring-blood-rgb: 122 22 22;
+        --spring-glow: #39ff14;
+        --spring-glow-rgb: 57 255 20;
+        --spring-danger: #7a1616;
+        --spring-danger-rgb: 122 22 22;
       }
 
       /* ═══ Light Theme ═══ */
@@ -169,44 +189,49 @@
         "base", "surface", "surface-hover", "overlay", "muted", "subtle",
         "text-primary", "text-secondary", "brand", "brand-hover", "brand-accent"
       ];
+      const springNames = [
+        "spring-base", "spring-surface", "spring-surface-hover", "spring-overlay",
+        "spring-muted", "spring-subtle", "spring-text", "spring-text-secondary",
+        "spring-mustard", "spring-springtrap-green", "spring-blood",
+        "spring-glow", "spring-danger"
+      ];
+      const allThemeNames = [...themeNames, ...springNames];
       const opacityStops = [5, 10, 20, 30, 40, 50, 60, 70, 75, 80, 90, 95];
 
       const themePlugin = tailwind.plugin(function({ addUtilities }) {
         const utilities = {};
-        themeNames.forEach(name => {
-          const cls = name;            // e.g. "text-primary"
-          const hex = `--c-${name}`;   // e.g. "--c-text-primary"
-          const rgb = `--c-${name}-rgb`; // e.g. "--c-text-primary-rgb"
+        allThemeNames.forEach(name => {
+          const cls = name;
+          const hex = `--c-${name}`;
+          const rgbVar = `--${name}-rgb`;
+          const hasRgb = name.startsWith('spring-') && [
+            'spring-mustard', 'spring-springtrap-green', 'spring-blood',
+            'spring-glow', 'spring-danger'
+          ].includes(name);
 
-          // --- text --- (skip "base" to avoid conflict with Tailwind's text-base font-size utility)
-          if (name !== 'base') {
+          if (name !== 'base' && name !== 'spring-base') {
             utilities[`.text-${cls}`]  = { color: `var(${hex})` };
           }
-          // --- bg ---
           utilities[`.bg-${cls}`]    = { "background-color": `var(${hex})` };
-          // --- border ---
           utilities[`.border-${cls}`] = { "border-color": `var(${hex})` };
-          // --- ring ---
           utilities[`.ring-${cls}`]  = { "--tw-ring-color": `var(${hex})` };
-          // --- shadow color ---
           utilities[`.shadow-${cls}`] = { "--tw-shadow-color": `var(${hex})` };
-          // --- gradient from / via / to ---
           utilities[`.from-${cls}`] = { "--tw-gradient-from": `var(${hex})`, "--tw-gradient-to": `var(${hex}) / 0`, "--tw-gradient-stops": "var(--tw-gradient-from), var(--tw-gradient-to)" };
           utilities[`.to-${cls}`]   = { "--tw-gradient-to": `var(${hex})` };
-          // --- placeholder ---
           utilities[`.placeholder-${cls}::placeholder`] = { color: `var(${hex})` };
           utilities[`.placeholder\\:text-${cls}::placeholder`] = { color: `var(${hex})` };
 
-          // opacity variants
           opacityStops.forEach(stop => {
             const alpha = stop / 100;
-            const val = `rgb(var(${rgb}) / ${alpha})`;
+            const val = hasRgb
+              ? `rgb(var(${rgbVar}) / ${alpha})`
+              : `rgb(var(--c-${name.replace('spring-', 'spring-')}-rgb) / ${alpha})`;
             utilities[`.text-${cls}-${stop}`]   = { color: val };
             utilities[`.bg-${cls}-${stop}`]     = { "background-color": val };
             utilities[`.border-${cls}-${stop}`] = { "border-color": val };
             utilities[`.ring-${cls}-${stop}`]   = { "--tw-ring-color": val };
             utilities[`.shadow-${cls}-${stop}`] = { "--tw-shadow-color": val };
-            utilities[`.from-${cls}-${stop}`]   = { "--tw-gradient-from": val, "--tw-gradient-to": `rgb(var(${rgb}) / 0)`, "--tw-gradient-stops": "var(--tw-gradient-from), var(--tw-gradient-to)" };
+            utilities[`.from-${cls}-${stop}`]   = { "--tw-gradient-from": val, "--tw-gradient-to": `rgb(var(--c-${name}-rgb) / 0)`, "--tw-gradient-stops": "var(--tw-gradient-from), var(--tw-gradient-to)" };
             utilities[`.to-${cls}-${stop}`]     = { "--tw-gradient-to": val };
           });
         });
@@ -220,6 +245,8 @@
             fontFamily: {
               sans: ["Inter", "system-ui", "sans-serif"],
               display: ["Oswald", "system-ui", "sans-serif"],
+              terminal: ["VT323", "monospace"],
+              code: ["Fira Code", "monospace"],
             },
             animation: {
               "fade-in": "fadeIn 0.5s ease-out",
@@ -241,9 +268,10 @@
       };
     </script>
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Oswald:wght@500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Oswald:wght@500;700&family=VT323&family=Fira+Code:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
     <script type="importmap">
       {
         "imports": {

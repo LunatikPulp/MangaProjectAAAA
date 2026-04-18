@@ -159,6 +159,7 @@ function backendItemToManga(item: any, localCache: Record<string, Partial<Manga>
 
   return {
     id: item.manga_id,
+    slug: item.slug || item.manga_id,
     title: item.title || 'Без названия',
     type,
     year: item.year || 0,
@@ -503,7 +504,7 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
 
   const getMangaById = useCallback((id: string): Manga | undefined => {
-    return mangaList.find(manga => manga.id === id);
+    return mangaList.find(manga => manga.id === id || manga.slug === id);
   }, [mangaList]);
 
   return (

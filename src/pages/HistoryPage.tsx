@@ -72,7 +72,7 @@ const HistoryPage: React.FC = () => {
                                         <div className="w-1 h-8 bg-surface rounded-none"></div>
                                         <img src={manga.cover} alt={manga.title} className="w-12 h-16 object-cover rounded-md" />
                                         <div className="flex-1">
-                                            <Link to={`/manga/${manga.id}`} className="font-semibold text-text-primary hover:text-brand transition-colors">{manga.title}</Link>
+                                            <Link to={`/manga/${manga.slug || manga.id}`} className="font-semibold text-text-primary hover:text-brand transition-colors">{manga.title}</Link>
                                             <p className="text-sm text-text-secondary mt-1">
                                         Глава {chapter ? chapter.chapterNumber : item.chapterId} из {manga.chapters.length}
                                     </p>

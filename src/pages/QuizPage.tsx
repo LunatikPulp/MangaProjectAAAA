@@ -18,6 +18,7 @@ interface CoverQuestion {
     question: string;
     image_url: string;
     correct_manga_id: string;
+    correct_slug?: string;
     options: { manga_id: string; title: string }[];
 }
 
@@ -333,7 +334,7 @@ const QuizPage: React.FC = () => {
 
                                         {question.mode === 'cover' && selected && (
                                             <Link
-                                                to={`/manga/${(question as CoverQuestion).correct_manga_id}`}
+                                                to={`/manga/${(question as CoverQuestion).correct_slug || (question as CoverQuestion).correct_manga_id}`}
                                                 className="px-4 py-2.5 text-sm transition-all"
                                                 style={{
                                                     border: '1px solid rgba(169,255,0,0.3)',

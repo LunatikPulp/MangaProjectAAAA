@@ -119,24 +119,56 @@ const UserProfilePage: React.FC = () => {
         if (isOwnProfile) navigate('/profile', { replace: true });
     }, [isOwnProfile, navigate]);
 
-    // Load profile
+    // Load all profile data in parallel
     useEffect(() => {
         if (!userId) return;
         setLoading(true);
-        fetch(`${API_BASE}/users/${userId}/profile-full`)
-            .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-            .then(data => setProfile(data))
+
+        const profileP = fetch(`${API_BASE}/users/${userId}/profile-full`)
+            .then(r => { if (!r.ok) throw new Error(); return r.json(); });
+        const shopP = fetch(`${API_BASE}/shop/items`)
+            .then(r => r.json()).catch(() => []);
+        const wallP = fetch(`${API_BASE}/auth/wall-comments/${userId}/with-replies?offset=0&limit=10`)
+            .then(r => r.json()).catch(() => ({ comments: [], total: 0, has_more: false }));
+        const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
+        const friendP = token
+            ? fetch(`${API_BASE}/friends/check/${userId}`, { headers: authHeaders }).then(r => r.json()).catch(() => ({ is_friend: false }))
+            : Promise.resolve(null);
+        const blockP = token
+            ? fetch(`${API_BASE}/blocks/check/${userId}`, { headers: authHeaders }).then(r => r.json()).catch(() => ({ i_blocked: false, they_blocked: false }))
+            : Promise.resolve(null);
+        const compatP = token && !isOwnProfile
+            ? fetch(`${API_BASE}/users/${userId}/compatibility`, { headers: authHeaders }).then(r => r.ok ? r.json() : null).catch(() => null)
+            : Promise.resolve(null);
+
+        Promise.all([profileP, shopP, wallP, friendP, blockP, compatP])
+            .then(([profileData, shopData, wallData, friendData, blockData, compatData]) => {
+                setProfile(profileData);
+                setShopSkins(Array.isArray(shopData) ? shopData.filter((i: any) => i.category === 'skin') : []);
+                if (wallData?.comments) {
+                    setWallComments(wallData.comments);
+                    setWallTotal(wallData.total);
+                    setHasMoreWall(wallData.has_more);
+                    setWallOffset(wallData.comments.length);
+                }
+                if (friendData) setIsFriend(friendData.is_friend);
+                if (blockData) { setIBlocked(blockData.i_blocked); setTheyBlocked(blockData.they_blocked); }
+                if (compatData) {
+                    setCompatibility(compatData);
+                    const text = `> СИНХРОНИЗАЦИЯ БАЗ ДАННЫХ... Совпадение вкусов: ${compatData.compatibility}%`;
+                    let i = 0;
+                    setCompatTyped('');
+                    const timer = setInterval(() => {
+                        i++;
+                        setCompatTyped(text.slice(0, i));
+                        if (i >= text.length) clearInterval(timer);
+                    }, 30);
+                }
+                setCompatLoading(false);
+            })
             .catch(() => setProfile(null))
             .finally(() => setLoading(false));
-    }, [userId]);
-
-    // Load shop skins for effect lookup + Google Font
-    useEffect(() => {
-        fetch(`${API_BASE}/shop/items`)
-            .then(r => r.json())
-            .then(data => setShopSkins(data.filter((i: any) => i.category === 'skin')))
-            .catch(() => {});
-    }, []);
+    }, [userId, token, isOwnProfile]);
 
     useEffect(() => {
         if (!profile?.nickname_font) return;
@@ -149,14 +181,7 @@ const UserProfilePage: React.FC = () => {
         document.head.appendChild(fontLink);
     }, [profile?.nickname_font]);
 
-    // Check friendship & block
-    useEffect(() => {
-        if (!token || !userId) return;
-        fetch(`${API_BASE}/friends/check/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
-            .then(r => r.json()).then(d => setIsFriend(d.is_friend)).catch(() => {});
-        fetch(`${API_BASE}/blocks/check/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
-            .then(r => r.json()).then(d => { setIBlocked(d.i_blocked); setTheyBlocked(d.they_blocked); }).catch(() => {});
-    }, [token, userId]);
+    // Friendship & block checks are now handled in the main parallel useEffect above
 
     // Load wall comments with replies (paginated)
     const loadWallComments = React.useCallback((offset = 0, append = false) => {
@@ -176,7 +201,7 @@ const UserProfilePage: React.FC = () => {
             .catch(() => {});
     }, [userId]);
 
-    useEffect(() => { loadWallComments(0); }, [loadWallComments]);
+    // Initial wall load is handled in the main parallel useEffect above; loadWallComments is used for pagination only
 
     const toggleFriend = async () => {
         if (!token || !userId) return;
@@ -250,30 +275,7 @@ const UserProfilePage: React.FC = () => {
         } catch {}
     };
 
-    // Load compatibility
-    useEffect(() => {
-        if (!token || !userId || isOwnProfile) { setCompatLoading(false); return; }
-        setCompatLoading(true);
-        fetch(`${API_BASE}/users/${userId}/compatibility`, { headers: { Authorization: `Bearer ${token}` } })
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-                if (data) {
-                    setCompatibility(data);
-                    // Typewriter effect for compatibility text
-                    const text = `> СИНХРОНИЗАЦИЯ БАЗ ДАННЫХ... Совпадение вкусов: ${data.compatibility}%`;
-                    let i = 0;
-                    setCompatTyped('');
-                    const timer = setInterval(() => {
-                        i++;
-                        setCompatTyped(text.slice(0, i));
-                        if (i >= text.length) clearInterval(timer);
-                    }, 30);
-                    return () => clearInterval(timer);
-                }
-            })
-            .catch(() => {})
-            .finally(() => setCompatLoading(false));
-    }, [token, userId, isOwnProfile]);
+    // Compatibility is loaded in the main parallel useEffect above
 
     // Nickname effects for viewed user
     const nicknameEffectClass = useMemo(() => {
@@ -640,7 +642,7 @@ const UserProfilePage: React.FC = () => {
                         {(profile.recent_comments || []).length > 0 ? (
                             <div className="space-y-1 max-h-40 overflow-y-auto scrollbar-hide">
                                 {profile.recent_comments.map((c: any, i: number) => (
-                                    <Link to={`/manga/${c.manga_id}`} key={i} className="block p-2 bg-base/50 border profile-border hover:bg-surface-hover transition-all text-[10px] font-mono">
+                                    <Link to={`/manga/${c.slug || c.manga_id}`} key={i} className="block p-2 bg-base/50 border profile-border hover:bg-surface-hover transition-all text-[10px] font-mono">
                                         <span className="text-brand-accent truncate block text-[9px]">{c.manga_title}</span>
                                         <span className="text-text-secondary truncate block">{c.text.length > 50 ? c.text.slice(0, 50) + '...' : c.text}</span>
                                     </Link>
@@ -696,7 +698,7 @@ const UserProfilePage: React.FC = () => {
                                 {(profile.bookmarks as any[]).slice(0, 5).map((b: any) => {
                                     const coverSrc = b.cover ? (b.cover.startsWith('http') ? b.cover : `${API_BASE}${b.cover}`) : '';
                                     return (
-                                        <Link to={`/manga/${b.manga_id}`} key={b.manga_id} className="group relative">
+                                        <Link to={`/manga/${b.slug || b.manga_id}`} key={b.manga_id} className="group relative">
                                             <div className="aspect-[2/3] overflow-hidden border profile-border relative profile-card-hover">
                                                 {coverSrc ? (
                                                     <img src={coverSrc} alt={b.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />

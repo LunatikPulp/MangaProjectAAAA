@@ -309,6 +309,67 @@ const SettingsPage: React.FC = () => {
                         </div>
                     </div>
                     <div className="border-t border-overlay" />
+                    <div>
+                        <SectionTitle>Telegram</SectionTitle>
+                        {(user as any).telegram_id ? (
+                            <div className="space-y-3">
+                                <p className="text-xs text-muted font-mono">
+                                    Привязан: <span className="text-brand-accent">@{(user as any).telegram_username || (user as any).telegram_id}</span>
+                                </p>
+                                <button onClick={async () => {
+                                    try {
+                                        const t = localStorage.getItem('backend_token');
+                                        const r = await fetch(`${API_BASE}/auth/telegram/unlink`, { method: 'POST', headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' } });
+                                        if (r.ok) { showToaster('Telegram отвязан'); refreshUser(); }
+                                        else { const e = await r.json().catch(() => ({})); showToaster(e.detail || 'Ошибка'); }
+                                    } catch { showToaster('Ошибка сети'); }
+                                }}
+                                    className="px-4 py-2 text-[10px] font-mono text-red-400 border border-red-400/30 hover:bg-red-400/10 transition-colors">
+                                    ОТВЯЗАТЬ TELEGRAM
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <p className="text-xs text-muted font-mono">Telegram не привязан.</p>
+                                <button onClick={async () => {
+                                    try {
+                                        const infoRes = await fetch(`${API_BASE}/auth/telegram/info`);
+                                        const info = await infoRes.json();
+                                        if (!info.configured || !info.bot_id) { showToaster('Telegram не настроен'); return; }
+                                        const botId = info.bot_id;
+                                        const origin = window.location.origin;
+                                        const requestId = Date.now().toString(36);
+                                        const tgUrl = `https://oauth.telegram.org/auth?bot_id=${botId}&origin=${encodeURIComponent(origin)}&request_id=${requestId}&return_to=${encodeURIComponent(origin)}`;
+                                        const popup = window.open(tgUrl, 'telegram_auth', 'width=500,height=600');
+
+                                        const handler = async (e: MessageEvent) => {
+                                            if (e.origin !== 'https://oauth.telegram.org' && e.origin !== origin) return;
+                                            let ud = e.data;
+                                            if (typeof ud === 'string') { try { ud = JSON.parse(ud); } catch { return; } }
+                                            if (!ud || !ud.id) return;
+                                            window.removeEventListener('message', handler);
+                                            if (popup) popup.close();
+                                            const t = localStorage.getItem('backend_token');
+                                            const lr = await fetch(`${API_BASE}/auth/telegram/link`, {
+                                                method: 'POST', headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' },
+                                                body: JSON.stringify(ud),
+                                            });
+                                            if (lr.ok) { showToaster('Telegram привязан!'); refreshUser(); }
+                                            else { const e = await lr.json().catch(() => ({})); showToaster(e.detail || 'Ошибка привязки'); }
+                                        };
+                                        window.addEventListener('message', handler);
+                                        const ci = setInterval(() => {
+                                            if (popup && popup.closed) { clearInterval(ci); window.removeEventListener('message', handler); }
+                                        }, 500);
+                                    } catch { showToaster('Ошибка'); }
+                                }}
+                                    className="px-4 py-2 text-sm font-mono font-medium bg-overlay text-text-primary hover:bg-surface-hover transition-colors">
+                                    ПРИВЯЗАТЬ TELEGRAM
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    <div className="border-t border-overlay" />
                     <div className="bg-red-500/5 border border-red-500/20 p-4">
                         <h3 className="text-[10px] font-mono font-bold text-red-400/80 mb-2 uppercase tracking-widest">DANGER ZONE</h3>
                         <p className="text-[10px] text-muted font-mono mb-3">Это действие необратимо. Все данные будут удалены.</p>

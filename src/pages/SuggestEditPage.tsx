@@ -17,7 +17,7 @@ const SuggestEditPage: React.FC<SuggestEditPageProps> = ({ manga }) => {
     const handleSubmit = (formData: MangaFormData) => {
         addSuggestion(manga.id, manga.title, formData);
         showToaster('Ваше предложение отправлено на модерацию!');
-        navigate(`/manga/${manga.id}`);
+        navigate(`/manga/${manga.slug || manga.id}`);
     };
 
     return (
@@ -33,7 +33,7 @@ const SuggestEditPage: React.FC<SuggestEditPageProps> = ({ manga }) => {
                 onSubmit={handleSubmit} 
                 initialData={manga} 
                 submitText="Отправить на проверку"
-                onCancel={() => navigate(`/manga/${manga.id}`)}
+                onCancel={() => navigate(`/manga/${manga.slug || manga.id}`)}
             />
         </div>
     );

@@ -140,14 +140,14 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({ featuredManga }) => {
                                     className="flex gap-2 sm:gap-4"
                                 >
                                     <Link
-                                        to={`/manga/${currentManga.id}`}
+                                        to={`/manga/${currentManga.slug || currentManga.id}`}
                                         className="relative inline-flex items-center gap-1.5 sm:gap-2 bg-brand-accent text-black font-mono font-bold text-xs sm:text-sm py-1.5 px-3 sm:py-3 sm:px-8 transition-all hover:shadow-[0_0_20px_rgba(169,255,0,0.4)] hover:-translate-y-0.5 group active:scale-95"
                                     >
                                         <span>ЧИТАТЬ</span>
                                         <ChevronRightIcon className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />
                                     </Link>
                                     <Link
-                                        to={`/manga/${currentManga.id}`}
+                                        to={`/manga/${currentManga.slug || currentManga.id}`}
                                         className="inline-flex items-center gap-1.5 sm:gap-2 bg-surface-30 hover:bg-surface-50 text-text-primary font-mono text-xs sm:text-sm py-1.5 px-3 sm:py-3 sm:px-6 border border-overlay hover:border-brand transition-colors"
                                     >
                                         Подробнее

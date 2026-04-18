@@ -14,6 +14,7 @@ import { AuthContext } from '../contexts/AuthContext';
 interface Card {
     id: number;
     manga_id: string;
+    slug?: string;
     title: string;
     cover_url: string;
     rarity: 'common' | 'rare' | 'epic' | 'legendary';
@@ -260,7 +261,7 @@ const CardsPage: React.FC = () => {
                                 </div>
                                 <div className="flex gap-2">
                                     <Link
-                                        to={`/manga/${selectedCard.manga_id}`}
+                                        to={`/manga/${selectedCard.slug || selectedCard.manga_id}`}
                                         className="flex-1 py-2 text-center text-xs font-bold"
                                         style={{ background: '#A9FF00', color: '#121212' }}
                                         onClick={() => setSelectedCard(null)}

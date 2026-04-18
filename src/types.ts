@@ -9,6 +9,7 @@ export const typeDisplayNames: Record<string, string> = {
 
 export interface Manga {
   id: string;
+  slug?: string;
   title: string;
   type: 'Manhwa' | 'Manga' | 'Manhua' | 'OEL-Manga' | 'Rukomiks' | 'Western';
   year: number;
@@ -93,7 +94,7 @@ export interface User {
   avatar: string;
   avatar_url?: string;
   role: 'user' | 'moderator' | 'admin';
-  status: 'active' | 'banned';
+  status: 'active' | 'banned' | 'frozen';
   about?: string;
   birthday?: string;
   gender?: string;
@@ -114,6 +115,10 @@ export interface User {
   xp?: number;
   level?: number;
   sound_enabled?: boolean;
+  telegram_id?: string;
+  telegram_username?: string;
+  google_id?: string;
+  yandex_id?: string;
 }
 
 export interface Comment {
@@ -130,6 +135,8 @@ export interface Comment {
   timestamp: string;
   likedBy: string[];
   replies?: Comment[];
+  status?: string;
+  parentId?: number;
 }
 
 export interface HistoryItem {

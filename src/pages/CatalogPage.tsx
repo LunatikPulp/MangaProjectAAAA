@@ -310,14 +310,14 @@ const CatalogPage: React.FC = () => {
                     )}
                 </div>
                 {loading ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-8">
+                    <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-5 sm:gap-x-4 sm:gap-y-8">
                         {Array.from({ length: 10 }).map((_, i) => <MangaCardSkeleton key={i} />)}
                     </div>
                 ) : (
                     mangaItems.length > 0 ? (
                         <>
                             <motion.div
-                                className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-8"
+                                className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-5 sm:gap-x-4 sm:gap-y-8"
                                 variants={containerVariants}
                                 initial="hidden"
                                 animate="visible"
@@ -330,7 +330,7 @@ const CatalogPage: React.FC = () => {
                             </motion.div>
                             <div ref={loaderRef} className="py-8 flex justify-center">
                                 {loadingMore && (
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-8 w-full">
+                                    <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-5 sm:gap-x-4 sm:gap-y-8 w-full">
                                         {Array.from({ length: 5 }).map((_, i) => <MangaCardSkeleton key={`loading-${i}`} />)}
                                     </div>
                                 )}

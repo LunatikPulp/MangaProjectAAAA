@@ -315,22 +315,9 @@ const ProfilePage: React.FC = () => {
 
     // Rich profile data from /auth/profile-full
     const [profileData, setProfileData] = useState<any>(null);
+    const [profileLoading, setProfileLoading] = useState(true);
     const [badges, setBadges] = useState<string[]>([]);
     const badgesRef = useRef<string[]>([]);
-
-    // Debug badges state
-    useEffect(() => {
-        console.log('[DEBUG] badges state updated:', badges);
-        console.log('[DEBUG] badges array content:', JSON.stringify(badges));
-        badges.forEach((badgeId, idx) => {
-            const ach = ACHIEVEMENTS[badgeId];
-            if (ach) {
-                console.log(`[DEBUG] Badge ${idx}: ${badgeId} - rarity: ${ach.rarity} - glow class: ${RARITY_GLOW_CLASS[ach.rarity]}`);
-            } else {
-                console.log(`[DEBUG] Badge ${idx}: ${badgeId} - NOT FOUND IN ACHIEVEMENTS`);
-            }
-        });
-    }, [badges]);
 
     useEffect(() => { badgesRef.current = badges; }, [badges]);
 
@@ -360,39 +347,44 @@ const ProfilePage: React.FC = () => {
         return acc;
     }, {} as Record<BookmarkStatus, number>), [bookmarks]);
 
-    const favoriteGenres = useMemo(() => {
-        const genreCounts = bookmarks.reduce((acc, b) => {
-            const manga = getMangaById(b.mangaId);
-            if (manga) manga.genres.forEach(g => { acc[g] = (acc[g] || 0) + 1; });
-            return acc;
-        }, {} as Record<string, number>);
-        const sorted = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]);
-        const maxCount = sorted[0]?.[1] || 1;
-        return sorted.slice(0, 6).map(([name, count]) => ({ name, count, pct: Math.round((count / maxCount) * 100) }));
-    }, [bookmarks, getMangaById]);
-
-    // Corruption Level — based on genres read
-    const corruptionData = useMemo(() => {
+    // Combined genre analysis — single iteration over bookmarks for both favoriteGenres and corruption
+    const { favoriteGenres, corruptionData } = useMemo(() => {
         const darkGenres = ['Хоррор', 'Ужасы', 'Трагедия', 'Психология', 'Триллер', 'Драма', 'Тёмное фэнтези', 'Мистика', 'Детектив'];
         const lightGenres = ['Комедия', 'Повседневность', 'Романтика', 'Сёнэн', 'Школа', 'Спорт'];
+        const genreCounts: Record<string, number> = {};
         let darkCount = 0, lightCount = 0, totalGenres = 0;
+
         bookmarks.forEach(b => {
             const manga = getMangaById(b.mangaId);
             if (manga) {
                 manga.genres.forEach(g => {
+                    genreCounts[g] = (genreCounts[g] || 0) + 1;
                     totalGenres++;
                     if (darkGenres.some(dg => g.toLowerCase().includes(dg.toLowerCase()))) darkCount++;
                     if (lightGenres.some(lg => g.toLowerCase().includes(lg.toLowerCase()))) lightCount++;
                 });
             }
         });
-        if (totalGenres === 0) return { level: 0, label: 'НЕТ ДАННЫХ', color: '#666' };
-        const ratio = (darkCount - lightCount * 0.5) / Math.max(totalGenres, 1);
-        const corruption = Math.max(0, Math.min(100, Math.round((ratio + 0.3) * 100)));
-        if (corruption >= 75) return { level: corruption, label: 'КРИТИЧЕСКИЙ', color: '#FF2020' };
-        if (corruption >= 50) return { level: corruption, label: 'ПОВЫШЕННЫЙ', color: '#FF8800' };
-        if (corruption >= 25) return { level: corruption, label: 'УМЕРЕННЫЙ', color: '#FFD700' };
-        return { level: corruption, label: 'СИСТЕМА В НОРМЕ', color: '#00FF64' };
+
+        // Favorite genres
+        const sorted = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]);
+        const maxCount = sorted[0]?.[1] || 1;
+        const favoriteGenres = sorted.slice(0, 6).map(([name, count]) => ({ name, count, pct: Math.round((count / maxCount) * 100) }));
+
+        // Corruption
+        let corruptionData: { level: number; label: string; color: string };
+        if (totalGenres === 0) {
+            corruptionData = { level: 0, label: 'НЕТ ДАННЫХ', color: '#666' };
+        } else {
+            const ratio = (darkCount - lightCount * 0.5) / Math.max(totalGenres, 1);
+            const corruption = Math.max(0, Math.min(100, Math.round((ratio + 0.3) * 100)));
+            if (corruption >= 75) corruptionData = { level: corruption, label: 'КРИТИЧЕСКИЙ', color: '#FF2020' };
+            else if (corruption >= 50) corruptionData = { level: corruption, label: 'ПОВЫШЕННЫЙ', color: '#FF8800' };
+            else if (corruption >= 25) corruptionData = { level: corruption, label: 'УМЕРЕННЫЙ', color: '#FFD700' };
+            else corruptionData = { level: corruption, label: 'СИСТЕМА В НОРМЕ', color: '#00FF64' };
+        }
+
+        return { favoriteGenres, corruptionData };
     }, [bookmarks, getMangaById]);
 
     // Last read manga for "Continue Reading"
@@ -521,7 +513,7 @@ const ProfilePage: React.FC = () => {
 
 
     // User comments from server
-    const [userComments, setUserComments] = useState<{ text: string; mangaId: string; mangaTitle: string; cover: string; timestamp: string }[]>([]);
+    const [userComments, setUserComments] = useState<{ text: string; mangaId: string; mangaTitle: string; mangaSlug: string; cover: string; timestamp: string }[]>([]);
     useEffect(() => {
         if (!user) return;
         const token = localStorage.getItem('backend_token');
@@ -530,20 +522,18 @@ const ProfilePage: React.FC = () => {
             headers: { 'Authorization': `Bearer ${token}` },
         })
             .then(res => res.ok ? res.json() : [])
-            .then((data: { id: number; mangaId: string; chapterId?: string; text: string; timestamp: string }[]) => {
-                setUserComments(data.map(c => {
-                    const manga = getMangaById(c.mangaId);
-                    return {
-                        text: c.text,
-                        mangaId: c.mangaId,
-                        mangaTitle: manga?.title || c.mangaId,
-                        cover: manga?.cover || '',
-                        timestamp: c.timestamp,
-                    };
-                }));
+            .then((data: { id: number; mangaId: string; mangaTitle?: string; mangaSlug?: string; coverUrl?: string; chapterId?: string; text: string; timestamp: string }[]) => {
+                setUserComments(data.map(c => ({
+                    text: c.text,
+                    mangaId: c.mangaId,
+                    mangaTitle: c.mangaTitle || c.mangaId,
+                    mangaSlug: c.mangaSlug || c.mangaId,
+                    cover: c.coverUrl || '',
+                    timestamp: c.timestamp,
+                })));
             })
             .catch(() => {});
-    }, [user, getMangaById]);
+    }, [user]);
 
     // Bookmarked manga for "add to showcase/favorites"
     const bookmarkedManga = useMemo(() => {
@@ -577,91 +567,66 @@ const ProfilePage: React.FC = () => {
     const heatmapDays = useMemo(() => generateHeatmapDays(), []);
 
     // Gamification
-    const xp = profileData?.gamification?.xp ?? (user?.xp || 0);
-    const level = profileData?.gamification?.level ?? (user?.level || 1);
+    const xp = profileData?.gamification?.xp ?? 0;
+    const level = profileData?.gamification?.level ?? 0;
     const xpCurrentLevel = profileData?.gamification?.xp_current_level ?? 0;
     const xpNextLevel = profileData?.gamification?.xp_next_level ?? 50;
-    const xpProgress = xpNextLevel > xpCurrentLevel ? ((xp - xpCurrentLevel) / (xpNextLevel - xpCurrentLevel)) * 100 : 100;
+    const xpProgress = profileData ? (xpNextLevel > xpCurrentLevel ? ((xp - xpCurrentLevel) / (xpNextLevel - xpCurrentLevel)) * 100 : 100) : 0;
 
 
 
     // Load profile-full + check achievements
     useEffect(() => {
-        if (!user) return;
+        if (!user) { setProfileLoading(false); return; }
         try { setBadges(JSON.parse(user.badge_ids || '[]')); } catch { setBadges([]); }
 
-
         const token = localStorage.getItem('backend_token');
-        if (!token) return;
+        if (!token) { setProfileLoading(false); return; }
 
-        // Fetch full profile
-        fetch(`${API_BASE}/auth/profile-full`, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(data => {
-                setProfileData(data);
-                if (data.user?.badge_ids) setBadges(data.user.badge_ids);
-                // Load Google Font for nickname if needed
-                if (data?.nickname_font) {
+        setProfileLoading(true);
+        const headers = { Authorization: `Bearer ${token}` };
+
+        Promise.all([
+            fetch(`${API_BASE}/auth/profile-full`, { headers }).then(r => r.json()).catch(() => null),
+            fetch(`${API_BASE}/auth/check-achievements`, { method: 'POST', headers }).then(r => r.json()).catch(() => null),
+            fetch(`${API_BASE}/auth/sync-xp`, { method: 'POST', headers }).then(r => r.json()).catch(() => null),
+            fetch(`${API_BASE}/auth/my-purchases`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch(`${API_BASE}/shop/items`, { headers }).then(r => r.json()).catch(() => []),
+        ]).then(([profileData, achData, xpData, purchases, shopItems]) => {
+            if (profileData) {
+                setProfileData(profileData);
+                if (profileData.user?.badge_ids) setBadges(profileData.user.badge_ids);
+                if (profileData?.nickname_font) {
                     const fontLink = document.createElement('link');
                     fontLink.rel = 'stylesheet';
-                    fontLink.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(data.nickname_font)}&display=swap`;
+                    fontLink.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(profileData.nickname_font)}&display=swap`;
                     fontLink.id = 'nickname-font-link';
                     const existing = document.getElementById('nickname-font-link');
                     if (existing) existing.remove();
                     document.head.appendChild(fontLink);
                 }
-            })
-            .catch(() => {});
-
-        // Check achievements
-        fetch(`${API_BASE}/auth/check-achievements`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-        })
-            .then(r => r.json())
-            .then(data => {
-                console.log('[DEBUG] check-achievements response:', data);
-                if (data.badges) setBadges(data.badges);
-                if (data.new_badges?.length > 0) {
-                    const manualAchievements = ['konami_master', 'horror_discoverer'];
-                    data.new_badges.forEach((b: string) => {
-                        if (manualAchievements.includes(b)) return;
-                        const ach = ACHIEVEMENTS[b];
-                        if (ach) showToaster(`🎉 Новая ачивка: ${ach.title}!`);
-                    });
-                }
-            })
-            .catch(() => {});
-
-        // Sync XP
-        fetch(`${API_BASE}/auth/sync-xp`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-        }).then(r => r.json()).then(data => {
-            if (data.level_up) showToaster(`⚡ Уровень повышен! Теперь вы ${data.level} ур.`);
-            if (data.daily_scrap > 0) showToaster(`+${data.daily_scrap} за ежедневный вход!`);
-            if (data.level_scrap > 0) showToaster(`+${data.level_scrap} за повышение уровня!`);
-        }).catch(() => {});
-
-        // Load purchases and shop skins
-        fetch(`${API_BASE}/auth/my-purchases`, { headers: { Authorization: `Bearer ${token}` } })
-            .then(r => r.ok ? r.json() : [])
-            .then(data => setMyPurchases(data))
-            .catch(() => {});
-        fetch(`${API_BASE}/shop/items`, { headers: { Authorization: `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(data => {
-                // Фильтруем рамки за уровни (по пути /Frames_lvl/)
-                const filteredData = data.filter((item: any) => {
-                    if (item.category === 'frame' && item.preview.includes('/Frames_lvl/')) {
-                        return false;
-                    }
-                    return true;
+            }
+            if (achData?.badges) setBadges(achData.badges);
+            if (achData?.new_badges?.length > 0) {
+                const manualAchievements = ['konami_master', 'horror_discoverer'];
+                achData.new_badges.forEach((b: string) => {
+                    if (manualAchievements.includes(b)) return;
+                    const ach = ACHIEVEMENTS[b];
+                    if (ach) showToaster(`🎉 Новая ачивка: ${ach.title}!`);
                 });
+            }
+            if (xpData) {
+                if (xpData.level_up) showToaster(`⚡ Уровень повышен! Теперь вы ${xpData.level} ур.`);
+                if (xpData.daily_scrap > 0) showToaster(`+${xpData.daily_scrap} за ежедневный вход!`);
+                if (xpData.level_scrap > 0) showToaster(`+${xpData.level_scrap} за повышение уровня!`);
+            }
+            if (Array.isArray(purchases)) setMyPurchases(purchases);
+            if (Array.isArray(shopItems)) {
+                const filteredData = shopItems.filter((item: any) => !(item.category === 'frame' && item.preview.includes('/Frames_lvl/')));
                 setAllShopItems(filteredData);
                 setShopSkins(filteredData.filter((i: any) => i.category === 'skin'));
-            })
-            .catch(() => {});
+            }
+        }).finally(() => setProfileLoading(false));
     }, [user?.id]);
 
     // Listen for real-time achievement unlocks from other components (e.g. SpringtrapNightmare)
@@ -1267,6 +1232,8 @@ const ProfilePage: React.FC = () => {
         };
     }, [backgroundSrc]);
 
+    if (profileLoading) return <ProfilePageSkeleton />;
+
     return (
         <>
         <div data-profile-theme={activeThemeKey} style={{ ...glowOverride, ...(Object.keys(previewCssVars).length > 0 ? previewCssVars : {}) } as React.CSSProperties} className={isPreviewingLocked ? 'preview-watermark' : ''}>
@@ -1324,7 +1291,7 @@ const ProfilePage: React.FC = () => {
                                     user.role === 'moderator' ? 'bg-brand/20 text-brand' :
                                     'profile-badge-bg profile-accent-text'
                                 }`}>
-                                    {user.role === 'admin' ? 'ADMIN' : user.role === 'moderator' ? 'MOD' : `LVL ${level}`}
+                                    {user.role === 'admin' ? 'ADMIN' : user.role === 'moderator' ? 'MOD' : (profileData ? `LVL ${level}` : '')}
                                 </span>
                                 {profileData?.subscription_active && user.role !== 'admin' && (
                                     <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-yellow-400 border border-yellow-500/30 shrink-0">
@@ -1334,6 +1301,7 @@ const ProfilePage: React.FC = () => {
                             </div>
 
                             {/* XP Progress Bar — "System Battery" */}
+                            {profileData && (
                             <div className="flex items-center gap-3 mb-2 max-w-md mx-auto sm:mx-0 relative">
                                 <div className="flex-1 h-5 bg-base border border-overlay relative overflow-hidden group/xp cursor-help"
                                     onMouseEnter={() => setShowXpTooltip(true)} onMouseLeave={() => setShowXpTooltip(false)}>
@@ -1377,6 +1345,7 @@ const ProfilePage: React.FC = () => {
                                 </div>
                                 <span className="text-xs font-mono font-bold profile-glow-text shrink-0">LV.{level}</span>
                             </div>
+                            )}
 
                             {user.bio && (
                                 <p className="text-text-secondary text-sm mt-1 line-clamp-2 max-w-lg mx-auto sm:mx-0">{user.bio}</p>
@@ -1413,7 +1382,7 @@ const ProfilePage: React.FC = () => {
                                 ⚙
                             </button>
                             {(user.role === 'admin' || user.role === 'moderator') && (
-                                <Link to={user.role === 'admin' ? '/admin' : '/moderator'}
+                                <Link to="/admin"
                                     className="px-2.5 py-1.5 text-[10px] font-mono font-bold bg-overlay text-text-primary hover:bg-surface-hover transition-all border border-overlay">
                                     ПАНЕЛЬ
                                 </Link>
@@ -1435,8 +1404,8 @@ const ProfilePage: React.FC = () => {
                             <span className="profile-glow-text">■</span> СИСТЕМНЫЕ ДАННЫЕ
                         </h3>
                         <div className="space-y-2.5">
-                            <StatRow label="Уровень" value={`${level}`} accent />
-                            <StatRow label="Опыт" value={`${xp} XP`} />
+                            {profileData && <StatRow label="Уровень" value={`${level}`} accent />}
+                            {profileData && <StatRow label="Опыт" value={`${xp} XP`} />}
                             <StatRow label="Глав прочитано" value={`${profileData?.stats?.chapters_read ?? totalChaptersRead}`} />
                             <StatRow label="Лайков" value={`${profileData?.stats?.total_likes ?? 0}`} />
                             <StatRow label="Оценок" value={`${profileData?.stats?.total_ratings ?? 0}`} />
@@ -1566,10 +1535,10 @@ const ProfilePage: React.FC = () => {
                         {userComments.length > 0 ? (
                             <div className="space-y-1 max-h-40 overflow-y-auto scrollbar-hide">
                                 {userComments.map((c, i) => (
-                                    <div key={i} className="p-2 bg-base/50 border profile-border hover:bg-surface-hover transition-all text-[10px] font-mono">
+                                    <Link key={i} to={`/manga/${c.mangaSlug}`} className="block p-2 bg-base/50 border profile-border hover:bg-surface-hover transition-all text-[10px] font-mono">
                                         <span className="text-brand-accent truncate block text-[9px]">{c.mangaTitle}</span>
                                         <span className="text-text-secondary truncate block">{c.text.length > 50 ? c.text.slice(0, 50) + '...' : c.text}</span>
-                                    </div>
+                                    </Link>
                                 ))}
                             </div>
                         ) : (
@@ -1588,7 +1557,7 @@ const ProfilePage: React.FC = () => {
                             <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary mb-4 flex items-center gap-2">
                                 <span className="profile-glow-text">📡</span>ПОСЛЕДНИЙ РАСШИФРОВАННЫЙ ФАЙЛ
                             </h3>
-                            <Link to={`/manga/${lastReadItem.manga.id}/chapter/${lastReadItem.chapterId}`} className="flex gap-4 items-center">
+                            <Link to={`/manga/${lastReadItem.manga.slug || lastReadItem.manga.id}/chapter/${lastReadItem.chapterId}`} className="flex gap-4 items-center">
                                 <div className="relative w-24 h-36 shrink-0 overflow-hidden border profile-border">
                                     <img src={lastReadItem.manga.cover} alt={lastReadItem.manga.title} className="w-full h-full object-cover" />
                                     {/* Scan line */}
@@ -1608,6 +1577,7 @@ const ProfilePage: React.FC = () => {
                     )}
 
                     {/* Section 1: "System Logs" — Activity Heatmap */}
+                    {profileData && (
                     <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
                         <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-text-primary mb-4 flex items-center gap-2">
                             <span className="profile-glow-text">⚡</span>Активность чтения
@@ -1647,6 +1617,7 @@ const ProfilePage: React.FC = () => {
                             </div>
                         </div>
                     </div>
+                    )}
 
                     {/* Section 2: Bookmarks (Закладки) */}
                     <div className={`profile-surface-bg border profile-border p-4 sm:p-5 ${blockStyleClass}`}>
@@ -1663,7 +1634,7 @@ const ProfilePage: React.FC = () => {
                             <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                                 {bookmarkedManga.slice(0, 5).map((b) => (
                                     <div key={b.mangaId} className="group relative">
-                                        <Link to={`/manga/${b.manga!.id}`}>
+                                        <Link to={`/manga/${b.manga!.slug || b.manga!.id}`}>
                                             <div className="aspect-[2/3] overflow-hidden border profile-border relative profile-card-hover">
                                                 <img src={b.manga!.cover} alt={b.manga!.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                                                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1964,7 +1935,7 @@ const ProfilePage: React.FC = () => {
                             </h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                                 {recentHistory.map((item: any) => (
-                                    <Link to={`/manga/${item.manga.id}/chapter/${item.chapterId}`} key={item.manga.id}
+                                    <Link to={`/manga/${item.manga.slug || item.manga.id}/chapter/${item.chapterId}`} key={item.manga.id}
                                         className="flex items-center gap-3 p-2.5 bg-base/50 border profile-border hover:bg-surface-hover transition-all group profile-card-hover">
                                         <div className="relative w-10 h-14 shrink-0">
                                             <img src={item.manga.cover} alt={item.manga.title} className="w-full h-full object-cover" />

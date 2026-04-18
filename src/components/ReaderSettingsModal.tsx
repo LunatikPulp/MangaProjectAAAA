@@ -75,7 +75,9 @@ const Toggle: React.FC<{ label: string; enabled: boolean; onChange: (enabled: bo
         >
             <motion.span
                 layout
-                className={`inline-block w-4 h-4 transform bg-white rounded-full shadow-sm transition-transform ${enabled ? 'translate-x-6' : 'translate-x-1'}`}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                className="inline-block w-4 h-4 bg-white rounded-full shadow-sm"
+                style={{ marginLeft: enabled ? 24 : 4 }}
             />
         </button>
     </div>
@@ -338,7 +340,6 @@ const ReaderSettingsModal: React.FC<ReaderSettingsModalProps> = ({ isOpen, onClo
 
              <div className="border-t border-surface-50 pt-4 mt-4">
                 <Toggle label="Авто-переход к следующей главе" enabled={settings.autoLoadNextChapter} onChange={(val) => handleSettingChange('autoLoadNextChapter', val)} />
-                <Toggle label="Показывать заметки переводчиков" enabled={settings.showNotes} onChange={(val) => handleSettingChange('showNotes', val)} />
                 <Toggle label="Индикатор страницы" enabled={settings.showPageIndicator} onChange={(val) => handleSettingChange('showPageIndicator', val)} />
              </div>
 

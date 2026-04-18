@@ -11,7 +11,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(String, default="user")  # user, moderator, admin
-    status = Column(String, default="active")  # active, banned
+    status = Column(String, default="active")  # active, banned, frozen
     avatar_url = Column(String, default="")
     about = Column(Text, default="")
     birthday = Column(String, default="")
@@ -23,6 +23,9 @@ class User(Base):
     notify_vk = Column(Boolean, default=False)
     notify_telegram = Column(Boolean, default=False)
     google_id = Column(String, default="")
+    yandex_id = Column(String, default="")
+    telegram_id = Column(String, default="")
+    telegram_username = Column(String, default="")
     bio = Column(Text, default="")
     profile_banner_url = Column(String, default="")
     profile_background_url = Column(String, default="")
@@ -44,6 +47,9 @@ class User(Base):
     scrap_comments_date = Column(Date, default=None, nullable=True)
     subscription_type = Column(String, default="")  # "" or "springpro"
     subscription_expires_at = Column(DateTime, nullable=True)
+    warnings_count = Column(Integer, default=0)
+    warning_shown_at = Column(DateTime, nullable=True)
+    muted_until = Column(DateTime, nullable=True)
 
     likes = relationship("ChapterLike", back_populates="user")
     views = relationship("ChapterView", back_populates="user")
@@ -167,14 +173,14 @@ class MangaComment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     manga_id = Column(String, index=True, nullable=False)
-    chapter_id = Column(String, index=True, nullable=True)  # NULL = комментарий к манге, не к главе
-    parent_id = Column(Integer, ForeignKey("manga_comments.id"), nullable=True)  # для ответов
+    chapter_id = Column(String, index=True, nullable=True)
+    parent_id = Column(Integer, ForeignKey("manga_comments.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     text = Column(Text, nullable=False)
+    status = Column(String, default="approved", index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")
-    # parent_comment relationship not needed - we build tree manually in the API
 
 
 class CommentLike(Base):
@@ -185,6 +191,31 @@ class CommentLike(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     __table_args__ = (UniqueConstraint('comment_id', 'user_id', name='unique_comment_like'),)
+
+
+class CommentReport(Base):
+    __tablename__ = "comment_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    comment_id = Column(Integer, ForeignKey("manga_comments.id", ondelete="CASCADE"), nullable=False, index=True)
+    reporter_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    reason = Column(String, default="spam")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint('comment_id', 'reporter_id', name='unique_comment_report'),)
+
+
+class UserWarning(Base):
+    __tablename__ = "user_warnings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    reason = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", foreign_keys=[user_id])
+    admin = relationship("User", foreign_keys=[admin_id])
 
 
 class Friendship(Base):
@@ -247,6 +278,7 @@ class MangaItem(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     manga_id = Column(String, unique=True, index=True)  # MD5 хеш URL
+    slug = Column(String, unique=True, index=True, nullable=True)  # URL-friendly slug
     title = Column(String, nullable=False)
     description = Column(Text, default="")
     cover_url = Column(String, default="")
@@ -267,6 +299,7 @@ class MangaItem(Base):
     mangabuff_rating_rank = Column(Integer, default=0)  # Позиция в сортировке "по рейтингу"
     mangabuff_newest_rank = Column(Integer, default=0)  # Позиция в сортировке "по новинкам"
     mangabuff_updated_rank = Column(Integer, default=0)  # Позиция в сортировке "обновлённые"
+    hidden = Column(Boolean, default=False)
 
 
 class UserCard(Base):
@@ -341,6 +374,14 @@ class PersonalizationRequest(Base):
     user = relationship("User")
 
 
+class SiteSetting(Base):
+    __tablename__ = "site_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, index=True, nullable=False)
+    value = Column(Text, default="")
+
+
 class PaymentTransaction(Base):
     __tablename__ = "payment_transactions"
 
@@ -356,3 +397,75 @@ class PaymentTransaction(Base):
     completed_at = Column(DateTime, nullable=True)
 
     user = relationship("User")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    admin_username = Column(String, nullable=False)
+    action = Column(String, nullable=False)
+    target = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ScrapTransaction(Base):
+    __tablename__ = "scrap_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    username = Column(String, nullable=False)
+    amount = Column(Integer, nullable=False)
+    reason = Column(String, default="")
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Promocode(Base):
+    __tablename__ = "promocodes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True, nullable=False)
+    discount_percent = Column(Integer, default=0)
+    fixed_scrap = Column(Integer, default=0)
+    expires_at = Column(String, nullable=True)
+    usage_limit = Column(Integer, default=100)
+    usage_count = Column(Integer, default=0)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LoginHistory(Base):
+    __tablename__ = "login_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    username = Column(String, default="-")
+    ip = Column(String, nullable=False)
+    status = Column(String, default="OK")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_email = Column(String, nullable=False)
+    manga_id = Column(String, nullable=False)
+    manga_title = Column(String, default="")
+    reason = Column(String, default="")
+    message = Column(Text, default="")
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    token = Column(String, unique=True, index=True)
+    used = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

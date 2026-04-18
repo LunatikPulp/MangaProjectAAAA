@@ -6,6 +6,7 @@ import { API_BASE } from '../services/externalApiService';
 
 interface SectionItem {
   manga_id: string;
+  slug?: string;
   title: string;
   cover_url: string;
   manga_type: string;
@@ -73,7 +74,7 @@ const SectionListPage: React.FC = () => {
 
             return (
               <Link
-                to={`/manga/${item.manga_id}`}
+                to={`/manga/${item.slug || item.manga_id}`}
                 key={item.manga_id}
                 className="group bg-surface p-4 flex items-center gap-4 border border-overlay hover:border-brand-accent-30 hover:bg-surface-hover transition-all"
               >

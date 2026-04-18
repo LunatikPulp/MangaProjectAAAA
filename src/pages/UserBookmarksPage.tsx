@@ -7,6 +7,7 @@ const STATUS_TABS = ['Все', 'Читаю', 'Буду читать', 'Проч�
 
 interface UserBookmark {
     manga_id: string;
+    slug?: string;
     title: string;
     cover: string;
     status: string;
@@ -87,7 +88,7 @@ const UserBookmarksPage: React.FC = () => {
                     {filtered.map(b => {
                         const coverSrc = b.cover ? (b.cover.startsWith('http') ? b.cover : `${API_BASE}${b.cover}`) : '';
                         return (
-                            <Link to={`/manga/${b.manga_id}`} key={b.manga_id} className="group relative">
+                            <Link to={`/manga/${b.slug || b.manga_id}`} key={b.manga_id} className="group relative">
                                 <div className="aspect-[2/3] overflow-hidden border border-overlay relative bg-surface hover:border-brand-accent/30 transition-all">
                                     {coverSrc ? (
                                         <img src={coverSrc} alt={b.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />

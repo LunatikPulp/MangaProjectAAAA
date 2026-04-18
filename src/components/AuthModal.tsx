@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -18,15 +18,18 @@ const AuthModal: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const [tgLoading, setTgLoading] = useState(false);
+  const tgMessageHandlerRef = useRef<((e: MessageEvent) => void) | null>(null);
+
   const isOpen = authModal.isOpen;
   const view = authModal.view;
 
   const providers = useMemo(
     () => [
-      { key: 'telegram', label: 'Telegram' },
-      { key: 'yandex', label: 'Яндекс' },
-      { key: 'vk', label: 'VK' },
-      { key: 'google', label: 'Google' },
+      { key: 'telegram', label: 'Telegram', icon: <i className="fa-brands fa-telegram text-xl" /> },
+      { key: 'yandex', label: 'Яндекс', icon: <i className="fa-brands fa-yandex text-xl" style={{color:'#FC3F1D'}} /> },
+      { key: 'vk', label: 'VK', icon: <i className="fa-brands fa-vk text-xl" style={{color:'#0077FF'}} /> },
+      { key: 'google', label: 'Google', icon: <i className="fa-brands fa-google text-xl" style={{color:'#4285F4'}} /> },
     ],
     []
   );
@@ -46,15 +49,25 @@ const AuthModal: React.FC = () => {
   useEffect(() => {
     if (!isOpen) return;
     setError('');
+    setTgLoading(false);
+    if (tgMessageHandlerRef.current) {
+      window.removeEventListener('message', tgMessageHandlerRef.current);
+      tgMessageHandlerRef.current = null;
+    }
   }, [isOpen, view]);
 
   const handleClose = () => {
+    if (tgMessageHandlerRef.current) {
+      window.removeEventListener('message', tgMessageHandlerRef.current);
+      tgMessageHandlerRef.current = null;
+    }
     setIdentifier('');
     setUsername('');
     setEmail('');
     setPassword('');
     setError('');
     setLoading(false);
+    setTgLoading(false);
     closeAuthModal();
   };
 
@@ -104,12 +117,151 @@ const AuthModal: React.FC = () => {
     }
   };
 
-  const handleProviderAuth = (provider: string) => {
+  const handleTelegramAuth = useCallback(async (tgData: any) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/auth/telegram/callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tgData),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Ошибка авторизации Telegram');
+      }
+      const data = await res.json();
+      localStorage.setItem('backend_token', data.access_token);
+      const meRes = await fetch(`${API_BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      if (meRes.ok) {
+        const meData = await meRes.json();
+        const userObj: any = {
+          id: meData.id, username: meData.username, email: meData.email,
+          avatar: meData.avatar_url || meData.username, avatar_url: meData.avatar_url || '',
+          role: meData.role || 'user', status: meData.status || 'active', subscribedMangaIds: [],
+        };
+        localStorage.setItem('user', JSON.stringify(userObj));
+        window.dispatchEvent(new Event('auth-change'));
+        const target = authModal.returnTo;
+        handleClose();
+        if (target && target !== location.pathname) {
+          navigate(target, { replace: true });
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Ошибка Telegram');
+      showToaster(err.message || 'Ошибка Telegram');
+    } finally {
+      setLoading(false);
+    }
+  }, [authModal.returnTo, location.pathname, navigate, showToaster]);
+
+  const handleProviderAuth = async (provider: string) => {
     if (provider === 'google') {
       window.location.href = `${API_BASE}/auth/google`;
-    } else {
-      showToaster('Скоро будет доступно!');
+      return;
     }
+    if (provider === 'yandex') {
+      window.location.href = `${API_BASE}/auth/yandex`;
+      return;
+    }
+    if (provider === 'telegram') {
+      setTgLoading(true);
+      setError('');
+      try {
+        const infoRes = await fetch(`${API_BASE}/auth/telegram/info`);
+        const info = await infoRes.json();
+        if (!info.configured || !info.bot_id) {
+          setError('Telegram Login не настроен на сервере');
+          showToaster('Telegram Login не настроен');
+          setTgLoading(false);
+          return;
+        }
+        const botId = info.bot_id;
+        const origin = window.location.origin;
+        const requestId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const tgUrl = `https://oauth.telegram.org/auth?bot_id=${botId}&origin=${encodeURIComponent(origin)}&request_id=${requestId}&return_to=${encodeURIComponent(origin)}`;
+        const popup = window.open(tgUrl, 'telegram_auth', 'width=500,height=600,left=' + (screen.width / 2 - 250) + ',top=' + (screen.height / 2 - 300));
+
+        if (tgMessageHandlerRef.current) {
+          window.removeEventListener('message', tgMessageHandlerRef.current);
+        }
+
+        const handler = (e: MessageEvent) => {
+          if (e.origin !== 'https://oauth.telegram.org' && e.origin !== origin) return;
+          let userData = e.data;
+          if (typeof userData === 'string') {
+            try { userData = JSON.parse(userData); } catch { return; }
+          }
+          if (!userData) return;
+          if (userData.event === 'auth_result' && userData.result) {
+            userData = userData.result;
+          }
+          if (!userData.id) return;
+          window.removeEventListener('message', handler);
+          tgMessageHandlerRef.current = null;
+          if (popup) popup.close();
+          handleTelegramAuth(userData);
+        };
+        tgMessageHandlerRef.current = handler;
+        window.addEventListener('message', handler);
+
+        const checkClosed = setInterval(() => {
+          // Try to read tgAuthResult from popup URL hash (Telegram redirect fallback)
+          try {
+            if (popup && !popup.closed) {
+              const popupHash = popup.location?.hash;
+              if (popupHash && popupHash.includes('tgAuthResult=')) {
+                const encoded = popupHash.split('tgAuthResult=')[1];
+                if (encoded) {
+                  const decoded = JSON.parse(atob(decodeURIComponent(encoded)));
+                  if (decoded && decoded.id) {
+                    clearInterval(checkClosed);
+                    window.removeEventListener('message', handler);
+                    tgMessageHandlerRef.current = null;
+                    popup.close();
+                    handleTelegramAuth(decoded);
+                    return;
+                  }
+                }
+              }
+            }
+          } catch { /* cross-origin, ignore */ }
+
+          if (popup && popup.closed) {
+            clearInterval(checkClosed);
+            // Check if main window got a hash result (mobile redirect)
+            const mainHash = window.location.hash;
+            if (mainHash.includes('tgAuthResult=')) {
+              const encoded = mainHash.split('tgAuthResult=')[1];
+              window.location.hash = '';
+              try {
+                const decoded = JSON.parse(atob(decodeURIComponent(encoded)));
+                if (decoded && decoded.id) {
+                  window.removeEventListener('message', handler);
+                  tgMessageHandlerRef.current = null;
+                  handleTelegramAuth(decoded);
+                  return;
+                }
+              } catch { /* ignore */ }
+            }
+            if (tgMessageHandlerRef.current === handler) {
+              window.removeEventListener('message', handler);
+              tgMessageHandlerRef.current = null;
+            }
+            setTgLoading(false);
+          }
+        }, 500);
+      } catch (err: any) {
+        setError(err.message || 'Ошибка Telegram');
+        showToaster(err.message || 'Ошибка Telegram');
+      }
+      setTgLoading(false);
+      return;
+    }
+    showToaster('Скоро будет доступно!');
   };
 
   const content = (
@@ -160,15 +312,17 @@ const AuthModal: React.FC = () => {
             </div>
 
             <div className="p-6 space-y-5">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 {providers.map(provider => (
                   <button
                     key={provider.key}
                     type="button"
                     onClick={() => handleProviderAuth(provider.key)}
-                    className="w-full py-2.5 bg-surface-hover border border-overlay text-sm font-mono font-semibold text-text-primary hover:border-brand-accent hover:text-brand-accent transition-colors"
+                    disabled={tgLoading && provider.key === 'telegram'}
+                    title={provider.label}
+                    className="w-full py-2.5 bg-surface-hover border border-overlay text-text-primary hover:border-brand-accent hover:text-brand-accent transition-colors disabled:opacity-50 flex items-center justify-center"
                   >
-                    {provider.label}
+                    {provider.key === 'telegram' && tgLoading ? <span className="animate-spin text-lg">⏳</span> : provider.icon}
                   </button>
                 ))}
               </div>
@@ -214,6 +368,15 @@ const AuthModal: React.FC = () => {
                   >
                     {loading ? 'Входим...' : 'Войти'}
                   </button>
+                  <div className="text-center mt-2">
+                    <a
+                      href="/forgot-password"
+                      onClick={e => { e.preventDefault(); handleClose(); navigate('/forgot-password'); }}
+                      className="text-xs font-mono text-muted hover:text-brand-accent transition-colors cursor-pointer"
+                    >
+                      Забыли пароль?
+                    </a>
+                  </div>
                 </form>
               ) : (
                 <form onSubmit={handleRegisterSubmit} className="space-y-4">

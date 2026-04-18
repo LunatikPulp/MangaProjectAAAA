@@ -140,14 +140,14 @@ const SpringtrapNightmare: React.FC = () => {
   };
 
   const insertVideoBackground = () => {
-    const existing = document.getElementById('nightmare-video-bg');
-    if (existing) existing.remove();
+    // Don't recreate if already exists — destroying kills playback
+    if (document.getElementById('nightmare-video-bg')) return;
 
     const videoBg = document.createElement('div');
     videoBg.id = 'nightmare-video-bg';
     videoBg.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;overflow:hidden;pointer-events:none;';
     videoBg.innerHTML = `
-      <video src="/Horror_design/springmanga_background.mp4" autoplay loop muted playsinline preload="auto" style="width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease;"></video>
+      <video src="/Horror_design/springmanga_background.mp4" autoplay loop muted playsinline preload="auto" poster="/Horror_design/scratches.png" style="width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.5s ease;"></video>
       <div style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(18,18,18,0.72);pointer-events:none;"></div>
     `;
     document.body.insertBefore(videoBg, document.body.firstChild);
@@ -241,17 +241,6 @@ const SpringtrapNightmare: React.FC = () => {
 
       // Keep background transparent on navigation (React may re-render and re-add bg-base)
       makeBackgroundTransparent();
-
-      // Show/hide video background based on current page
-      if (isReaderPage()) {
-        removeVideoBackground();
-        document.documentElement.classList.add('springtrap-reader-page');
-      } else {
-        document.documentElement.classList.remove('springtrap-reader-page');
-        if (!document.getElementById('nightmare-video-bg')) {
-          insertVideoBackground();
-        }
-      }
     };
 
     replaceNavText();
@@ -269,6 +258,33 @@ const SpringtrapNightmare: React.FC = () => {
       activateNightmareMode(true);
     }
   }, []);
+
+  // Manage video background reactively based on nightmare state + route
+  useEffect(() => {
+    if (!isNightmareActive) return;
+
+    const syncVideo = () => {
+      if (isReaderPage()) {
+        removeVideoBackground();
+        document.documentElement.classList.add('springtrap-reader-page');
+      } else {
+        document.documentElement.classList.remove('springtrap-reader-page');
+        insertVideoBackground();
+        makeBackgroundTransparent();
+      }
+    };
+
+    syncVideo();
+
+    // Re-check on SPA navigation (hash changes)
+    window.addEventListener('hashchange', syncVideo);
+    window.addEventListener('popstate', syncVideo);
+
+    return () => {
+      window.removeEventListener('hashchange', syncVideo);
+      window.removeEventListener('popstate', syncVideo);
+    };
+  }, [isNightmareActive]);
 
   const exitNightmareMode = () => {
     const cleanup = () => {

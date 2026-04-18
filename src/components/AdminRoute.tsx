@@ -4,15 +4,17 @@ import { AuthContext } from '../contexts/AuthContext';
 import ProtectedRoute from './ProtectedRoute';
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useContext(AuthContext);
+  const { user, loading } = useContext(AuthContext);
 
-  if (user?.role !== 'admin') {
-    // If user is not an admin, redirect them. 
-    // We can show an unauthorized page or redirect to home.
+  // Wait for auth to finish loading before checking role
+  if (loading) {
+    return null;
+  }
+
+  if (user?.role !== 'admin' && user?.role !== 'moderator') {
     return <Navigate to="/" replace />;
   }
 
-  // Use ProtectedRoute to handle the loading state and basic auth check
   return <ProtectedRoute>{children}</ProtectedRoute>;
 };
 
