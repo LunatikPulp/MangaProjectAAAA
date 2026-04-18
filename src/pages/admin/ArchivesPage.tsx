@@ -59,7 +59,7 @@ const ArchivesPage: React.FC = () => {
       if (t) params.set('manga_type', t);
       if (st) params.set('status', st);
 
-      const res = await fetch(`${API_BASE}/manga/list?${params}`, { headers });
+      const res = await fetch(`${API_BASE}/manga/list?${params}`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         const rows: MangaRow[] = data.items.map((item: any) => ({
@@ -83,7 +83,7 @@ const ArchivesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [search, typeFilter, statusFilter]);
 
   useEffect(() => {
     fetchManga(1);

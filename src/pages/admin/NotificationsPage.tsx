@@ -14,6 +14,7 @@ const NotificationsPage: React.FC = () => {
   const [tgBotInfo, setTgBotInfo] = useState<{ configured: boolean; bot_id: string; bot_username: string }>({ configured: false, bot_id: '', bot_username: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const headers = { 'Content-Type': 'application/json' };
 
   useEffect(() => {
     (async () => {
@@ -48,6 +49,7 @@ const NotificationsPage: React.FC = () => {
       const res = await fetch(`${API_BASE}/admin/settings`, {
         method: 'PUT',
         headers,
+        credentials: 'include',
         body: JSON.stringify({
           email_notifications: emailNotif,
           smtp_host: smtpHost,
@@ -79,7 +81,7 @@ const NotificationsPage: React.FC = () => {
   const testEmail = async () => {
     setTestMsg('');
     try {
-      const res = await fetch(`${API_BASE}/admin/test-email`, { method: 'POST', headers });
+      const res = await fetch(`${API_BASE}/admin/test-email`, { method: 'POST', headers, credentials: 'include' });
       const data = await res.json();
       if (data.ok) {
         setTestMsg(data.detail || 'ТЕСТОВОЕ ПИСЬМО ОТПРАВЛЕНО');
