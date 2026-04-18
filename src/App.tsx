@@ -1,64 +1,68 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { Suspense, useContext, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useParams, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
-import HomePage from './pages/HomePage';
-import DetailPage from './pages/DetailPage';
-import TopsPage from './pages/TopsPage';
-import BookmarksPage from './pages/BookmarksPage';
-import HistoryPage from './pages/HistoryPage';
 import Header from './components/Header';
 import AuthModal from './components/AuthModal';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
-import ProfilePage from './pages/ProfilePage';
-import FriendsPage from './pages/FriendsPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import PageTransition from './components/PageTransition';
 import { MangaContext } from './contexts/MangaContext';
 import { AuthContext } from './contexts/AuthContext';
 import { API_BASE } from './services/externalApiService';
-import AdminDashboardPage from './pages/admin/AdminDashboardPage';
-import CreateMangaPage from './pages/admin/CreateMangaPage';
 import AdminRoute from './components/AdminRoute';
 import AdminLayout from './components/admin/AdminLayout';
-import ArchivesPage from './pages/admin/ArchivesPage';
-import UsersPage from './pages/admin/UsersPage';
-import ReportsPage from './pages/admin/ReportsPage';
-import ShopPageAdmin from './pages/admin/ShopPageAdmin';
-import TransactionsPage from './pages/admin/TransactionsPage';
-import ParserPage from './pages/admin/ParserPage';
-import AuditPage from './pages/admin/AuditPage';
-import AdminSettingsPage from './pages/admin/AdminSettingsPage';
-import MediaSettingsPage from './pages/admin/MediaSettingsPage';
-import ModerationPage from './pages/admin/ModerationPage';
-import SecurityPage from './pages/admin/SecurityPage';
-import AdminNotificationsPage from './pages/admin/NotificationsPage';
-import AnalyticsPage from './pages/admin/AnalyticsPage';
-import PromocodesPage from './pages/admin/PromocodesPage';
-import MonetizationPage from './pages/admin/MonetizationPage';
-import GenrePage from './pages/GenrePage';
-import ReaderPage from './pages/ReaderPage';
 import DetailPageSkeleton from './components/skeletons/DetailPageSkeleton';
-import SuggestEditPage from './pages/SuggestEditPage';
-import CatalogPage from './pages/CatalogPage';
-import ManageMangaPage from './pages/admin/ManageMangaPage';
-import SuggestionsPage from './pages/admin/SuggestionsPage';
-import SectionListPage from './pages/SectionListPage';
-import GoogleCallbackPage from './pages/GoogleCallbackPage';
-import YandexCallbackPage from './pages/YandexCallbackPage';
-import UserProfilePage from './pages/UserProfilePage';
-import UserBookmarksPage from './pages/UserBookmarksPage';
-import MessagesPage from './pages/MessagesPage';
-import QuizPage from './pages/QuizPage';
-import CardsPage from './pages/CardsPage';
-import ShopPage from './pages/ShopPage';
-import SettingsPage from './pages/SettingsPage';
-import NotificationsPage from './pages/NotificationsPage';
 import SpringtrapNightmare from './components/SpringtrapNightmare';
 import SpringlockWarning from './components/SpringlockWarning';
 import SpringOSErrorPage from './pages/SpringOSErrorPage';
+
+// Lazy-loaded pages — each becomes a separate chunk
+const HomePage = React.lazy(() => import('./pages/HomePage'));
+const DetailPage = React.lazy(() => import('./pages/DetailPage'));
+const TopsPage = React.lazy(() => import('./pages/TopsPage'));
+const BookmarksPage = React.lazy(() => import('./pages/BookmarksPage'));
+const HistoryPage = React.lazy(() => import('./pages/HistoryPage'));
+const LoginPage = React.lazy(() => import('./pages/LoginPage'));
+const RegisterPage = React.lazy(() => import('./pages/RegisterPage'));
+const ForgotPasswordPage = React.lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = React.lazy(() => import('./pages/ResetPasswordPage'));
+const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
+const FriendsPage = React.lazy(() => import('./pages/FriendsPage'));
+const CatalogPage = React.lazy(() => import('./pages/CatalogPage'));
+const GenrePage = React.lazy(() => import('./pages/GenrePage'));
+const ReaderPage = React.lazy(() => import('./pages/ReaderPage'));
+const SuggestEditPage = React.lazy(() => import('./pages/SuggestEditPage'));
+const ManageMangaPage = React.lazy(() => import('./pages/admin/ManageMangaPage'));
+const SectionListPage = React.lazy(() => import('./pages/SectionListPage'));
+const GoogleCallbackPage = React.lazy(() => import('./pages/GoogleCallbackPage'));
+const YandexCallbackPage = React.lazy(() => import('./pages/YandexCallbackPage'));
+const UserProfilePage = React.lazy(() => import('./pages/UserProfilePage'));
+const UserBookmarksPage = React.lazy(() => import('./pages/UserBookmarksPage'));
+const MessagesPage = React.lazy(() => import('./pages/MessagesPage'));
+const QuizPage = React.lazy(() => import('./pages/QuizPage'));
+const CardsPage = React.lazy(() => import('./pages/CardsPage'));
+const ShopPage = React.lazy(() => import('./pages/ShopPage'));
+const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
+const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage'));
+
+// Admin pages — lazy loaded (only fetched for admins)
+const AdminDashboardPage = React.lazy(() => import('./pages/admin/AdminDashboardPage'));
+const CreateMangaPage = React.lazy(() => import('./pages/admin/CreateMangaPage'));
+const ArchivesPage = React.lazy(() => import('./pages/admin/ArchivesPage'));
+const UsersPage = React.lazy(() => import('./pages/admin/UsersPage'));
+const ReportsPage = React.lazy(() => import('./pages/admin/ReportsPage'));
+const ShopPageAdmin = React.lazy(() => import('./pages/admin/ShopPageAdmin'));
+const TransactionsPage = React.lazy(() => import('./pages/admin/TransactionsPage'));
+const ParserPage = React.lazy(() => import('./pages/admin/ParserPage'));
+const AuditPage = React.lazy(() => import('./pages/admin/AuditPage'));
+const AdminSettingsPage = React.lazy(() => import('./pages/admin/AdminSettingsPage'));
+const MediaSettingsPage = React.lazy(() => import('./pages/admin/MediaSettingsPage'));
+const ModerationPage = React.lazy(() => import('./pages/admin/ModerationPage'));
+const SecurityPage = React.lazy(() => import('./pages/admin/SecurityPage'));
+const AdminNotificationsPage = React.lazy(() => import('./pages/admin/NotificationsPage'));
+const AnalyticsPage = React.lazy(() => import('./pages/admin/AnalyticsPage'));
+const PromocodesPage = React.lazy(() => import('./pages/admin/PromocodesPage'));
+const MonetizationPage = React.lazy(() => import('./pages/admin/MonetizationPage'));
+const SuggestionsPage = React.lazy(() => import('./pages/admin/SuggestionsPage'));
 
 const DetailPageWrapper: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -159,6 +163,7 @@ const AppRoutes: React.FC = () => {
   const location = useLocation();
   
   return (
+     <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><div className="w-8 h-8 border-2 border-brand-accent border-t-transparent rounded-full animate-spin" /></div>}>
      <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname.startsWith('/messages') ? '/messages' : location.pathname}>
             <Route path="/" element={<PageTransition><HomePage /></PageTransition>} />
@@ -222,6 +227,7 @@ const AppRoutes: React.FC = () => {
             <Route path="*" element={<Navigate to="/" />} />
         </Routes>
     </AnimatePresence>
+    </Suspense>
   )
 }
 
@@ -278,10 +284,10 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has('code') && urlParams.has('scope')) {
-    return <GoogleCallbackPage />;
+    return <Suspense fallback={null}><GoogleCallbackPage /></Suspense>;
   }
   if (urlParams.has('code') && !urlParams.has('scope')) {
-    return <YandexCallbackPage />;
+    return <Suspense fallback={null}><YandexCallbackPage /></Suspense>;
   }
 
   return (

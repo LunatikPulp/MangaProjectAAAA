@@ -181,117 +181,12 @@
       }
     </style>
 
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <script>
-      // Build all theme utilities via plugin to bypass Tailwind's broken opacity wrapper
-      const themeNames = [
-        "base", "surface", "surface-hover", "overlay", "muted", "subtle",
-        "text-primary", "text-secondary", "brand", "brand-hover", "brand-accent"
-      ];
-      const springNames = [
-        "spring-base", "spring-surface", "spring-surface-hover", "spring-overlay",
-        "spring-muted", "spring-subtle", "spring-text", "spring-text-secondary",
-        "spring-mustard", "spring-springtrap-green", "spring-blood",
-        "spring-glow", "spring-danger"
-      ];
-      const allThemeNames = [...themeNames, ...springNames];
-      const opacityStops = [5, 10, 20, 30, 40, 50, 60, 70, 75, 80, 90, 95];
-
-      const themePlugin = tailwind.plugin(function({ addUtilities }) {
-        const utilities = {};
-        allThemeNames.forEach(name => {
-          const cls = name;
-          const hex = `--c-${name}`;
-          const rgbVar = `--${name}-rgb`;
-          const hasRgb = name.startsWith('spring-') && [
-            'spring-mustard', 'spring-springtrap-green', 'spring-blood',
-            'spring-glow', 'spring-danger'
-          ].includes(name);
-
-          if (name !== 'base' && name !== 'spring-base') {
-            utilities[`.text-${cls}`]  = { color: `var(${hex})` };
-          }
-          utilities[`.bg-${cls}`]    = { "background-color": `var(${hex})` };
-          utilities[`.border-${cls}`] = { "border-color": `var(${hex})` };
-          utilities[`.ring-${cls}`]  = { "--tw-ring-color": `var(${hex})` };
-          utilities[`.shadow-${cls}`] = { "--tw-shadow-color": `var(${hex})` };
-          utilities[`.from-${cls}`] = { "--tw-gradient-from": `var(${hex})`, "--tw-gradient-to": `var(${hex}) / 0`, "--tw-gradient-stops": "var(--tw-gradient-from), var(--tw-gradient-to)" };
-          utilities[`.to-${cls}`]   = { "--tw-gradient-to": `var(${hex})` };
-          utilities[`.placeholder-${cls}::placeholder`] = { color: `var(${hex})` };
-          utilities[`.placeholder\\:text-${cls}::placeholder`] = { color: `var(${hex})` };
-
-          opacityStops.forEach(stop => {
-            const alpha = stop / 100;
-            const val = hasRgb
-              ? `rgb(var(${rgbVar}) / ${alpha})`
-              : `rgb(var(--c-${name.replace('spring-', 'spring-')}-rgb) / ${alpha})`;
-            utilities[`.text-${cls}-${stop}`]   = { color: val };
-            utilities[`.bg-${cls}-${stop}`]     = { "background-color": val };
-            utilities[`.border-${cls}-${stop}`] = { "border-color": val };
-            utilities[`.ring-${cls}-${stop}`]   = { "--tw-ring-color": val };
-            utilities[`.shadow-${cls}-${stop}`] = { "--tw-shadow-color": val };
-            utilities[`.from-${cls}-${stop}`]   = { "--tw-gradient-from": val, "--tw-gradient-to": `rgb(var(--c-${name}-rgb) / 0)`, "--tw-gradient-stops": "var(--tw-gradient-from), var(--tw-gradient-to)" };
-            utilities[`.to-${cls}-${stop}`]     = { "--tw-gradient-to": val };
-          });
-        });
-        addUtilities(utilities, { respectImportant: true, variants: ["responsive", "hover", "focus", "group-hover", "focus-within", "placeholder"] });
-      });
-
-      tailwind.config = {
-        plugins: [themePlugin],
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ["Inter", "system-ui", "sans-serif"],
-              display: ["Oswald", "system-ui", "sans-serif"],
-              terminal: ["VT323", "monospace"],
-              code: ["Fira Code", "monospace"],
-            },
-            animation: {
-              "fade-in": "fadeIn 0.5s ease-out",
-              "slide-up": "slideUp 0.5s ease-out",
-              "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-            },
-            keyframes: {
-              fadeIn: {
-                "0%": { opacity: "0" },
-                "100%": { opacity: "1" },
-              },
-              slideUp: {
-                "0%": { transform: "translateY(20px)", opacity: "0" },
-                "100%": { transform: "translateY(0)", opacity: "1" },
-              },
-            },
-          },
-        },
-      };
-    </script>
+    <!-- Tailwind is now compiled via PostCSS (npm build), no CDN needed -->
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Oswald:wght@500;700&family=VT323&family=Fira+Code:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-    <script type="importmap">
-      {
-        "imports": {
-          "react/": "https://aistudiocdn.com/react@^19.1.1/",
-          "react": "https://aistudiocdn.com/react@^19.1.1",
-          "uuid": "https://aistudiocdn.com/uuid@^11.1.0",
-          "jszip": "https://aistudiocdn.com/jszip@^3.10.1",
-          "vite": "https://aistudiocdn.com/vite@^7.1.4",
-          "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
-          "@dnd-kit/sortable": "https://aistudiocdn.com/@dnd-kit/sortable@^10.0.0",
-          "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.0.2",
-          "@dnd-kit/utilities": "https://aistudiocdn.com/@dnd-kit/utilities@^3.2.2",
-          "@dnd-kit/core": "https://aistudiocdn.com/@dnd-kit/core@^6.3.1",
-          "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.8.2",
-          "framer-motion": "https://aistudiocdn.com/framer-motion@^12.23.12",
-          "@google/genai": "https://aistudiocdn.com/@google/genai@^1.16.0",
-          "boring-avatars": "https://aistudiocdn.com/boring-avatars@^2.0.1"
-        }
-      }
-    </script>
   </head>
   <body class="bg-base text-text-primary">
     <script>

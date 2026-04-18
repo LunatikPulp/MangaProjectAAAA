@@ -11,6 +11,16 @@ logger = logging.getLogger(__name__)
 # Хранилище для rate limiting (в продакшене использовать Redis)
 rate_limit_storage = defaultdict(list)
 
+# Endpoint-specific strict rate limits (always active, independent of admin toggle)
+# Format: path_prefix -> (max_requests, window_seconds)
+STRICT_RATE_LIMITS = {
+    "/token": (5, 60),                  # login: 5 per minute
+    "/auth/register": (3, 300),          # register: 3 per 5 min
+    "/auth/forgot-password": (3, 300),   # password reset: 3 per 5 min
+    "/auth/reset-password": (5, 300),    # reset confirm: 5 per 5 min
+}
+strict_rate_storage = defaultdict(list)
+
 class SecurityMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, db_session_factory):
         super().__init__(app)
@@ -154,9 +164,28 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
         return False
 
+    def check_strict_rate_limit(self, ip: str, path: str) -> bool:
+        """Enforce hard rate limits on sensitive endpoints (always active)."""
+        for prefix, (max_req, window_sec) in STRICT_RATE_LIMITS.items():
+            if path == prefix or path.startswith(prefix + "/"):
+                key = f"{ip}:{prefix}"
+                now = datetime.utcnow()
+                cutoff = now - timedelta(seconds=window_sec)
+                strict_rate_storage[key] = [t for t in strict_rate_storage[key] if t > cutoff]
+                if len(strict_rate_storage[key]) >= max_req:
+                    return False
+                strict_rate_storage[key].append(now)
+                return True
+        return True  # not a rate-limited endpoint
+
     async def dispatch(self, request: Request, call_next):
         settings = self.get_settings()
         client_ip = self.get_client_ip(request)
+
+        # 0. Strict endpoint rate limits (always active, even if global rate_limit is off)
+        if request.method == "POST" and not self.check_strict_rate_limit(client_ip, request.url.path):
+            logger.warning(f"Strict rate limit hit: {client_ip} on {request.url.path}")
+            raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
 
         # 1. SSL/HTTPS редирект
         if settings['ssl_enforce']:

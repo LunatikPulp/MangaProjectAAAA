@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Date, Text, UniqueConstraint, Float
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Date, Text, UniqueConstraint, Float, Index
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -58,15 +58,16 @@ class ChapterLike(Base):
     __tablename__ = "chapter_likes"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     manga_id = Column(String, index=True)
     chapter_id = Column(String, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="likes")
 
-    # Уникальность лайка (один пользователь может лайкнуть главу только один раз)
-    __table_args__ = (UniqueConstraint('user_id', 'manga_id', 'chapter_id', name='unique_user_chapter_like'),)
+    __table_args__ = (
+        UniqueConstraint('user_id', 'manga_id', 'chapter_id', name='unique_user_chapter_like'),
+    )
 
 class ChapterView(Base):
     __tablename__ = "chapter_views"
@@ -109,7 +110,7 @@ class MangaRating(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     manga_id = Column(String, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     rating = Column(Integer)  # 1-10
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -121,12 +122,15 @@ class MangaBookmark(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     manga_id = Column(String, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     status = Column(String)  # Читаю, Буду читать, Прочитано, Отложено, Не интересно, Брошено
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")
-    __table_args__ = (UniqueConstraint('user_id', 'manga_id', name='unique_user_manga_bookmark'),)
+    __table_args__ = (
+        UniqueConstraint('user_id', 'manga_id', name='unique_user_manga_bookmark'),
+        Index('ix_bookmark_user_created', 'user_id', 'created_at'),
+    )
 
 class ReadingHistory(Base):
     __tablename__ = "reading_history"
@@ -138,7 +142,10 @@ class ReadingHistory(Base):
     read_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")
-    __table_args__ = (UniqueConstraint('user_id', 'manga_id', 'chapter_id', name='unique_user_reading_history'),)
+    __table_args__ = (
+        UniqueConstraint('user_id', 'manga_id', 'chapter_id', name='unique_user_reading_history'),
+        Index('ix_reading_history_user_read_at', 'user_id', 'read_at'),
+    )
 
 class Chapter(Base):
     __tablename__ = "chapters"
@@ -175,7 +182,7 @@ class MangaComment(Base):
     manga_id = Column(String, index=True, nullable=False)
     chapter_id = Column(String, index=True, nullable=True)
     parent_id = Column(Integer, ForeignKey("manga_comments.id"), nullable=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     text = Column(Text, nullable=False)
     status = Column(String, default="approved", index=True)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -126,11 +126,6 @@ const ShopPage: React.FC = () => {
             fetch(`${API_BASE}/auth/profile-full`, opts).then(r => r.ok ? r.json() : null),
             fetch(`${API_BASE}/payments/packages`, { credentials: 'include' }).then(r => r.json()).catch(() => null),
         ]).then(([shopItems, purchases, profile, packages]) => {
-            console.log('ShopPage profile data:', profile);
-            console.log('nickname_color:', profile?.nickname_color);
-            console.log('nickname_font:', profile?.nickname_font);
-            console.log('user.nickname_color:', profile?.user?.nickname_color);
-            console.log('user.nickname_font:', profile?.user?.nickname_font);
             setItems(shopItems);
             setMyPurchases(purchases);
             if (profile?.gamification?.scrap != null) setScrap((profile.gamification.scrap || 0) + (profile.gamification.donated_scrap || 0));
@@ -898,7 +893,6 @@ const ShopPage: React.FC = () => {
                                             const canActivate = owned && ACTIVATABLE_CATEGORIES.includes(item.category);
                                             const isFree = item.price === 0;
                                             const frameSrc = item.preview.startsWith('/Frames_shop/') ? item.preview : (item.preview.startsWith('/Frames_lvl/') ? `${API_BASE}${item.preview}` : item.preview);
-                                            console.log('Frame item:', item.key, 'preview:', item.preview, 'frameSrc:', frameSrc);
                                             return (
                                                 <div key={item.key} className={`group relative overflow-hidden rounded transition-all duration-200 hover:scale-[1.02] ${active ? 'ring-2 ring-green-500/60' : owned ? 'ring-1 ring-brand-accent/30' : 'ring-1 ring-white/5 hover:ring-white/15'}`}>
                                                     {/* Steam-style dark card */}
@@ -1235,7 +1229,6 @@ const ShopPage: React.FC = () => {
                         const frameSrc = isFrame && confirmItem.preview.startsWith('/Frames_shop/') ? confirmItem.preview : (isFrame && confirmItem.preview.startsWith('/') ? `${API_BASE}${confirmItem.preview}` : null);
                         const userAvatarSrc = avatarUrl ? (avatarUrl.startsWith('/') ? `${API_BASE}${avatarUrl}` : avatarUrl) : null;
                         const userBannerSrc = bannerUrl ? (bannerUrl.startsWith('/') ? `${API_BASE}${bannerUrl}` : bannerUrl) : null;
-                        console.log('ShopPage modal - nicknameColor:', nicknameColor, 'nicknameFont:', nicknameFont, 'username:', user?.username || username);
                         return (
                         <motion.div
                             initial={{ opacity: 0 }}

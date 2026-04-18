@@ -27,6 +27,7 @@ venv/
 .venv/
 .env
 backend/.env
+deploy/.env.production
 backend/uploads/
 __pycache__/
 *.pyc
