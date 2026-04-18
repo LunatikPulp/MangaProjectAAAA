@@ -1101,9 +1101,10 @@ app.mount("/Frames_lvl", StaticFiles(directory=FRAMES_LVL_DIR), name="frames_lvl
 app.mount("/Frames_shop", StaticFiles(directory=FRAMES_SHOP_DIR), name="frames_shop")
 
 # 👇 Разрешаем фронту обращаться к API
+_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://springmanga.duckdns.org").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
