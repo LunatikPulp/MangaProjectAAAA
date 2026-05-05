@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ToasterContext } from '../contexts/ToasterContext';
 import { AuthContext } from '../contexts/AuthContext';
 import { API_BASE } from '../services/externalApiService';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/iosScrollLock';
 
 export interface ShopItem {
     key: string;
@@ -63,7 +64,7 @@ interface ScrapPackage {
 }
 
 const ScrapIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
-    <img src="/money/scrap.png" alt="scrap" className={`inline-block align-middle ${className}`} />
+    <img src="/money/scrap.webp" alt="scrap" className={`inline-block align-middle ${className}`} />
 );
 
 const ShopPage: React.FC = () => {
@@ -164,51 +165,20 @@ const ShopPage: React.FC = () => {
     // Lock page scroll when scrap purchase modal is open
     useEffect(() => {
         if (!selectedScrapPkg) return;
-        const scrollY = window.scrollY;
-        document.documentElement.style.overflow = 'hidden';
-        document.body.style.overflow = 'hidden';
-        document.body.style.position = 'fixed';
-        document.body.style.top = `-${scrollY}px`;
-        document.body.style.left = '0';
-        document.body.style.right = '0';
-        return () => {
-            document.documentElement.style.overflow = '';
-            document.body.style.overflow = '';
-            document.body.style.position = '';
-            document.body.style.top = '';
-            document.body.style.left = '';
-            document.body.style.right = '';
-            window.scrollTo(0, scrollY);
-        };
+        lockBodyScroll();
+        return () => unlockBodyScroll();
     }, [selectedScrapPkg]);
 
-    // Lock page scroll when purchase confirm modal is open
     useEffect(() => {
         if (!showConfirmModal) return;
-        const scrollY = window.scrollY;
-        document.documentElement.style.overflow = 'hidden';
-        document.body.style.overflow = 'hidden';
-        document.body.style.position = 'fixed';
-        document.body.style.top = `-${scrollY}px`;
-        document.body.style.left = '0';
-        document.body.style.right = '0';
-        return () => {
-            document.documentElement.style.overflow = '';
-            document.body.style.overflow = '';
-            document.body.style.position = '';
-            document.body.style.top = '';
-            document.body.style.left = '';
-            document.body.style.right = '';
-            window.scrollTo(0, scrollY);
-        };
+        lockBodyScroll();
+        return () => unlockBodyScroll();
     }, [showConfirmModal]);
 
     const allFilteredItems = items
         .filter(i => {
             // Фильтруем по категории
             if (i.category !== activeCategory) return false;
-            // Исключаем рамки за уровни (проверяем путь к файлу)
-            if (activeCategory === 'frame' && i.preview.includes('/Frames_lvl/')) return false;
             return true;
         })
         .sort((a, b) => {
@@ -892,7 +862,7 @@ const ShopPage: React.FC = () => {
                                             const active = owned && isItemActive(item);
                                             const canActivate = owned && ACTIVATABLE_CATEGORIES.includes(item.category);
                                             const isFree = item.price === 0;
-                                            const frameSrc = item.preview.startsWith('/Frames_shop/') ? item.preview : (item.preview.startsWith('/Frames_lvl/') ? `${API_BASE}${item.preview}` : item.preview);
+                                            const frameSrc = item.preview.startsWith('/Frames_shop/') ? item.preview : item.preview.startsWith('/') ? `${API_BASE}${item.preview}` : item.preview;
                                             return (
                                                 <div key={item.key} className={`group relative overflow-hidden rounded transition-all duration-200 hover:scale-[1.02] ${active ? 'ring-2 ring-green-500/60' : owned ? 'ring-1 ring-brand-accent/30' : 'ring-1 ring-white/5 hover:ring-white/15'}`}>
                                                     {/* Steam-style dark card */}
@@ -985,7 +955,7 @@ const ShopPage: React.FC = () => {
                                                 <div key={item.key} className={`border transition-all overflow-hidden ${rc.glow} ${active ? 'border-green-500/50' : owned ? 'border-brand-accent/30' : rc.border + ' hover:border-muted'}`}>
                                                     {/* Preview bar */}
                                                     <div className={`relative overflow-hidden bg-base/80 h-20 sm:h-28`} style={item.preview.startsWith('#') ? { background: `linear-gradient(135deg, ${item.preview}, ${item.preview}88, #0a0a0a)` } : {}}>
-                                                        {(item.preview.startsWith('/uploads/') || item.preview.startsWith('/Frames_lvl/')) ? (
+                                                        {(item.preview.startsWith('/uploads/') || item.preview.startsWith('/Frames_shop/')) ? (
                                                             /\.(mp4|webm|ogg)$/i.test(item.preview) ? (
                                                                 <video src={`${API_BASE}${item.preview}`} muted loop autoPlay playsInline className="w-full h-full object-cover" />
                                                             ) : (
@@ -1149,7 +1119,7 @@ const ShopPage: React.FC = () => {
                                                     className={`p-2 sm:p-3 border transition-all ${isLocked ? 'border-red-500/30 bg-red-500/5 opacity-60' : active ? 'border-green-500/30 bg-green-500/5' : owned ? 'border-brand-accent/30 bg-brand-accent/5' : 'border-overlay bg-base hover:border-muted hover:bg-surface-hover'}`}
                                                 >
                                                     <div className="flex flex-col items-center gap-2 mb-2 sm:mb-3">
-                                                        {(item.preview.startsWith('/uploads/') || item.preview.startsWith('/Frames_lvl/')) ? (
+                                                        {(item.preview.startsWith('/uploads/') || item.preview.startsWith('/Frames_shop/')) ? (
                                                             /\.(mp4|webm|ogg)$/i.test(item.preview) ? (
                                                                 <video src={`${API_BASE}${item.preview}`} muted loop autoPlay playsInline className="w-14 h-14 sm:w-16 sm:h-16 object-cover border border-overlay shrink-0" />
                                                             ) : (

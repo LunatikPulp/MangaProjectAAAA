@@ -119,6 +119,7 @@ export interface User {
   telegram_username?: string;
   google_id?: string;
   yandex_id?: string;
+  chapters_read?: number;
 }
 
 export interface Comment {
@@ -143,6 +144,11 @@ export interface HistoryItem {
   mangaId: string;
   chapterId: string;
   readAt: string;
+  // Enriched fields from backend (optional for backwards-compat with cached data)
+  mangaTitle?: string;
+  mangaCover?: string;
+  mangaSlug?: string;
+  chapterNumber?: string;
 }
 
 export type NotificationCategory = 'updates' | 'social' | 'important';

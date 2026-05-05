@@ -1,32 +1,15 @@
-import React, { useContext, useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import Carousel from '../components/Carousel';
 import MangaCard from '../components/MangaCard';
-import { MangaContext } from '../contexts/MangaContext';
-import { useHistory } from '../hooks/useHistory';
-import ArrowUpRightIcon from '../components/icons/ArrowUpRightIcon';
-
-import { Manga, Chapter, typeDisplayNames } from '../types';
+import { Manga, typeDisplayNames } from '../types';
 import HeroCarousel from '../components/HeroCarousel';
 import MangaCardSkeleton from '../components/skeletons/MangaCardSkeleton';
 import { useBookmarks } from '../hooks/useBookmarks';
-import { API_BASE } from '../services/externalApiService';
+import { API_BASE, getPreloadedData } from '../services/externalApiService';
+import ArrowUpRightIcon from '../components/icons/ArrowUpRightIcon';
 
 /* ───── helpers ───── */
-
-const parseDateString = (dateStr: string): Date => {
-    if (!dateStr) return new Date(0);
-    if (dateStr.includes('.')) return new Date(dateStr.split('.').reverse().join('-'));
-    return new Date(dateStr);
-};
-
-const getLatestChapterDate = (manga: Manga): Date => {
-    if (!manga.chapters?.length) return new Date(0);
-    return manga.chapters.reduce((latest, ch) => {
-        const d = parseDateString(ch.date);
-        return d > latest ? d : latest;
-    }, new Date(0));
-};
 
 const timeAgo = (dateStr: string | null): string => {
     if (!dateStr) return '';
@@ -119,14 +102,29 @@ const sectionItemToManga = (item: HomeSectionItem): Manga => ({
 
 /* ───── small components ───── */
 
-const ContinueReadingCard: React.FC<{ manga: Manga; chapterId: number }> = ({ manga, chapterId }) => {
-    const percentage = manga.chapters.length > 0 ? (chapterId / manga.chapters.length) * 100 : 0;
+interface ContinueReadingItem {
+    mangaId: string;
+    mangaTitle: string;
+    mangaCover: string;
+    mangaSlug: string;
+    chapterId: string;
+    chapterNumber: string;
+    currentPage: number;
+    totalPages: number;
+    isComplete: boolean;
+}
+
+const ContinueReadingCard: React.FC<{ item: ContinueReadingItem }> = ({ item }) => {
+    const { mangaTitle, mangaCover, mangaSlug, chapterId, chapterNumber, currentPage, totalPages, isComplete } = item;
+    const displayNum = chapterNumber || '1';
+    const percentage = totalPages > 0 ? (currentPage / totalPages) * 100 : (isComplete ? 100 : 10);
+    const coverUrl = mangaCover && !mangaCover.startsWith('http') && !mangaCover.startsWith('//') ? `${API_BASE}${mangaCover}` : mangaCover;
     return (
-        <Link to={`/manga/${manga.slug || manga.id}`} className="block group bg-surface p-3 flex items-center gap-4 hover:bg-surface-hover border border-overlay hover:border-brand-accent-30 transition-all">
-            <img src={manga.cover} alt={manga.title} className="w-12 h-16 object-cover border border-overlay" loading="lazy" decoding="async" />
+        <Link to={`/manga/${mangaSlug}/chapter/${encodeURIComponent(chapterId)}${currentPage > 1 ? `?page=${currentPage}` : ''}`} className="block group bg-surface p-3 flex items-center gap-4 hover:bg-surface-hover border border-overlay hover:border-brand-accent-30 transition-all">
+            <img src={coverUrl} alt={mangaTitle} className="w-12 h-16 object-cover border border-overlay" loading="lazy" decoding="async" />
             <div className="flex-1 overflow-hidden">
-                <h4 className="text-md font-semibold truncate text-text-primary group-hover:text-brand-accent transition-colors">{manga.title}</h4>
-                <p className="text-sm font-mono text-muted mt-1">Глава {chapterId} / {manga.chapters.length}</p>
+                <h4 className="text-md font-semibold truncate text-text-primary group-hover:text-brand-accent transition-colors">{mangaTitle}</h4>
+                <p className="text-sm font-mono text-muted mt-1">Глава {displayNum}{totalPages > 0 ? ` · Стр. ${currentPage}/${totalPages}` : ''}</p>
                 <div className="w-full bg-base h-1 mt-2">
                     <div className="bg-brand-accent h-1" style={{ width: `${percentage}%` }}></div>
                 </div>
@@ -285,71 +283,50 @@ const VerticalMangaList: React.FC<{ title: string; mangaList: Manga[]; viewAllLi
    ═══════════════════════════════════════════ */
 
 const HomePage: React.FC = () => {
-    const { mangaList, loading } = useContext(MangaContext);
-    const { history } = useHistory();
-    const [homeSections, setHomeSections] = useState<HomeSections | null>(null);
-    const [sectionsLoading, setSectionsLoading] = useState(true);
+    const [continueReading, setContinueReading] = useState<ContinueReadingItem[]>([]);
 
     useEffect(() => {
+        fetch(`${API_BASE}/continue-reading`, { credentials: 'include' })
+            .then(r => r.ok ? r.json() : [])
+            .then((data: ContinueReadingItem[]) => setContinueReading(data))
+            .catch(() => { });
+    }, []);
+
+    const [homeSections, setHomeSections] = useState<HomeSections | null>(() => {
+        const preloaded = getPreloadedData();
+        return preloaded?.home_sections || null;
+    });
+    const [sectionsLoading, setSectionsLoading] = useState(() => !getPreloadedData()?.home_sections);
+
+    useEffect(() => {
+        const preloaded = getPreloadedData();
+        if (preloaded?.home_sections) {
+            setHomeSections(preloaded.home_sections);
+            setSectionsLoading(false);
+        }
         fetch(`${API_BASE}/manga/home-sections`)
             .then(r => r.json())
             .then((data: HomeSections) => { setHomeSections(data); setSectionsLoading(false); })
             .catch(() => setSectionsLoading(false));
     }, []);
 
-    const continueReadingData = (() => {
-        // Deduplicate: one entry per manga, keep the most recent
-        const seen = new Set<string>();
-        const deduped = history.filter(item => {
-            if (seen.has(item.mangaId)) return false;
-            seen.add(item.mangaId);
-            return true;
-        });
-        return deduped.slice(0, 4).map(item => {
-            const manga = mangaList.find(m => m.id === item.mangaId);
-            const chapter = manga?.chapters.find(c => c.id === item.chapterId);
-            return { ...item, manga, chapter };
-        }).filter((item): item is typeof item & { manga: Manga; chapter: Chapter } => !!item.manga && !!item.chapter);
-    })();
-
     const s = homeSections;
 
-    // Горячие новинки: новинки, отсортированные по популярности
-    const hotUpdates = s?.hot_new?.length
-        ? s.hot_new.map(sectionItemToManga)
-        : [...mangaList].filter(m => m.chapters.length > 0).sort((a, b) => getLatestChapterDate(b).getTime() - getLatestChapterDate(a).getTime()).slice(0, 10);
-
-    const newSeason = s?.new_season?.length
-        ? s.new_season.map(sectionItemToManga)
-        : [...mangaList].filter(m => m.year >= 2024).sort((a, b) => b.rating - a.rating).slice(0, 5);
-
-    const trending = s?.trending?.length
-        ? s.trending.map(sectionItemToManga)
-        : [...mangaList].sort((a, b) => b.rating - a.rating).slice(0, 5);
-
-    const popularToday = s?.popular_today?.length
-        ? s.popular_today.map(sectionItemToManga)
-        : [...mangaList].sort((a, b) => b.rating - a.rating).slice(5, 10);
-
-    const popularCarousel = s?.popular?.length
-        ? s.popular.map(sectionItemToManga)
-        : [...mangaList].sort((a, b) => parseFloat(b.views) - parseFloat(a.views)).slice(0, 10);
-
-    const freshChapters = s?.fresh_chapters?.length
-        ? s.fresh_chapters.map(sectionItemToManga)
-        : [...mangaList].filter(m => m.chapters.length > 0).sort((a, b) => getLatestChapterDate(b).getTime() - getLatestChapterDate(a).getTime()).slice(0, 10);
-
-    const featuredManga = s?.featured?.length
-        ? s.featured.map(sectionItemToManga)
-        : [...mangaList].sort((a, b) => b.rating - a.rating).slice(0, 5);
-
-    const topManhwa = s?.top_manhwa?.length ? s.top_manhwa.map(sectionItemToManga) : mangaList.filter(m => m.type === 'Manhwa').sort((a, b) => b.rating - a.rating).slice(0, 5);
-    const topManga = s?.top_manga?.length ? s.top_manga.map(sectionItemToManga) : mangaList.filter(m => m.type === 'Manga').sort((a, b) => b.rating - a.rating).slice(0, 5);
-    const topManhua = s?.top_manhua?.length ? s.top_manhua.map(sectionItemToManga) : mangaList.filter(m => m.type === 'Manhua').sort((a, b) => b.rating - a.rating).slice(0, 5);
+    // Wait for API data — no fallback to prevent flash of wrong content
+    const hotUpdates = s?.hot_new?.length ? s.hot_new.map(sectionItemToManga) : [];
+    const newSeason = s?.new_season?.length ? s.new_season.map(sectionItemToManga) : [];
+    const trending = s?.trending?.length ? s.trending.map(sectionItemToManga) : [];
+    const popularToday = s?.popular_today?.length ? s.popular_today.map(sectionItemToManga) : [];
+    const popularCarousel = s?.popular?.length ? s.popular.map(sectionItemToManga) : [];
+    const freshChapters = s?.fresh_chapters?.length ? s.fresh_chapters.map(sectionItemToManga) : [];
+    const featuredManga = s?.featured?.length ? s.featured.map(sectionItemToManga) : [];
+    const topManhwa = s?.top_manhwa?.length ? s.top_manhwa.map(sectionItemToManga) : [];
+    const topManga = s?.top_manga?.length ? s.top_manga.map(sectionItemToManga) : [];
+    const topManhua = s?.top_manhua?.length ? s.top_manhua.map(sectionItemToManga) : [];
 
     const hasTopTypes = topManhwa.length > 0 || topManga.length > 0 || topManhua.length > 0;
 
-    if (loading && sectionsLoading) return <GridSkeleton count={10} />;
+    if (sectionsLoading) return <GridSkeleton count={10} />;
 
     return (
         <div className="space-y-12 relative">
@@ -368,7 +345,7 @@ const HomePage: React.FC = () => {
                 </Carousel>
 
                 {/* Продолжить чтение */}
-                {continueReadingData.length > 0 && (
+                {continueReading.length > 0 && (
                     <div className="bg-surface p-4 sm:p-8 border border-overlay spring-rust">
                         <div className="flex justify-between items-center mb-6">
                             <div className="flex items-center gap-3">
@@ -382,12 +359,12 @@ const HomePage: React.FC = () => {
                                 </div>
                             </Link>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                            {continueReadingData.map(item => {
-                                const chapterNumber = parseInt(item.chapter.chapterNumber, 10);
-                                if (isNaN(chapterNumber)) return null;
-                                return <ContinueReadingCard key={item.mangaId} manga={item.manga} chapterId={chapterNumber} />;
-                            })}
+                        <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-hide -mx-4 px-4 pb-2 md:grid md:grid-cols-2 md:gap-6 md:overflow-x-visible md:snap-none md:-mx-0 md:px-0 md:pb-0 lg:grid-cols-4">
+                            {continueReading.map(item => (
+                                <div key={item.mangaId} className="flex-shrink-0 w-[85vw] max-w-sm snap-start md:w-auto md:max-w-none md:flex-shrink">
+                                    <ContinueReadingCard item={item} />
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}

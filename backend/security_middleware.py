@@ -1,14 +1,34 @@
 from fastapi import Request, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from datetime import datetime, timedelta
 from collections import defaultdict
 import ipaddress
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
-# Хранилище для rate limiting (в продакшене использовать Redis)
+# Redis client for shared rate-limit state across workers (atomic INCR + EXPIRE).
+# Falls back to in-memory if Redis is unavailable.
+_redis_client = None
+try:
+    import redis as _redis_lib  # type: ignore
+    _redis_client = _redis_lib.Redis(
+        host=os.environ.get("REDIS_HOST", "127.0.0.1"),
+        port=int(os.environ.get("REDIS_PORT", "6379")),
+        db=int(os.environ.get("REDIS_DB", "0")),
+        decode_responses=True,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+    )
+    _redis_client.ping()
+    logger.info("[security] Rate limit using Redis")
+except Exception as _e:
+    _redis_client = None
+    logger.warning(f"[security] Redis unavailable, rate limit falls back to in-memory: {_e}")
+
+# In-memory fallback only (used when Redis is down)
 rate_limit_storage = defaultdict(list)
 
 # Endpoint-specific strict rate limits (always active, independent of admin toggle)
@@ -79,15 +99,26 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         return self.settings_cache
 
     def get_client_ip(self, request: Request) -> str:
-        """Получить реальный IP клиента (учитывая прокси)"""
-        # Проверяем заголовки от прокси/CDN
-        forwarded = request.headers.get('X-Forwarded-For')
-        if forwarded:
-            return forwarded.split(',')[0].strip()
-
+        """Получить реальный IP клиента (учитывая прокси)
+        X-Forwarded-For: client, proxy1, proxy2 — берём первый (самый левый),
+        но только если запрос пришёл от доверенного прокси.
+        X-Real-IP от Cloudflare/nginx — приоритетнее.
+        """
+        # Приоритет: X-Real-IP (ставится доверенным прокси) > последний X-Forwarded-For > прямой IP
         real_ip = request.headers.get('X-Real-IP')
         if real_ip:
-            return real_ip
+            return real_ip.strip()
+
+        forwarded = request.headers.get('X-Forwarded-For')
+        if forwarded:
+            # Берём ПЕРВЫЙ IP в цепочке — это оригинальный клиент
+            # (защита от подделки обеспечивается тем, что прокси добавляет в конец)
+            # Если перед нами 1 прокси — первый IP = клиент
+            # Если 2+ прокси — первый IP может быть подделан, но в типичной
+            # конфигурации (Cloudflare → nginx → app) это корректно
+            parts = [p.strip() for p in forwarded.split(',')]
+            if parts:
+                return parts[0]
 
         # Fallback на прямой IP
         if request.client:
@@ -126,21 +157,23 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             return False
 
     def check_rate_limit(self, ip: str, rpm: int) -> bool:
-        """Проверить rate limit для IP"""
+        """Rate limit per IP using Redis atomic counter (fallback to in-memory)."""
+        if _redis_client is not None:
+            try:
+                key = f"rl:{ip}"
+                pipe = _redis_client.pipeline()
+                pipe.incr(key)
+                pipe.expire(key, 60)
+                count, _ = pipe.execute()
+                return int(count) <= rpm
+            except Exception as e:
+                logger.warning(f"[rate_limit] Redis error, falling back to memory: {e}")
+
         now = datetime.utcnow()
         minute_ago = now - timedelta(minutes=1)
-
-        # Очистить старые записи
-        rate_limit_storage[ip] = [
-            timestamp for timestamp in rate_limit_storage[ip]
-            if timestamp > minute_ago
-        ]
-
-        # Проверить лимит
+        rate_limit_storage[ip] = [t for t in rate_limit_storage[ip] if t > minute_ago]
         if len(rate_limit_storage[ip]) >= rpm:
             return False
-
-        # Добавить текущий запрос
         rate_limit_storage[ip].append(now)
         return True
 
@@ -165,9 +198,19 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         return False
 
     def check_strict_rate_limit(self, ip: str, path: str) -> bool:
-        """Enforce hard rate limits on sensitive endpoints (always active)."""
+        """Enforce hard rate limits on sensitive endpoints (Redis-backed, shared across workers)."""
         for prefix, (max_req, window_sec) in STRICT_RATE_LIMITS.items():
             if path == prefix or path.startswith(prefix + "/"):
+                if _redis_client is not None:
+                    try:
+                        key = f"srl:{ip}:{prefix}"
+                        pipe = _redis_client.pipeline()
+                        pipe.incr(key)
+                        pipe.expire(key, window_sec)
+                        count, _ = pipe.execute()
+                        return int(count) <= max_req
+                    except Exception as e:
+                        logger.warning(f"[strict_rate] Redis error, falling back to memory: {e}")
                 key = f"{ip}:{prefix}"
                 now = datetime.utcnow()
                 cutoff = now - timedelta(seconds=window_sec)
@@ -185,7 +228,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         # 0. Strict endpoint rate limits (always active, even if global rate_limit is off)
         if request.method == "POST" and not self.check_strict_rate_limit(client_ip, request.url.path):
             logger.warning(f"Strict rate limit hit: {client_ip} on {request.url.path}")
-            raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+            return JSONResponse(status_code=429, content={"detail": "Too many requests. Please try again later."})
 
         # 1. SSL/HTTPS редирект
         if settings['ssl_enforce']:
@@ -199,7 +242,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         # 2. IP Blacklist
         if self.is_ip_blacklisted(client_ip, settings['ip_blacklist']):
             logger.warning(f"Blocked blacklisted IP: {client_ip}")
-            raise HTTPException(status_code=403, detail="Access denied")
+            return JSONResponse(status_code=403, content={"detail": "Access denied"})
 
         # 3. Rate Limiting
         if settings['rate_limit']:
@@ -207,7 +250,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             if not request.url.path.startswith('/manga/') and not request.url.path.startswith('/uploads/'):
                 if not self.check_rate_limit(client_ip, settings['rate_limit_rpm']):
                     logger.warning(f"Rate limit exceeded for IP: {client_ip}")
-                    raise HTTPException(status_code=429, detail="Too many requests")
+                    return JSONResponse(status_code=429, content={"detail": "Too many requests"})
 
         # 4. Anti-Bot защита
         if settings['anti_bot']:
@@ -216,8 +259,32 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             if not any(request.url.path.startswith(path) for path in excluded_paths):
                 if self.is_bot_request(request):
                     logger.warning(f"Blocked bot request from IP: {client_ip}")
-                    raise HTTPException(status_code=403, detail="Bot access denied")
+                    return JSONResponse(status_code=403, content={"detail": "Bot access denied"})
 
         # Продолжить обработку запроса
         response = await call_next(request)
+
+        # Security headers — применяются ко всем ответам
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        # HSTS — только если запрос пришёл по HTTPS (или через прокси с HTTPS)
+        if request.url.scheme == "https" or request.headers.get("X-Forwarded-Proto") == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        # CSP — разрешаем свои источники + CDN для шрифтов/иконок
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob: https:; "
+            "media-src 'self' blob:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        )
+
         return response

@@ -1,6 +1,7 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import DOMPurify from 'dompurify';
 import { NotificationContext } from '../contexts/NotificationContext';
 import { AuthContext } from '../contexts/AuthContext';
 import { NotificationCategory } from '../types';
@@ -114,7 +115,7 @@ const NotificationBell: React.FC = () => {
                                 filtered.map(notif => (
                                     <Link key={notif.id} to={notif.link} onClick={() => setIsOpen(false)}
                                         className={`block p-3 hover:bg-surface-hover transition-colors border-b border-overlay/30 ${!notif.read ? 'bg-brand-accent/5' : ''}`}>
-                                        <p className="text-sm text-text-primary font-mono leading-relaxed" dangerouslySetInnerHTML={{ __html: notif.message }} />
+                                        <p className="text-sm text-text-primary font-mono leading-relaxed" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(notif.message) }} />
                                         <div className="flex items-center gap-2 mt-1">
                                             <span className="text-[10px] text-muted font-mono">{new Date(notif.timestamp).toLocaleString('ru-RU')}</span>
                                             {notif.category && (

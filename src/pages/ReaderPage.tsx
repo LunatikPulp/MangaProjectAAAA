@@ -17,8 +17,30 @@ import { useReports } from '../hooks/useReports';
 import { AuthContext } from '../contexts/AuthContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import PagedChapterView from '../components/PagedChapterView';
-import { API_BASE, fetchChapterPages, proxyImageUrl } from '../services/externalApiService';
+import { API_BASE, fetchChapterPages, prefetchChapterPages, proxyImageUrl } from '../services/externalApiService';
 import { useBookmarks } from '../hooks/useBookmarks';
+
+/** Prefetch cache for instant image loading */
+const prefetchCache = new Set<string>();
+const prefetchImages = (urls: string[], start: number, count: number) => {
+    for (let i = start; i < Math.min(start + count, urls.length); i++) {
+        const url = urls[i];
+        if (url && !prefetchCache.has(url)) {
+            prefetchCache.add(url);
+            const img = new Image();
+            img.src = url;
+        }
+    }
+};
+
+/** Fetch with retry (for network hiccups like ERR_NETWORK_CHANGED) */
+async function fetchWithRetry<T>(fn: () => Promise<T>, retries = 2, delay = 1000): Promise<T> {
+  for (let i = 0; i <= retries; i++) {
+    try { return await fn(); }
+    catch (e) { if (i === retries) throw e; await new Promise(r => setTimeout(r, delay * (i + 1))); }
+  }
+  throw new Error('unreachable');
+}
 
 /** ---------- Helpers ---------- */
 const getPageSrc = (p: Page, wm: string = ""): string => {
@@ -54,8 +76,9 @@ const ScrollChapterView: React.FC<{
   onLastChapterReady?: () => void;
 }> = React.memo(({ chapters, onImageVisible, containerWidth, brightness, imageFit, imageUpscale, imageGap, mangaId, onLastChapterReady }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const onImageVisibleRef = useRef(onImageVisible);
+  onImageVisibleRef.current = onImageVisible;
 
-  // Один глобальный scroll-обработчик определяет какая картинка в центре экрана
   useEffect(() => {
     let rafId = 0;
     const onScroll = () => {
@@ -63,13 +86,11 @@ const ScrollChapterView: React.FC<{
       rafId = requestAnimationFrame(() => {
         if (!containerRef.current) return;
         const centerY = window.innerHeight / 2;
-        // Находим картинку ближе всего к центру viewport
         const imgs = containerRef.current.querySelectorAll<HTMLImageElement>('img[data-chapter-id]');
         let best: HTMLImageElement | null = null;
         let bestDist = Infinity;
         for (const img of imgs) {
           const rect = img.getBoundingClientRect();
-          // Картинка считается в зоне видимости, если хотя бы частично на экране
           if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
           const dist = Math.abs((rect.top + rect.bottom) / 2 - centerY);
           if (dist < bestDist) {
@@ -80,18 +101,17 @@ const ScrollChapterView: React.FC<{
         if (best) {
           const chId = best.getAttribute('data-chapter-id') || '';
           const pageNum = parseInt(best.getAttribute('data-page-num') || '1', 10);
-          onImageVisible(chId, pageNum);
+          onImageVisibleRef.current(chId, pageNum);
         }
       });
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    // Начальная проверка
     onScroll();
     return () => {
       window.removeEventListener('scroll', onScroll);
       cancelAnimationFrame(rafId);
     };
-  }, [onImageVisible, chapters]);
+  }, [chapters]);
 
   return (
     <div ref={containerRef}>
@@ -133,11 +153,11 @@ const ChapterContent: React.FC<{
     if (staticImages.length > 0) onReady?.();
   }, [staticImages.length]);
 
-  // Lazy-load pages if chapter has none
+  // Lazy-load pages if chapter has none (with retry on network errors)
   useEffect(() => {
     if (staticImages.length > 0 || lazyPages.length > 0 || lazyLoading) return;
     setLazyLoading(true);
-    fetchChapterPages(chapter.id, mangaId)
+    fetchWithRetry(() => fetchChapterPages(chapter.id, mangaId))
       .then((data) => {
         setLazyPages(data.pages || []);
         onReady?.();
@@ -176,10 +196,27 @@ const ChapterContent: React.FC<{
       next.add(idx);
       return next;
     });
+    // Prefetch next 3 images when current image loads
+    prefetchImages(images, idx + 1, 3);
+  }, [images]);
+
+  // Retry loading image on network error (max 3 attempts)
+  const retryCountRef = useRef<Record<number, number>>({});
+  const handleImageError = useCallback((idx: number, e: React.SyntheticEvent<HTMLImageElement>) => {
+    const count = retryCountRef.current[idx] || 0;
+    if (count < 3) {
+      retryCountRef.current[idx] = count + 1;
+      const img = e.currentTarget;
+      setTimeout(() => {
+        const src = img.src;
+        img.src = '';
+        img.src = src;
+      }, 1000 * (count + 1));
+    }
   }, []);
 
   const imgClass = imageFit === 'height'
-    ? `h-[100vh] w-auto mx-auto block ${imageUpscale === 'none' ? 'max-h-[100vh]' : ''}`
+    ? `h-[100dvh] w-auto mx-auto block ${imageUpscale === 'none' ? 'max-h-[100dvh]' : ''}`
     : `mx-auto block ${imageUpscale === 'none' ? 'max-w-full' : 'w-full'} h-auto`;
 
   if (lazyLoading) {
@@ -216,38 +253,36 @@ const ChapterContent: React.FC<{
         {images.map((src, idx) => {
           const showWatermark = true;
           return (
-            <div key={`${chapter.id}-${idx}`} className="relative mx-auto w-fit">
+            <div key={`${chapter.id}-${idx}`} className="relative mx-auto w-full" style={{ containerType: 'inline-size' }}>
               <img
                 src={src}
                 alt={`Страница ${idx + 1}`}
                 className={imgClass}
-                loading="lazy"
                 data-chapter-id={chapter.id}
                 data-page-num={idx + 1}
                 onLoad={() => handleImageLoad(idx)}
+                onError={(e) => handleImageError(idx, e)}
               />
               {showWatermark && loadedImages.has(idx) && (
                 <div
                   className="absolute pointer-events-none select-none"
                   style={{
                     top: '50%',
-                    right: '8px',
+                    right: '2cqw',
                     transform: 'translateY(-50%)',
                     opacity: 0.35,
                     whiteSpace: 'nowrap',
                     zIndex: 10,
-                    width: '160px',
-                    height: '56px',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <div style={{ fontSize: '1.1rem', fontWeight: 900, letterSpacing: '0.12em', lineHeight: 1.2, color: '#ff3b3b', textTransform: 'uppercase', textShadow: '0 0 8px rgba(0,0,0,0.6)' }}>
+                  <div style={{ fontSize: '4cqw', fontWeight: 900, letterSpacing: '0.12em', lineHeight: 1.2, color: '#ff3b3b', textTransform: 'uppercase', textShadow: '0 0 8px rgba(0,0,0,0.6)' }}>
                     SPRINGMANGA
                   </div>
-                  <div style={{ fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.05em', color: '#ff3b3b', textShadow: '0 0 5px rgba(0,0,0,0.5)', textAlign: 'center' }}>
+                  <div style={{ fontSize: '2cqw', fontWeight: 700, letterSpacing: '0.05em', color: '#ff3b3b', textShadow: '0 0 5px rgba(0,0,0,0.5)', textAlign: 'center' }}>
                     быстрее только у нас
                   </div>
                 </div>
@@ -267,7 +302,9 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
 }) => {
   const { getMangaById, likeChapter, updateManga, fetchMangaById, fetchMangaChapters } = useContext(MangaContext);
   const { addHistoryItem } = useHistory();
-  const { updateProgress, getChapterProgress } = useReadingProgress(initialMangaId);
+  const { updateProgress, getChapterProgress, isChapterRead } = useReadingProgress(initialMangaId);
+  const updateProgressRef = useRef(updateProgress);
+  updateProgressRef.current = updateProgress;
 
   // If no explicit startPage was passed (cold open / tab restore), restore from saved progress
   const startPage = useMemo(() => {
@@ -455,7 +492,6 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
       setCurrentPagedChapterId(chapterId);
       setVisibleChapterId(chapterId);
       navigate(`/manga/${initialMangaId}/chapter/${encodeURIComponent(chapterId)}`, { replace: true });
-      addHistoryItem(initialMangaId, chapterId);
     }
   };
 
@@ -484,8 +520,7 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
       }
       return [startingChapter];
     });
-    addHistoryItem(initialMangaId, initialChapterId);
-  }, [initialChapterId, sortedChapters, initialMangaId, addHistoryItem, settings.readerType]);
+  }, [initialChapterId, sortedChapters, initialMangaId, settings.readerType]);
 
   // Прокрутка к нужной странице при загрузке (режим ленты)
   useEffect(() => {
@@ -501,14 +536,26 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
     return () => clearTimeout(timer);
   }, [loadedChapters, startPage, initialChapterId, settings.readerType]);
 
-  // Debounced history sync — only record after 5s on same chapter to prevent false reads
+  // Prefetch next 2 chapters' pages when current chapter changes (instant loading)
   useEffect(() => {
-    if (settings.readerType !== 'scroll' || !visibleChapterId) return;
+    if (!visibleChapterId || sortedChapters.length === 0) return;
+    const idx = sortedChapters.findIndex(c => c.id === visibleChapterId);
+    if (idx === -1) return;
+    const toFetch: string[] = [];
+    for (let i = 1; i <= 2; i++) {
+      if (idx + i < sortedChapters.length) toFetch.push(sortedChapters[idx + i].id);
+    }
+    if (toFetch.length > 0) prefetchChapterPages(toFetch, initialMangaId);
+  }, [visibleChapterId, sortedChapters, initialMangaId]);
+
+  // Debounced history sync — only record after 6s on same chapter to prevent false reads
+  useEffect(() => {
+    if (!visibleChapterId) return;
     const timer = setTimeout(() => {
       addHistoryItem(initialMangaId, visibleChapterId);
-    }, 5000);
+    }, 6000);
     return () => clearTimeout(timer);
-  }, [visibleChapterId, settings.readerType, initialMangaId, addHistoryItem]);
+  }, [visibleChapterId, initialMangaId, addHistoryItem]);
 
   // Block auto-loading next chapter until the last loaded chapter has fetched its pages.
   // We use a counter that increments when the last chapter becomes ready, which triggers
@@ -542,28 +589,23 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
       setVisibleChapterId(chapterId);
       const ch = sortedChapters.find((c) => c.id === chapterId);
       if (ch) {
-        // Count actual rendered images in DOM (works with lazy-loaded pages too)
         const chapterEl = document.getElementById(`chapter-${chapterId}`);
         const total = chapterEl
           ? chapterEl.querySelectorAll('img[data-chapter-id]').length
           : getChapterImages(ch).length;
         setVisiblePageInfo({ page, total });
-
-        // Обновляем прогресс чтения
-        updateProgress(chapterId, ch.chapterNumber, page, total);
+        updateProgressRef.current(chapterId, ch.chapterNumber, page, total);
       }
     },
-    [sortedChapters, updateProgress]
+    [sortedChapters]
   );
 
   const handlePagedPageChange = useCallback((page: number, total: number) => {
     setVisiblePageInfo({ page, total });
-    
-    // Обновляем прогресс чтения в постраничном режиме
     if (currentPagedChapter) {
-      updateProgress(currentPagedChapter.id, currentPagedChapter.chapterNumber, page, total);
+      updateProgressRef.current(currentPagedChapter.id, currentPagedChapter.chapterNumber, page, total);
     }
-  }, [currentPagedChapter, updateProgress]);
+  }, [currentPagedChapter]);
 
   const handleReport = (reason: string, message: string) => {
     if (!user || !manga) {
@@ -603,13 +645,12 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
         setLoadedChapters([prev]);
         setVisibleChapterId(prev.id);
         navigate(`/manga/${initialMangaId}/chapter/${encodeURIComponent(prev.id)}`, { replace: true });
-        addHistoryItem(initialMangaId, prev.id);
         window.scrollTo(0, 0);
       } else {
         handleNavigateChapter(prev.id);
       }
     }
-  }, [sortedChapters, visibleChapterId, settings.readerType, handleNavigateChapter, navigate, initialMangaId, addHistoryItem]);
+  }, [sortedChapters, visibleChapterId, settings.readerType, handleNavigateChapter, navigate, initialMangaId]);
 
   const handleNextChapterJump = useCallback(() => {
     const idx = sortedChapters.findIndex((c) => c.id === visibleChapterId);
@@ -619,13 +660,12 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
         setLoadedChapters([next]);
         setVisibleChapterId(next.id);
         navigate(`/manga/${initialMangaId}/chapter/${encodeURIComponent(next.id)}`, { replace: true });
-        addHistoryItem(initialMangaId, next.id);
         window.scrollTo(0, 0);
       } else {
         handleNavigateChapter(next.id);
       }
     }
-  }, [sortedChapters, visibleChapterId, settings.readerType, handleNavigateChapter, navigate, initialMangaId, addHistoryItem]);
+  }, [sortedChapters, visibleChapterId, settings.readerType, handleNavigateChapter, navigate, initialMangaId]);
 
   const handleLike = useCallback(async () => {
     if (!user || !manga) {
@@ -652,6 +692,8 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
     let touchStartY = 0;
     let touchStartX = 0;
     let hasMoved = false;
+    let touchStartTime = 0;
+    let scrollYOnStart = 0;
 
     const isInteractive = (el: Node): boolean => {
       if (el instanceof HTMLElement) {
@@ -666,11 +708,13 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
       if (settings.clickZone === 'anywhere') return true;
       const w = window.innerWidth;
       const h = window.innerHeight;
-      return x > w * 0.2 && x < w * 0.8 && y > h * 0.2 && y < h * 0.8;
+      return x > w * 0.25 && x < w * 0.75 && y > h * 0.25 && y < h * 0.75;
     };
 
     const onTouchStart = (e: TouchEvent) => {
       hasMoved = false;
+      touchStartTime = Date.now();
+      scrollYOnStart = window.scrollY;
       if (e.touches.length > 0) {
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
@@ -681,18 +725,20 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
       if (e.touches.length > 0) {
         const dx = Math.abs(e.touches[0].clientX - touchStartX);
         const dy = Math.abs(e.touches[0].clientY - touchStartY);
-        if (dx > 5 || dy > 5) hasMoved = true;
+        if (dx > 15 || dy > 15) hasMoved = true;
       }
     };
 
     const onPointerUp = (e: PointerEvent) => {
-      // Игнорируем если был скролл
       if (hasMoved) {
         hasMoved = false;
         return;
       }
-      // На мобильных реагируем только на touch, на десктопе — на mouse
       if (e.pointerType !== 'touch' && e.pointerType !== 'mouse') return;
+
+      const touchDuration = Date.now() - touchStartTime;
+      const scrollDelta = Math.abs(window.scrollY - scrollYOnStart);
+      if (touchDuration > 400 || scrollDelta > 10) return;
 
       if (isInteractive(e.target as Node)) return;
       if (isReportOpen) return;
@@ -703,7 +749,6 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
       const distX = Math.abs(e.clientX - lastTapRef.x);
       const distY = Math.abs(e.clientY - lastTapRef.y);
 
-      // Двойной тап: быстро и в том же месте
       if (timeDiff < 300 && distX < 50 && distY < 50) {
         if (tapTimer) {
           window.clearTimeout(tapTimer);
@@ -826,6 +871,7 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
         chapters={manga.chapters}
         mangaId={manga.id}
         currentChapterId={visibleChapterId}
+        isChapterRead={isChapterRead}
       />
       <ReaderSettingsModal
         isOpen={isSettingsOpen}
@@ -863,38 +909,40 @@ const ReaderPage: React.FC<{ mangaId: string; chapterId: string; startPage?: num
         document.body
       )}
 
-      {settings.readerType === 'scroll' ? (
-        <>
-          <ScrollChapterView
-            chapters={loadedChapters}
-            onImageVisible={handleImageVisible}
-            containerWidth={settings.containerWidth}
-            brightness={settings.brightness ?? 100}
-            imageFit={settings.imageFit ?? 'width'}
-            imageUpscale={settings.imageUpscale ?? 'none'}
-            imageGap={settings.imageGap ?? 0}
+      <div className="mx-auto w-full lg:w-[40vw]">
+        {settings.readerType === 'scroll' ? (
+          <>
+            <ScrollChapterView
+              chapters={loadedChapters}
+              onImageVisible={handleImageVisible}
+              containerWidth={settings.containerWidth}
+              brightness={settings.brightness ?? 100}
+              imageFit={settings.imageFit ?? 'width'}
+              imageUpscale={settings.imageUpscale ?? 'none'}
+              imageGap={settings.imageGap ?? 0}
+              mangaId={initialMangaId}
+              onLastChapterReady={handleLastChapterReady}
+            />
+            {!isLastChapterLoaded && settings.autoLoadNextChapter && (
+              <div ref={intersectionRef} className="h-48 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand"></div>
+              </div>
+            )}
+          </>
+        ) : currentPagedChapter ? (
+          <PagedChapterView
+            key={currentPagedChapterId}
+            chapter={currentPagedChapter}
+            onNextChapter={() => handleNavigateChapter(pagedNextChapter?.id || null)}
+            onPrevChapter={() => handleNavigateChapter(pagedPrevChapter?.id || null)}
+            onPageChange={handlePagedPageChange}
+            initialPage={currentPagedChapterId === initialChapterId ? startPage : 1}
             mangaId={initialMangaId}
-            onLastChapterReady={handleLastChapterReady}
           />
-          {!isLastChapterLoaded && settings.autoLoadNextChapter && (
-            <div ref={intersectionRef} className="h-48 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand"></div>
-            </div>
-          )}
-        </>
-      ) : currentPagedChapter ? (
-        <PagedChapterView
-          key={currentPagedChapterId}
-          chapter={currentPagedChapter}
-          onNextChapter={() => handleNavigateChapter(pagedNextChapter?.id || null)}
-          onPrevChapter={() => handleNavigateChapter(pagedPrevChapter?.id || null)}
-          onPageChange={handlePagedPageChange}
-          initialPage={currentPagedChapterId === initialChapterId ? startPage : 1}
-          mangaId={initialMangaId}
-        />
-      ) : (
-        <div className="text-center p-8">Глава не найдена.</div>
-      )}
+        ) : (
+          <div className="text-center p-8">Глава не найдена.</div>
+        )}
+      </div>
     </div>
   );
 };

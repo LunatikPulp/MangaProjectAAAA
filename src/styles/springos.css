@@ -1,0 +1,3473 @@
+/* ═══════════════════════════════════════════════════════════════════
+   SPRINGOS v3.0 — Afton Robotics Security Terminal
+   "I always come back." — William Afton
+   Complete CRT Terminal + FNaF Atmosphere System
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── CRT Scanlines — двойной слой для реалистичности ── */
+.springos-crt::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  background:
+    repeating-linear-gradient(0deg,
+      transparent,
+      transparent 1px,
+      rgba(0, 0, 0, 0.12) 1px,
+      rgba(0, 0, 0, 0.12) 2px),
+    repeating-linear-gradient(0deg,
+      transparent,
+      transparent 3px,
+      rgba(57, 255, 20, 0.008) 3px,
+      rgba(57, 255, 20, 0.008) 6px);
+  mix-blend-mode: multiply;
+}
+
+/* ── CRT Static Noise — помехи старого монитора ── */
+@keyframes springosNoise {
+  0% {
+    background-position: 0 0;
+  }
+
+  10% {
+    background-position: -5% -10%;
+  }
+
+  20% {
+    background-position: -15% 5%;
+  }
+
+  30% {
+    background-position: 7% -25%;
+  }
+
+  40% {
+    background-position: -5% 25%;
+  }
+
+  50% {
+    background-position: -15% 10%;
+  }
+
+  60% {
+    background-position: 15% 0%;
+  }
+
+  70% {
+    background-position: 0% 15%;
+  }
+
+  80% {
+    background-position: 3% 35%;
+  }
+
+  90% {
+    background-position: -10% 10%;
+  }
+
+  100% {
+    background-position: 0 0;
+  }
+}
+
+.springos-crt::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9997;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  animation: springosNoise 0.3s steps(6) infinite;
+}
+
+/* ── Горизонтальная помеха — бегущая полоса как на VHS ── */
+@keyframes springosHBar {
+  0% {
+    top: -10%;
+  }
+
+  100% {
+    top: 110%;
+  }
+}
+
+.springos-crt .springos-hbar,
+.springos-crt>main::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(57, 255, 20, 0.06), rgba(155, 140, 59, 0.04), transparent);
+  z-index: 9996;
+  pointer-events: none;
+  animation: springosHBar 8s linear infinite;
+  opacity: 0.7;
+}
+
+/* ── CRT Flicker — мерцание битого кинескопа ── */
+@keyframes springosFlicker {
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+
+  3% {
+    opacity: 0.96;
+    filter: brightness(0.98);
+  }
+
+  6% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+
+  12% {
+    opacity: 0.985;
+    filter: brightness(1);
+  }
+
+  45% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+
+  48% {
+    opacity: 0.94;
+    filter: brightness(0.97);
+  }
+
+  49% {
+    opacity: 1;
+    filter: brightness(1.02);
+  }
+
+  50% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+
+  75% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+
+  77% {
+    opacity: 0.97;
+    filter: brightness(0.99);
+  }
+
+  78% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+.springos-flicker {
+  animation: springosFlicker 6s ease-in-out infinite;
+}
+
+/* ── CRT Vignette — тёмные углы лампового монитора ── */
+.springos-vignette {
+  box-shadow:
+    inset 0 0 150px 40px rgba(0, 0, 0, 0.5),
+    inset 0 0 60px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Phosphor Green Glow ── */
+.springos-glow-green {
+  text-shadow:
+    0 0 4px rgba(57, 255, 20, 0.7),
+    0 0 12px rgba(57, 255, 20, 0.4),
+    0 0 30px rgba(57, 255, 20, 0.15);
+  color: #39ff14;
+}
+
+.springos-glow-green-box {
+  box-shadow:
+    0 0 6px rgba(57, 255, 20, 0.3),
+    0 0 15px rgba(57, 255, 20, 0.12),
+    inset 0 0 4px rgba(57, 255, 20, 0.05);
+}
+
+/* ── Mustard Glow — гнилой жёлтый Спрингтрапа ── */
+.springos-glow-mustard {
+  text-shadow:
+    0 0 4px rgba(155, 140, 59, 0.7),
+    0 0 12px rgba(155, 140, 59, 0.35),
+    0 0 25px rgba(155, 140, 59, 0.15);
+}
+
+.springos-glow-mustard-box {
+  box-shadow:
+    0 0 6px rgba(155, 140, 59, 0.3),
+    0 0 15px rgba(155, 140, 59, 0.12),
+    inset 0 0 4px rgba(155, 140, 59, 0.04);
+}
+
+/* ── Blood Glow — засохшая кровь ── */
+.springos-glow-blood {
+  text-shadow:
+    0 0 4px rgba(122, 22, 22, 0.9),
+    0 0 10px rgba(122, 22, 22, 0.5),
+    0 0 25px rgba(122, 22, 22, 0.2);
+  color: #7a1616;
+}
+
+.springos-glow-blood-box {
+  box-shadow:
+    0 0 6px rgba(122, 22, 22, 0.4),
+    0 0 15px rgba(122, 22, 22, 0.18),
+    inset 0 0 4px rgba(122, 22, 22, 0.06);
+}
+
+/* ── Glitch Effect — искажение на ховере ── */
+@keyframes springosGlitchBtn {
+  0% {
+    transform: translate(0);
+    filter: none;
+  }
+
+  8% {
+    transform: translate(-3px, 1px) skewX(-2deg);
+    filter: hue-rotate(20deg);
+  }
+
+  16% {
+    transform: translate(3px, -1px) skewX(1deg);
+    filter: hue-rotate(-10deg) saturate(1.5);
+  }
+
+  24% {
+    transform: translate(-1px, -2px);
+    filter: hue-rotate(5deg);
+  }
+
+  32% {
+    transform: translate(2px, 1px) skewX(-1deg);
+    filter: none;
+  }
+
+  40% {
+    transform: translate(0);
+    filter: none;
+  }
+
+  100% {
+    transform: translate(0);
+    filter: none;
+  }
+}
+
+@keyframes springosGlitchText {
+  0% {
+    text-shadow: none;
+    transform: translate(0);
+  }
+
+  12% {
+    text-shadow: 3px 0 #39ff14, -3px 0 #7a1616;
+    transform: translate(-3px, 1px) skewX(-1deg);
+  }
+
+  24% {
+    text-shadow: -2px 0 #39ff14, 2px 0 #9b8c3b;
+    transform: translate(2px, -1px);
+  }
+
+  36% {
+    text-shadow: 1px -2px #39ff14, -1px 2px #7a1616;
+    transform: translate(-1px, -1px) skewX(1deg);
+  }
+
+  48% {
+    text-shadow: -1px 1px #9b8c3b, 1px -1px #39ff14;
+    transform: translate(1px, 1px);
+  }
+
+  60% {
+    text-shadow: none;
+    transform: translate(0);
+  }
+
+  100% {
+    text-shadow: none;
+    transform: translate(0);
+  }
+}
+
+.springos-glitch-hover:hover {
+  animation: springosGlitchBtn 0.35s steps(4) 1;
+}
+
+.springos-glitch-text-hover:hover {
+  animation: springosGlitchText 0.3s steps(5) 1;
+}
+
+/* Глитч-полоска при ховере (как помеха на мониторе) */
+.springos-glitch-hover:hover::after,
+.springos-glitch-text-hover:hover::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 40%;
+  height: 2px;
+  background: rgba(57, 255, 20, 0.15);
+  pointer-events: none;
+  animation: springosGlitchBar 0.15s steps(2) 1;
+}
+
+@keyframes springosGlitchBar {
+  0% {
+    top: 20%;
+    opacity: 1;
+  }
+
+  50% {
+    top: 70%;
+    opacity: 0.6;
+  }
+
+  100% {
+    top: 40%;
+    opacity: 0;
+  }
+}
+
+/* ── Blood Pulse — мигание аварий ── */
+@keyframes springosBloodPulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    text-shadow: 0 0 8px rgba(122, 22, 22, 0.9), 0 0 25px rgba(122, 22, 22, 0.4);
+  }
+
+  50% {
+    opacity: 0.3;
+    text-shadow: 0 0 3px rgba(122, 22, 22, 0.3);
+  }
+}
+
+.springos-blink-blood {
+  animation: springosBloodPulse 1s ease-in-out infinite;
+}
+
+/* ── Metal Frame — изношенный металл камер ── */
+.springos-metal-frame {
+  background:
+    linear-gradient(145deg, #2e2620 0%, #241e1a 35%, #1e1814 70%, #1a1510 100%);
+  border: 1px solid #3a3028;
+  border-top-color: #4a4038;
+  border-left-color: #453830;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    inset 1px 0 0 rgba(255, 255, 255, 0.02),
+    inset -1px 0 0 rgba(0, 0, 0, 0.2),
+    0 2px 12px rgba(0, 0, 0, 0.5),
+    0 0 1px rgba(0, 0, 0, 0.8);
+  position: relative;
+}
+
+.springos-metal-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at 15% 10%, rgba(155, 140, 59, 0.06) 0%, transparent 45%),
+    radial-gradient(ellipse at 80% 85%, rgba(57, 255, 20, 0.025) 0%, transparent 35%),
+    radial-gradient(circle at 50% 50%, transparent 40%, rgba(0, 0, 0, 0.08) 100%);
+}
+
+/* ── Rust/Wear Texture — микротекстура ржавчины ── */
+.springos-rust-dots {
+  position: relative;
+  overflow: hidden;
+}
+
+.springos-rust-dots::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 128 128' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 128px 128px;
+  z-index: 1;
+  mix-blend-mode: overlay;
+}
+
+/* ── Terminal Cursor — мерцающий блок ── */
+@keyframes springosCursorBlink {
+
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.springos-cursor::after {
+  content: '█';
+  animation: springosCursorBlink 0.6s step-end infinite;
+  color: #39ff14;
+  margin-left: 2px;
+  text-shadow: 0 0 4px rgba(57, 255, 20, 0.5);
+}
+
+/* ── VHS Entry — записи на кассете ── */
+.springos-vhs-entry {
+  position: relative;
+  background:
+    linear-gradient(90deg, #161210 0%, #1e1a16 1.5%, #241e1a 3%, #241e1a 97%, #1e1a16 98.5%, #161210 100%);
+  border-left: 3px solid #7a1616;
+  border-right: 3px solid #2a2420;
+  border-bottom: 1px solid rgba(58, 48, 40, 0.25);
+  transition: all 0.15s ease;
+}
+
+.springos-vhs-entry:hover {
+  background:
+    linear-gradient(90deg, #1a1614 0%, #2a2420 1.5%, #2e2822 3%, #2e2822 97%, #2a2420 98.5%, #1a1614 100%);
+  border-left-color: #9a2020;
+}
+
+.springos-vhs-entry::before {
+  content: '▶';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 7px;
+  color: #7a1616;
+  text-shadow: 0 0 4px rgba(122, 22, 22, 0.5);
+}
+
+/* Timestamp помехи на VHS */
+.springos-vhs-entry::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 4px;
+  height: 100%;
+  background: repeating-linear-gradient(0deg,
+      transparent,
+      transparent 2px,
+      rgba(122, 22, 22, 0.05) 2px,
+      rgba(122, 22, 22, 0.05) 4px);
+  pointer-events: none;
+}
+
+/* ── SpringOS Scrollbar ── */
+.springos-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.springos-scroll::-webkit-scrollbar-track {
+  background: #0e0d0c;
+  border-left: 1px solid #2a2420;
+}
+
+.springos-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #5a6638, #3a3028);
+  border-radius: 0;
+}
+
+.springos-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #9b8c3b, #5a6638);
+  box-shadow: 0 0 4px rgba(57, 255, 20, 0.2);
+}
+
+/* ── Table — терминальная таблица ── */
+.springos-table {
+  border-spacing: 0;
+}
+
+.springos-table th {
+  font-family: 'VT323', monospace;
+  font-size: 17px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #9b8c3b;
+  border-bottom: 2px solid #3a3028;
+  padding: 10px 14px;
+  text-align: left;
+  background: rgba(17, 16, 15, 0.6);
+  text-shadow: 0 0 4px rgba(155, 140, 59, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.springos-table td {
+  font-family: 'Fira Code', 'Inter', sans-serif;
+  font-size: 13px;
+  color: #d4c8b0;
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(58, 48, 40, 0.3);
+  transition: background 0.1s ease;
+}
+
+.springos-table tbody tr {
+  transition: all 0.1s ease;
+}
+
+.springos-table tbody tr:hover td {
+  background: rgba(90, 102, 56, 0.08);
+}
+
+.springos-table tbody tr:hover {
+  box-shadow: inset 3px 0 0 #5a6638;
+}
+
+/* ── Input — терминальный ввод ── */
+.springos-input {
+  background: #0e0d0c !important;
+  border: 1px solid #3a3028 !important;
+  color: #d4c8b0 !important;
+  font-family: 'Fira Code', monospace !important;
+  font-size: 13px !important;
+  caret-color: #39ff14;
+  transition: all 0.15s ease;
+  border-radius: 0 !important;
+}
+
+.springos-input::placeholder {
+  color: rgba(122, 112, 96, 0.4) !important;
+  font-style: italic;
+}
+
+.springos-input:focus {
+  border-color: #5a6638 !important;
+  box-shadow:
+    0 0 8px rgba(90, 102, 56, 0.2),
+    0 0 20px rgba(57, 255, 20, 0.04),
+    inset 0 0 6px rgba(57, 255, 20, 0.03) !important;
+  outline: none;
+}
+
+/* ── Buttons — кнопки управления ── */
+.springos-btn {
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 6px 18px;
+  border: 1px solid #3a3028;
+  background: linear-gradient(180deg, #2e2620 0%, #241e1a 50%, #1e1814 100%);
+  color: #9b8c3b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  border-radius: 0;
+}
+
+.springos-btn:hover {
+  background: linear-gradient(180deg, #3a3028 0%, #2e2620 50%, #282018 100%);
+  color: #d4c8b0;
+  box-shadow: 0 0 10px rgba(155, 140, 59, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  text-shadow: 0 0 4px rgba(155, 140, 59, 0.3);
+}
+
+.springos-btn:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.springos-btn-danger {
+  border-color: rgba(122, 22, 22, 0.5);
+  color: #7a1616;
+}
+
+.springos-btn-danger:hover {
+  background: linear-gradient(180deg, rgba(122, 22, 22, 0.18) 0%, rgba(122, 22, 22, 0.08) 100%);
+  color: #b02020;
+  box-shadow: 0 0 12px rgba(122, 22, 22, 0.25);
+  text-shadow: 0 0 6px rgba(122, 22, 22, 0.4);
+}
+
+.springos-btn-primary {
+  border-color: rgba(90, 102, 56, 0.5);
+  color: #5a6638;
+}
+
+.springos-btn-primary:hover {
+  background: linear-gradient(180deg, rgba(90, 102, 56, 0.18) 0%, rgba(90, 102, 56, 0.06) 100%);
+  color: #8aac58;
+  box-shadow: 0 0 10px rgba(57, 255, 20, 0.15);
+  text-shadow: 0 0 4px rgba(57, 255, 20, 0.2);
+}
+
+.springos-btn-glow {
+  border-color: rgba(57, 255, 20, 0.35);
+  color: #39ff14;
+  text-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
+}
+
+.springos-btn-glow:hover {
+  background: linear-gradient(180deg, rgba(57, 255, 20, 0.1) 0%, rgba(57, 255, 20, 0.03) 100%);
+  box-shadow: 0 0 16px rgba(57, 255, 20, 0.3), inset 0 0 6px rgba(57, 255, 20, 0.04);
+  text-shadow: 0 0 12px rgba(57, 255, 20, 0.6);
+}
+
+/* ── Badges — статусные плашки ── */
+.springos-badge-alive {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: 'VT323', monospace;
+  font-size: 12px;
+  letter-spacing: 1px;
+  background: rgba(57, 255, 20, 0.08);
+  border: 1px solid rgba(57, 255, 20, 0.35);
+  color: #39ff14;
+  text-shadow: 0 0 6px rgba(57, 255, 20, 0.5);
+}
+
+.springos-badge-springlocked {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: 'VT323', monospace;
+  font-size: 12px;
+  letter-spacing: 1px;
+  background: rgba(122, 22, 22, 0.12);
+  border: 1px solid rgba(122, 22, 22, 0.45);
+  color: #7a1616;
+  text-shadow: 0 0 6px rgba(122, 22, 22, 0.6);
+  animation: springosBloodPulse 1.8s ease-in-out infinite;
+}
+
+/* ── Toggle — индустриальный тумблер ── */
+.springos-toggle {
+  position: relative;
+  width: 46px;
+  height: 24px;
+  background: #0e0d0c;
+  border: 2px solid #3a3028;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.springos-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: linear-gradient(135deg, #6a6050, #4a4030);
+  transition: all 0.25s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.springos-toggle.active {
+  border-color: #5a6638;
+  box-shadow: 0 0 8px rgba(57, 255, 20, 0.15), inset 0 0 4px rgba(57, 255, 20, 0.05);
+}
+
+.springos-toggle.active::after {
+  left: 24px;
+  background: linear-gradient(135deg, #50ff20, #39ff14);
+  box-shadow: 0 0 10px rgba(57, 255, 20, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Drag Zone — зона загрузки файлов ── */
+@keyframes springosDragPulse {
+
+  0%,
+  100% {
+    border-color: #9b8c3b;
+    box-shadow: none;
+  }
+
+  50% {
+    border-color: #39ff14;
+    box-shadow:
+      0 0 20px rgba(57, 255, 20, 0.25),
+      0 0 40px rgba(57, 255, 20, 0.08),
+      inset 0 0 12px rgba(57, 255, 20, 0.06);
+  }
+}
+
+.springos-drag-active {
+  animation: springosDragPulse 0.7s ease-in-out infinite;
+}
+
+/* Мерцание текста в зоне загрузки */
+@keyframes springosDropTextFlicker {
+
+  0%,
+  90%,
+  100% {
+    opacity: 0.7;
+  }
+
+  92% {
+    opacity: 0.3;
+  }
+
+  95% {
+    opacity: 0.8;
+  }
+
+  97% {
+    opacity: 0.4;
+  }
+}
+
+.springos-drop-text {
+  animation: springosDropTextFlicker 3s ease-in-out infinite;
+}
+
+/* ── Terminal Typing Animation ── */
+@keyframes springosTyping {
+  from {
+    width: 0;
+  }
+
+  to {
+    width: 100%;
+  }
+}
+
+.springos-typing {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: springosTyping 1.5s steps(40, end);
+}
+
+/* ── Power Lever — рубильник парсера ── */
+.springos-lever {
+  position: relative;
+  width: 64px;
+  height: 100px;
+  background:
+    linear-gradient(180deg, #2e2620, #1e1814, #161210);
+  border: 2px solid #3a3028;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.4),
+    inset 0 -2px 4px rgba(255, 255, 255, 0.02),
+    0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* Метки ON/OFF */
+.springos-lever::before {
+  content: 'OFF';
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'VT323', monospace;
+  font-size: 11px;
+  color: #5a5040;
+  letter-spacing: 2px;
+  transition: all 0.3s ease;
+}
+
+.springos-lever::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 38px;
+  background:
+    linear-gradient(180deg, #6a6050, #5a5040, #4a4030);
+  border: 2px solid #5a6638;
+  border-radius: 5px;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.springos-lever.active {
+  border-color: rgba(57, 255, 20, 0.4);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(57, 255, 20, 0.15);
+}
+
+.springos-lever.active::before {
+  content: 'ON';
+  top: 12px;
+  bottom: auto;
+  color: #39ff14;
+  text-shadow: 0 0 6px rgba(57, 255, 20, 0.5);
+}
+
+.springos-lever.active::after {
+  top: auto;
+  bottom: 8px;
+  background: linear-gradient(180deg, #50ff20, #39ff14, #2acc10);
+  border-color: #39ff14;
+  box-shadow:
+    0 0 16px rgba(57, 255, 20, 0.5),
+    0 3px 6px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* ── Sidebar — тени навигации ── */
+.springos-sidebar-item {
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.springos-sidebar-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.springos-sidebar-item.active::before {
+  background: #5a6638;
+  box-shadow: 0 0 8px rgba(90, 102, 56, 0.4);
+}
+
+.springos-sidebar-item:hover:not(.active) {
+  background: rgba(58, 48, 40, 0.15);
+}
+
+/* ── Section Divider — разделитель секций ── */
+.springos-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #3a3028 20%, #3a3028 80%, transparent);
+  margin: 16px 0;
+}
+
+/* ── Page Header — заголовок страницы ── */
+.springos-page-header {
+  position: relative;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+}
+
+.springos-page-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, #9b8c3b, #3a3028 40%, transparent 70%);
+}
+
+/* ── Stat Card — карточка статистики ── */
+.springos-stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.springos-stat-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -20%;
+  width: 60%;
+  height: 200%;
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.015), transparent 70%);
+  pointer-events: none;
+  transform: rotate(-15deg);
+}
+
+/* ── Log Entry — строка лога ── */
+.springos-log-line {
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(58, 48, 40, 0.1);
+  transition: background 0.1s;
+}
+
+.springos-log-line:hover {
+  background: rgba(57, 255, 20, 0.02);
+}
+
+/* ── Progress Bar — полоса прогресса ── */
+.springos-progress {
+  height: 6px;
+  background: #0e0d0c;
+  border: 1px solid #2a2420;
+  position: relative;
+  overflow: hidden;
+}
+
+.springos-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #5a6638, #39ff14);
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.springos-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(57, 255, 20, 0.6));
+  animation: springosProgressGlow 1.5s ease-in-out infinite;
+}
+
+@keyframes springosProgressGlow {
+
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── Modal Overlay ── */
+.springos-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(2px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.springos-modal {
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: springosModalIn 0.2s ease-out;
+}
+
+@keyframes springosModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ── Camera Label — метка камеры в углу ── */
+.springos-cam-label {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-family: 'VT323', monospace;
+  font-size: 12px;
+  color: rgba(122, 22, 22, 0.4);
+  letter-spacing: 2px;
+  pointer-events: none;
+}
+
+/* REC индикатор */
+.springos-rec {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'VT323', monospace;
+  font-size: 14px;
+  color: #7a1616;
+  letter-spacing: 2px;
+}
+
+.springos-rec::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7a1616;
+  box-shadow: 0 0 6px rgba(122, 22, 22, 0.6);
+  animation: springosRecBlink 1.2s ease-in-out infinite;
+}
+
+@keyframes springosRecBlink {
+
+  0%,
+  40%,
+  100% {
+    opacity: 1;
+  }
+
+  50%,
+  90% {
+    opacity: 0.2;
+  }
+}
+
+/* ── Select Styling ── */
+.springos-select {
+  appearance: none;
+  background: #0e0d0c url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0l6 8 6-8z' fill='%239b8c3b'/%3E%3C/svg%3E") no-repeat right 10px center;
+  border: 1px solid #3a3028;
+  color: #d4c8b0;
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  padding: 6px 30px 6px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.springos-select:focus {
+  border-color: #5a6638;
+  box-shadow: 0 0 8px rgba(90, 102, 56, 0.2);
+  outline: none;
+}
+
+.springos-select option {
+  background: #1a1614;
+  color: #d4c8b0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SPRINGOS — Contrast Boost & Mobile Adaptation
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Higher contrast for readability ── */
+.springos-table td {
+  color: #e0d8c8;
+}
+
+.springos-input {
+  color: #e8e0d0 !important;
+}
+
+.springos-input::placeholder {
+  color: rgba(160, 150, 130, 0.5) !important;
+}
+
+/* Settings info rows — brighter values */
+.springos-metal-frame .font-code {
+  color: #e0d8c8;
+}
+
+/* ── Mobile: Sidebar collapses, content fills ── */
+@media (max-width: 768px) {
+
+  /* Sidebar auto-collapse on mobile */
+  .springos-crt>aside {
+    width: 52px !important;
+    min-width: 52px;
+  }
+
+  .springos-crt>aside .font-terminal,
+  .springos-crt>aside .font-code,
+  .springos-crt>aside nav span:not(.text-\[14px\]) {
+    display: none;
+  }
+
+  /* Reduce padding */
+  .springos-crt>main>div {
+    padding: 12px !important;
+  }
+
+  /* Page headers smaller */
+  .springos-page-header .font-terminal {
+    font-size: 22px !important;
+    letter-spacing: 1px !important;
+  }
+
+  /* Stat cards — 2 cols on small mobile, 1 on tiny */
+  .grid.grid-cols-2.lg\\:grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* Stat card values smaller */
+  .springos-stat-card .font-terminal.text-\[44px\] {
+    font-size: 32px !important;
+  }
+
+  /* Tables scroll horizontally */
+  .springos-table th {
+    font-size: 13px !important;
+    padding: 8px 8px !important;
+    white-space: nowrap;
+  }
+
+  .springos-table td {
+    font-size: 12px !important;
+    padding: 6px 8px !important;
+  }
+
+  /* VHS entries stack on mobile */
+  .springos-vhs-entry {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+    padding: 10px 12px 10px 20px !important;
+  }
+
+  /* Modal max-width */
+  .springos-modal {
+    max-width: 95vw !important;
+    margin: 8px;
+  }
+
+  /* Lever smaller */
+  .springos-lever {
+    width: 50px;
+    height: 80px;
+  }
+
+  /* Metal frames less padding */
+  .springos-metal-frame {
+    padding: 12px;
+  }
+
+  /* Grid to single col */
+  .grid.grid-cols-1.lg\\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Buttons smaller */
+  .springos-btn {
+    font-size: 15px !important;
+    padding: 5px 12px !important;
+  }
+
+  /* Settings two-column to single */
+  .grid.grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Hide REC on very small screens */
+  .springos-rec {
+    font-size: 11px !important;
+  }
+
+  /* Canvas chart shorter */
+  canvas {
+    height: 120px !important;
+  }
+
+  /* Tab text smaller */
+  .font-terminal.text-\[16px\] {
+    font-size: 14px !important;
+  }
+
+  /* Log terminal shorter */
+  .springos-scroll[style*="maxHeight"] {
+    max-height: 200px !important;
+  }
+}
+
+@media (max-width: 480px) {
+
+  /* Stat cards single column on very small screens */
+  .grid.grid-cols-2.lg\\:grid-cols-4 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .springos-stat-card .font-terminal.text-\[44px\] {
+    font-size: 28px !important;
+  }
+
+  .springos-page-header .font-terminal {
+    font-size: 18px !important;
+  }
+
+  /* Hide sidebar completely on very small */
+  .springos-crt>aside {
+    display: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SPRINGTRAP OS v4.0 — ENHANCED DECAY EDITION
+   "I always come back..." — Ultimate Springtrap Admin Experience
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Import FNAF-themed fonts ── */
+
+/* ═══ SPRINGTRAP DECAY COLOR PALETTE ═══ */
+:root {
+  --spring-decay-bg: #0a0908;
+  --spring-decay-panel: #141211;
+  --spring-decay-border: #2a2420;
+  --spring-decay-mustard: #9b8c3b;
+  --spring-decay-mustard-dim: #5a5040;
+  --spring-decay-green: #39ff14;
+  --spring-decay-green-dim: #5a6638;
+  --spring-decay-blood: #7a1616;
+  --spring-decay-blood-bright: #b02020;
+  --spring-decay-rust: #8b5e3c;
+  --spring-decay-gold: #b8860b;
+  --spring-decay-terminal: #00ff41;
+}
+
+/* ═══ SPRINGTRAP AVATAR MASK ═══ */
+.springtrap-avatar-mask {
+  position: relative;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 2px solid var(--spring-decay-mustard);
+  box-shadow:
+    0 0 10px rgba(155, 140, 59, 0.3),
+    inset 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.springtrap-avatar-mask::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(57, 255, 20, 0.1) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 60%, rgba(122, 22, 22, 0.08) 0%, transparent 40%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ═══ DECAYED METAL TEXTURE ═══ */
+.springos-decayed-metal {
+  background:
+    linear-gradient(145deg, #2e2620 0%, #241e1a 35%, #1e1814 70%, #1a1510 100%);
+  border: 1px solid #3a3028;
+  position: relative;
+  overflow: hidden;
+}
+
+.springos-decayed-metal::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    /* Rust spots */
+    radial-gradient(ellipse at 15% 25%, rgba(139, 94, 60, 0.15) 0%, transparent 30%),
+    radial-gradient(ellipse at 85% 75%, rgba(139, 94, 60, 0.1) 0%, transparent 25%),
+    radial-gradient(ellipse at 50% 50%, rgba(122, 22, 22, 0.05) 0%, transparent 50%),
+    /* Metal grain */
+    repeating-linear-gradient(90deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.005) 2px,
+      rgba(255, 255, 255, 0.005) 4px);
+  opacity: 0.8;
+}
+
+/* ═══ SPRINGTRAP EYE GLOW EFFECT ═══ */
+@keyframes springtrapEyeGlow {
+
+  0%,
+  100% {
+    box-shadow:
+      0 0 20px rgba(57, 255, 20, 0.4),
+      0 0 40px rgba(57, 255, 20, 0.2),
+      inset 0 0 30px rgba(57, 255, 20, 0.1);
+  }
+
+  50% {
+    box-shadow:
+      0 0 30px rgba(57, 255, 20, 0.6),
+      0 0 60px rgba(57, 255, 20, 0.3),
+      inset 0 0 40px rgba(57, 255, 20, 0.15);
+  }
+}
+
+.springtrap-eye-glow {
+  animation: springtrapEyeGlow 3s ease-in-out infinite;
+}
+
+/* ═══ DECAY PULSE ANIMATION ═══ */
+@keyframes decayPulse {
+
+  0%,
+  100% {
+    opacity: 0.8;
+    filter: brightness(1);
+  }
+
+  50% {
+    opacity: 0.6;
+    filter: brightness(0.9);
+  }
+}
+
+.springtrap-decay-pulse {
+  animation: decayPulse 4s ease-in-out infinite;
+}
+
+/* ═══ SPRINGLOCK WARNING FLASH ═══ */
+@keyframes springlockWarning {
+
+  0%,
+  90%,
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  91%,
+  93%,
+  95% {
+    background: rgba(122, 22, 22, 0.1);
+    box-shadow: inset 0 0 50px rgba(122, 22, 22, 0.2);
+  }
+
+  92%,
+  94%,
+  96% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
+.springlock-warning {
+  animation: springlockWarning 10s ease-in-out infinite;
+}
+
+/* ═══ PHANTOM SPRINGTRAP FLICKER ═══ */
+@keyframes phantomSpringtrap {
+
+  0%,
+  85%,
+  100% {
+    opacity: 0;
+  }
+
+  86% {
+    opacity: 0.3;
+  }
+
+  87% {
+    opacity: 0;
+  }
+
+  88% {
+    opacity: 0.25;
+  }
+
+  89% {
+    opacity: 0;
+  }
+
+  90% {
+    opacity: 0.2;
+  }
+
+  91% {
+    opacity: 0;
+  }
+}
+
+.phantom-springtrap-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9995;
+  background:
+    radial-gradient(ellipse at 80% 20%, rgba(57, 255, 20, 0.03) 0%, transparent 30%);
+  animation: phantomSpringtrap 8s steps(1) infinite;
+}
+
+/* ═══ SPRINGTRAP TEETH BORDER ═══ */
+.springtrap-teeth-border {
+  position: relative;
+  border: none;
+}
+
+.springtrap-teeth-border::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background:
+    repeating-linear-gradient(90deg,
+      #9b8c3b 0px,
+      #9b8c3b 8px,
+      transparent 8px,
+      transparent 12px,
+      #7a7060 12px,
+      #7a7060 16px,
+      transparent 16px,
+      transparent 20px);
+  opacity: 0.6;
+}
+
+/* ═══ TOXIC WASTE GLOW ═══ */
+@keyframes toxicWasteGlow {
+
+  0%,
+  100% {
+    box-shadow:
+      0 0 5px rgba(169, 255, 0, 0.3),
+      0 0 15px rgba(169, 255, 0, 0.1),
+      inset 0 0 10px rgba(169, 255, 0, 0.05);
+  }
+
+  50% {
+    box-shadow:
+      0 0 15px rgba(169, 255, 0, 0.5),
+      0 0 30px rgba(169, 255, 0, 0.2),
+      inset 0 0 20px rgba(169, 255, 0, 0.1);
+  }
+}
+
+.toxic-waste-glow {
+  animation: toxicWasteGlow 2s ease-in-out infinite;
+}
+
+/* ═══ BURNTRAP HEAT EFFECT ═══ */
+@keyframes burntrapHeat {
+
+  0%,
+  100% {
+    filter: sepia(0) hue-rotate(0deg);
+  }
+
+  50% {
+    filter: sepia(0.3) hue-rotate(10deg) saturate(1.2);
+  }
+}
+
+.burntrap-heat {
+  animation: burntrapHeat 5s ease-in-out infinite;
+}
+
+/* ═══ SPRINGTRAP SCRAP METAL FRAMES ═══ */
+.springos-scrap-frame {
+  background:
+    linear-gradient(145deg, #3a3028 0%, #2e2620 30%, #241e1a 70%, #1a1614 100%);
+  border: 2px solid #4a4038;
+  border-top-color: #5a5040;
+  border-left-color: #5a5040;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    0 4px 15px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 0, 0, 0.8);
+  position: relative;
+}
+
+.springos-scrap-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    /* Scratches */
+    repeating-linear-gradient(45deg,
+      transparent,
+      transparent 10px,
+      rgba(0, 0, 0, 0.02) 10px,
+      rgba(0, 0, 0, 0.02) 11px),
+    /* Weld marks */
+    radial-gradient(ellipse at 10% 90%, rgba(139, 94, 60, 0.2) 0%, transparent 15%),
+    radial-gradient(ellipse at 90% 10%, rgba(139, 94, 60, 0.15) 0%, transparent 12%);
+}
+
+/* ═══ CIRCUIT BOARD PATTERN ═══ */
+.springos-circuit-bg {
+  position: relative;
+  background: #0e0d0c;
+}
+
+.springos-circuit-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image:
+    /* Horizontal traces */
+    repeating-linear-gradient(0deg,
+      transparent,
+      transparent 20px,
+      #39ff14 20px,
+      #39ff14 21px,
+      transparent 21px,
+      transparent 40px),
+    /* Vertical traces */
+    repeating-linear-gradient(90deg,
+      transparent,
+      transparent 30px,
+      #39ff14 30px,
+      #39ff14 31px,
+      transparent 31px,
+      transparent 60px),
+    /* Circuit nodes */
+    radial-gradient(circle at 20px 20px, rgba(57, 255, 20, 0.3) 0%, transparent 4px),
+    radial-gradient(circle at 50px 40px, rgba(57, 255, 20, 0.3) 0%, transparent 3px),
+    radial-gradient(circle at 80px 60px, rgba(57, 255, 20, 0.3) 0%, transparent 5px);
+  background-size: 100px 80px;
+}
+
+/* ═══ SPRINGTRAP LOADING ANIMATION ═══ */
+@keyframes springtrapLoading {
+  0% {
+    width: 0%;
+    background: linear-gradient(90deg, #7a1616, #9b8c3b);
+  }
+
+  50% {
+    width: 70%;
+    background: linear-gradient(90deg, #9b8c3b, #39ff14);
+  }
+
+  100% {
+    width: 100%;
+    background: linear-gradient(90deg, #39ff14, #5a6638);
+  }
+}
+
+.springtrap-loading-bar {
+  height: 4px;
+  background: #1a1614;
+  border: 1px solid #3a3028;
+  overflow: hidden;
+}
+
+.springtrap-loading-bar .bar {
+  height: 100%;
+  animation: springtrapLoading 2s ease-in-out infinite;
+}
+
+/* ═══ ROTTEN WIRES ANIMATION ═══ */
+@keyframes wireSpark {
+
+  0%,
+  95%,
+  100% {
+    opacity: 0;
+  }
+
+  96%,
+  98% {
+    opacity: 1;
+  }
+
+  97% {
+    opacity: 0.5;
+  }
+}
+
+.rotten-wire {
+  position: relative;
+}
+
+.rotten-wire::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: 20%;
+  width: 2px;
+  height: 8px;
+  background: #39ff14;
+  box-shadow: 0 0 6px rgba(57, 255, 20, 0.8);
+  animation: wireSpark 5s steps(1) infinite;
+}
+
+/* ═══ SPRINGTRAP STATUS INDICATORS ═══ */
+.springtrap-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+}
+
+.springtrap-status-dot.active {
+  background: #39ff14;
+  box-shadow: 0 0 8px rgba(57, 255, 20, 0.8);
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+.springtrap-status-dot.warning {
+  background: #9b8c3b;
+  box-shadow: 0 0 8px rgba(155, 140, 59, 0.8);
+  animation: statusPulse 1s ease-in-out infinite;
+}
+
+.springtrap-status-dot.critical {
+  background: #7a1616;
+  box-shadow: 0 0 8px rgba(122, 22, 22, 0.8);
+  animation: statusPulse 0.5s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.7;
+    transform: scale(0.9);
+  }
+}
+
+/* ═══ ENHANCED GLITCH TEXT ═══ */
+@keyframes enhancedGlitchText {
+  0% {
+    clip-path: inset(40% 0 61% 0);
+    transform: translate(-2px, 1px);
+    text-shadow: -2px 0 #ff0040, 2px 0 #00ffff;
+  }
+
+  20% {
+    clip-path: inset(5% 0 90% 0);
+    transform: translate(2px, -1px);
+    text-shadow: 2px 0 #ff0040, -2px 0 #00ffff;
+  }
+
+  40% {
+    clip-path: inset(80% 0 5% 0);
+    transform: translate(-1px, 2px);
+    text-shadow: -1px 0 #39ff14, 1px 0 #9b8c3b;
+  }
+
+  60% {
+    clip-path: inset(15% 0 70% 0);
+    transform: translate(1px, -2px);
+    text-shadow: 1px 0 #7a1616, -1px 0 #00ffff;
+  }
+
+  80% {
+    clip-path: inset(60% 0 20% 0);
+    transform: translate(-2px, 1px);
+    text-shadow: -3px 0 #ff0040, 3px 0 #00ffff;
+  }
+
+  100% {
+    clip-path: inset(40% 0 61% 0);
+    transform: translate(0);
+    text-shadow: none;
+  }
+}
+
+.enhanced-glitch-text {
+  position: relative;
+  display: inline-block;
+}
+
+.enhanced-glitch-text:hover {
+  animation: enhancedGlitchText 0.3s steps(5) infinite;
+  color: #fff;
+}
+
+/* ═══ SPRINGTRAP CORNER DECORATIONS ═══ */
+.springtrap-corner {
+  position: relative;
+}
+
+.springtrap-corner::before,
+.springtrap-corner::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-color: #9b8c3b;
+  border-style: solid;
+  opacity: 0.6;
+}
+
+.springtrap-corner::before {
+  top: -1px;
+  left: -1px;
+  border-width: 2px 0 0 2px;
+}
+
+.springtrap-corner::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 2px 2px 0;
+}
+
+/* ═══ ENHANCED CRT SCREEN EFFECTS ═══ */
+@keyframes screenFlicker {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  92% {
+    opacity: 1;
+  }
+
+  93% {
+    opacity: 0.95;
+  }
+
+  94% {
+    opacity: 1;
+  }
+
+  96% {
+    opacity: 0.98;
+  }
+
+  97% {
+    opacity: 1;
+  }
+}
+
+.enhanced-crt {
+  animation: screenFlicker 0.15s infinite;
+}
+
+/* ═══ BLOOD Drip Effect ═══ */
+@keyframes bloodDrip {
+  0% {
+    height: 0;
+    opacity: 0;
+  }
+
+  10% {
+    height: 10px;
+    opacity: 1;
+  }
+
+  100% {
+    height: 40px;
+    opacity: 0.8;
+  }
+}
+
+.blood-drip {
+  position: relative;
+}
+
+.blood-drip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 20%;
+  width: 2px;
+  background: linear-gradient(to bottom, #7a1616, transparent);
+  animation: bloodDrip 8s ease-in-out infinite;
+  animation-delay: 2s;
+}
+
+/* ═══ SPRINGTRAP FONT STYLES ═══ */
+.font-springtrap {
+  font-family: 'Creepster', cursive;
+  letter-spacing: 0.05em;
+}
+
+.font-fnaf-terminal {
+  font-family: 'Share Tech Mono', 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+/* ═══ SCRAP CURRENCY STYLES ═══ */
+.scrap-coin-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background:
+    radial-gradient(ellipse at 30% 30%, #b8a050 0%, #9b8c3b 50%, #5a5040 100%);
+  border: 1px solid #9b8c3b;
+  border-radius: 50%;
+  box-shadow:
+    0 0 5px rgba(155, 140, 59, 0.3),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.3);
+  font-size: 10px;
+  color: #1a1614;
+  font-weight: bold;
+}
+
+/* ═══ ENHANCED SIDEBAR NAVIGATION ═══ */
+.spring-sidebar-nav-item {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.spring-sidebar-nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 60%;
+  background: linear-gradient(180deg, transparent, #9b8c3b, transparent);
+  transition: width 0.2s ease;
+}
+
+.spring-sidebar-nav-item:hover::before,
+.spring-sidebar-nav-item.active::before {
+  width: 3px;
+}
+
+.spring-sidebar-nav-item.active {
+  background: linear-gradient(90deg, rgba(155, 140, 59, 0.1) 0%, transparent 70%);
+}
+
+/* ═══ SPRINGTRAP HORROR OVERLAY ═══ */
+@keyframes horrorOverlay {
+
+  0%,
+  97%,
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+
+  98% {
+    opacity: 0.1;
+    transform: scale(1.02);
+  }
+
+  99% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+.horror-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9990;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(57, 255, 20, 0.02) 0%, transparent 70%);
+  animation: horrorOverlay 15s steps(1) infinite;
+}
+
+/* ═══ AFTON ROBOTICS WATERMARK ═══ */
+.afton-watermark {
+  position: fixed;
+  bottom: 10px;
+  right: 15px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: rgba(155, 140, 59, 0.3);
+  letter-spacing: 2px;
+  pointer-events: none;
+  z-index: 9990;
+}
+
+.afton-watermark::before {
+  content: 'AFTON ROBOTICS INC.';
+}
+
+/* ═══ SPRINGLOCK FAILURE ALERT ═══ */
+@keyframes springlockFailure {
+
+  0%,
+  100% {
+    border-color: #7a1616;
+    box-shadow: 0 0 0 rgba(122, 22, 22, 0);
+  }
+
+  50% {
+    border-color: #b02020;
+    box-shadow: 0 0 20px rgba(122, 22, 22, 0.3);
+  }
+}
+
+.springlock-failure-alert {
+  animation: springlockFailure 0.5s ease-in-out infinite;
+  border: 2px solid #7a1616;
+}
+
+/* ═══ RQ CODE / CORRUPTED DATA EFFECT ═══ */
+.corrupted-text {
+  position: relative;
+  display: inline-block;
+}
+
+.corrupted-text::before,
+.corrupted-text::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.corrupted-text::before {
+  color: #ff0040;
+  clip-path: inset(0 80% 0 0);
+  transform: translate(-2px, 0);
+  animation: corruptLeft 3s steps(4) infinite;
+}
+
+.corrupted-text::after {
+  color: #00ffff;
+  clip-path: inset(0 0 0 80%);
+  transform: translate(2px, 0);
+  animation: corruptRight 3s steps(4) infinite;
+}
+
+@keyframes corruptLeft {
+
+  0%,
+  90%,
+  100% {
+    clip-path: inset(0 80% 0 0);
+  }
+
+  92% {
+    clip-path: inset(40% 60% 20% 0);
+  }
+
+  94% {
+    clip-path: inset(20% 70% 40% 0);
+  }
+
+  96% {
+    clip-path: inset(0 80% 0 0);
+  }
+}
+
+@keyframes corruptRight {
+
+  0%,
+  90%,
+  100% {
+    clip-path: inset(0 0 0 80%);
+  }
+
+  91% {
+    clip-path: inset(30% 0 30% 60%);
+  }
+
+  93% {
+    clip-path: inset(10% 0 50% 70%);
+  }
+
+  95% {
+    clip-path: inset(0 0 0 80%);
+  }
+}
+
+/* ═══ ENHANCED BUTTONS ═══ */
+.springtrap-btn {
+  position: relative;
+  font-family: 'Share Tech Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 10px 20px;
+  background: linear-gradient(180deg, #2e2620 0%, #241e1a 100%);
+  border: 1px solid #4a4038;
+  color: #9b8c3b;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.springtrap-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(155, 140, 59, 0.1),
+      transparent);
+  transition: left 0.3s ease;
+}
+
+.springtrap-btn:hover {
+  border-color: #9b8c3b;
+  color: #d4c8b0;
+  box-shadow: 0 0 15px rgba(155, 140, 59, 0.2);
+}
+
+.springtrap-btn:hover::before {
+  left: 100%;
+}
+
+.springtrap-btn-primary {
+  border-color: rgba(57, 255, 20, 0.4);
+  color: #39ff14;
+}
+
+.springtrap-btn-primary:hover {
+  border-color: #39ff14;
+  box-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
+}
+
+.springtrap-btn-danger {
+  border-color: rgba(122, 22, 22, 0.4);
+  color: #7a1616;
+}
+
+.springtrap-btn-danger:hover {
+  border-color: #b02020;
+  box-shadow: 0 0 20px rgba(122, 22, 22, 0.3);
+}
+
+/* ═══ ENHANCED TABLE STYLES ═══ */
+.springtrap-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.springtrap-table th {
+  background: linear-gradient(180deg, #1e1a16 0%, #161412 100%);
+  border-bottom: 2px solid #3a3028;
+  color: #9b8c3b;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 12px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.springtrap-table td {
+  border-bottom: 1px solid #2a2420;
+  color: #d4c8b0;
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+.springtrap-table tr:hover td {
+  background: rgba(155, 140, 59, 0.03);
+}
+
+.springtrap-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ═══ SECURITY TERMINAL STYLES ═══ */
+.security-terminal {
+  background: #0a0908;
+  border: 2px solid #1a1614;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+.security-terminal-header {
+  background: linear-gradient(90deg, #1e1a16, #2a2420);
+  border-bottom: 1px solid #3a3028;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.security-terminal-content {
+  padding: 12px;
+  color: #39ff14;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.security-terminal-content .prompt {
+  color: #9b8c3b;
+}
+
+.security-terminal-content .command {
+  color: #d4c8b0;
+}
+
+/* ═══ ANIMATED BACKGROUND PARTICLES ═══ */
+@keyframes particleFloat {
+
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0.3;
+  }
+
+  25% {
+    transform: translate(10px, -20px) rotate(90deg);
+    opacity: 0.6;
+  }
+
+  50% {
+    transform: translate(-5px, -40px) rotate(180deg);
+    opacity: 0.3;
+  }
+
+  75% {
+    transform: translate(-15px, -20px) rotate(270deg);
+    opacity: 0.5;
+  }
+}
+
+.particle-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.particle-bg::before,
+.particle-bg::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: rgba(57, 255, 20, 0.2);
+  border-radius: 50%;
+  animation: particleFloat 20s ease-in-out infinite;
+}
+
+.particle-bg::before {
+  left: 20%;
+  bottom: 0;
+}
+
+.particle-bg::after {
+  left: 70%;
+  bottom: 10%;
+  animation-delay: -10s;
+  animation-duration: 25s;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SPRINGOS BALANCED — Clean & Professional FNaF Admin Theme
+   "Professional decay aesthetic" — Readable, structured, atmospheric
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ═══ ROOT COLOR VARIABLES — Balanced Palette ═══ */
+:root {
+  --sp-bg-primary: #12100e;
+  --sp-bg-secondary: #1a1714;
+  --sp-bg-tertiary: #231f1b;
+  --sp-border: #35302a;
+  --sp-border-light: #4a4440;
+  --sp-text-primary: #e8e0d8;
+  --sp-text-secondary: #b8b0a8;
+  --sp-text-muted: #7a7570;
+  --sp-mustard: #c4b454;
+  --sp-mustard-dim: #8a8050;
+  --sp-green: #5a8a3a;
+  --sp-green-bright: #7ab45a;
+  --sp-blood: #8a3a3a;
+  --sp-blood-bright: #b45858;
+  --sp-gold: #b8a060;
+  --sp-rust: #6a5448;
+}
+
+/* ═══ BALANCED CARD STYLES ═══ */
+.sp-card {
+  background: linear-gradient(180deg, var(--sp-bg-secondary) 0%, var(--sp-bg-primary) 100%);
+  border: 1px solid var(--sp-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.sp-card:hover {
+  border-color: var(--sp-border-light);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.sp-card-header {
+  background: linear-gradient(180deg, var(--sp-bg-tertiary) 0%, var(--sp-bg-secondary) 100%);
+  border-bottom: 1px solid var(--sp-border);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-card-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--sp-mustard);
+}
+
+.sp-card-body {
+  padding: 16px;
+}
+
+/* ═══ BALANCED METRIC CARDS ═══ */
+.sp-metric {
+  background: var(--sp-bg-secondary);
+  border: 1px solid var(--sp-border);
+  border-left: 3px solid var(--sp-mustard-dim);
+  border-radius: 4px;
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+
+.sp-metric:hover {
+  border-left-color: var(--sp-mustard);
+  background: var(--sp-bg-tertiary);
+}
+
+.sp-metric-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--sp-text-muted);
+  margin-bottom: 8px;
+}
+
+.sp-metric-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--sp-text-primary);
+  line-height: 1;
+}
+
+.sp-metric-value.success {
+  color: var(--sp-green-bright);
+}
+
+.sp-metric-value.warning {
+  color: var(--sp-mustard);
+}
+
+.sp-metric-value.danger {
+  color: var(--sp-blood-bright);
+}
+
+.sp-metric-delta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.sp-metric-delta.positive {
+  background: rgba(90, 138, 58, 0.15);
+  color: var(--sp-green-bright);
+}
+
+.sp-metric-delta.negative {
+  background: rgba(138, 58, 58, 0.15);
+  color: var(--sp-blood-bright);
+}
+
+/* ═══ BALANCED TABLE STYLES ═══ */
+.sp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+}
+
+.sp-table thead {
+  background: var(--sp-bg-tertiary);
+}
+
+.sp-table th {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--sp-mustard-dim);
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 2px solid var(--sp-border);
+}
+
+.sp-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--sp-border);
+  color: var(--sp-text-secondary);
+}
+
+.sp-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.sp-table tbody tr:hover {
+  background: rgba(196, 180, 84, 0.03);
+}
+
+.sp-table .rank {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  color: var(--sp-mustard);
+  width: 40px;
+}
+
+.sp-table .value {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--sp-green-bright);
+  font-weight: 600;
+}
+
+/* ═══ BALANCED STATUS BADGES ═══ */
+.sp-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sp-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.sp-badge.success {
+  background: rgba(90, 138, 58, 0.15);
+  color: var(--sp-green-bright);
+  border: 1px solid rgba(90, 138, 58, 0.3);
+}
+
+.sp-badge.success::before {
+  background: var(--sp-green-bright);
+  box-shadow: 0 0 4px var(--sp-green-bright);
+}
+
+.sp-badge.warning {
+  background: rgba(196, 180, 84, 0.15);
+  color: var(--sp-mustard);
+  border: 1px solid rgba(196, 180, 84, 0.3);
+}
+
+.sp-badge.warning::before {
+  background: var(--sp-mustard);
+  box-shadow: 0 0 4px var(--sp-mustard);
+}
+
+.sp-badge.danger {
+  background: rgba(138, 58, 58, 0.15);
+  color: var(--sp-blood-bright);
+  border: 1px solid rgba(138, 58, 58, 0.3);
+}
+
+.sp-badge.danger::before {
+  background: var(--sp-blood-bright);
+  box-shadow: 0 0 4px var(--sp-blood-bright);
+}
+
+.sp-badge.inactive {
+  background: rgba(122, 117, 112, 0.1);
+  color: var(--sp-text-muted);
+  border: 1px solid var(--sp-border);
+}
+
+.sp-badge.inactive::before {
+  background: var(--sp-text-muted);
+}
+
+/* ═══ BALANCED BUTTON STYLES ═══ */
+.sp-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 10px 18px;
+  border-radius: 4px;
+  border: 1px solid var(--sp-border);
+  background: var(--sp-bg-secondary);
+  color: var(--sp-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-btn:hover {
+  background: var(--sp-bg-tertiary);
+  border-color: var(--sp-border-light);
+  color: var(--sp-text-primary);
+}
+
+.sp-btn:active {
+  transform: translateY(1px);
+}
+
+.sp-btn-primary {
+  background: rgba(90, 138, 58, 0.15);
+  border-color: rgba(90, 138, 58, 0.4);
+  color: var(--sp-green-bright);
+}
+
+.sp-btn-primary:hover {
+  background: rgba(90, 138, 58, 0.25);
+  border-color: var(--sp-green-bright);
+}
+
+.sp-btn-danger {
+  background: rgba(138, 58, 58, 0.15);
+  border-color: rgba(138, 58, 58, 0.4);
+  color: var(--sp-blood-bright);
+}
+
+.sp-btn-danger:hover {
+  background: rgba(138, 58, 58, 0.25);
+  border-color: var(--sp-blood-bright);
+}
+
+.sp-btn-mustard {
+  background: rgba(196, 180, 84, 0.15);
+  border-color: rgba(196, 180, 84, 0.4);
+  color: var(--sp-mustard);
+}
+
+.sp-btn-mustard:hover {
+  background: rgba(196, 180, 84, 0.25);
+  border-color: var(--sp-mustard);
+}
+
+/* ═══ BALANCED PROGRESS BARS ═══ */
+.sp-progress {
+  height: 8px;
+  background: var(--sp-bg-primary);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--sp-border);
+}
+
+.sp-progress-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.sp-progress-bar.success {
+  background: linear-gradient(90deg, var(--sp-green), var(--sp-green-bright));
+}
+
+.sp-progress-bar.warning {
+  background: linear-gradient(90deg, var(--sp-mustard-dim), var(--sp-mustard));
+}
+
+.sp-progress-bar.danger {
+  background: linear-gradient(90deg, var(--sp-blood), var(--sp-blood-bright));
+}
+
+/* ═══ BALANCED SECTION HEADER ═══ */
+.sp-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--sp-border);
+  margin-bottom: 20px;
+}
+
+.sp-section-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--sp-mustard);
+}
+
+.sp-section-subtitle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--sp-text-muted);
+}
+
+/* ═══ BALANCED INFO ROW ═══ */
+.sp-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--sp-border);
+}
+
+.sp-info-row:last-child {
+  border-bottom: none;
+}
+
+.sp-info-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--sp-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-info-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sp-text-primary);
+}
+
+/* ═══ BALANCED CHART CONTAINER ═══ */
+.sp-chart-container {
+  background: var(--sp-bg-primary);
+  border: 1px solid var(--sp-border);
+  border-radius: 4px;
+  padding: 16px;
+  position: relative;
+}
+
+.sp-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.sp-chart-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--sp-mustard);
+}
+
+.sp-chart-status {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sp-green-bright);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sp-chart-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--sp-green-bright);
+  border-radius: 50%;
+  box-shadow: 0 0 4px var(--sp-green-bright);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ═══ BALANCED ALERT STYLES ═══ */
+.sp-alert {
+  padding: 12px 16px;
+  border-radius: 4px;
+  border-left: 3px solid;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.sp-alert-icon {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.sp-alert.success {
+  background: rgba(90, 138, 58, 0.08);
+  border-color: var(--sp-green);
+  color: var(--sp-green-bright);
+}
+
+.sp-alert.warning {
+  background: rgba(196, 180, 84, 0.08);
+  border-color: var(--sp-mustard);
+  color: var(--sp-mustard);
+}
+
+.sp-alert.danger {
+  background: rgba(138, 58, 58, 0.08);
+  border-color: var(--sp-blood);
+  color: var(--sp-blood-bright);
+}
+
+/* ═══ BALANCED INPUT STYLES ═══ */
+.sp-input {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  background: var(--sp-bg-primary);
+  border: 1px solid var(--sp-border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  color: var(--sp-text-primary);
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.sp-input:focus {
+  outline: none;
+  border-color: var(--sp-mustard-dim);
+  box-shadow: 0 0 0 2px rgba(196, 180, 84, 0.1);
+}
+
+.sp-input::placeholder {
+  color: var(--sp-text-muted);
+}
+
+/* ═══ BALANCED SIDEBAR NAV ═══ */
+.sp-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 4px;
+  color: var(--sp-text-secondary);
+  text-decoration: none;
+  transition: all 0.15s ease;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  border-left: 2px solid transparent;
+}
+
+.sp-nav-item:hover {
+  background: rgba(196, 180, 84, 0.05);
+  color: var(--sp-text-primary);
+}
+
+.sp-nav-item.active {
+  background: rgba(196, 180, 84, 0.08);
+  border-left-color: var(--sp-mustard);
+  color: var(--sp-mustard);
+}
+
+.sp-nav-icon {
+  width: 20px;
+  text-align: center;
+  color: var(--sp-mustard-dim);
+}
+
+.sp-nav-item.active .sp-nav-icon {
+  color: var(--sp-mustard);
+}
+
+.sp-nav-children {
+  margin-left: 32px;
+  padding-left: 12px;
+  border-left: 1px solid var(--sp-border);
+}
+
+/* ═══ BALANCED TAB STYLES ═══ */
+.sp-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--sp-border);
+  margin-bottom: 20px;
+}
+
+.sp-tab {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 10px 16px;
+  color: var(--sp-text-muted);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.sp-tab:hover {
+  color: var(--sp-text-secondary);
+}
+
+.sp-tab.active {
+  color: var(--sp-mustard);
+  border-bottom-color: var(--sp-mustard);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SPRINGOS PREMIUM — Enhanced UI Components
+   Beautiful, balanced, professional admin interface
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ═══ PREMIUM CARD VARIATIONS ═══ */
+.sp-card-premium {
+  background: linear-gradient(145deg, #1e1a16 0%, #161412 50%, #12100e 100%);
+  border: 1px solid #2a2620;
+  border-radius: 8px;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.3),
+    0 2px 4px -1px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sp-card-premium:hover {
+  border-color: #3a3430;
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.4),
+    0 4px 6px -2px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transform: translateY(-2px);
+}
+
+.sp-card-glow {
+  position: relative;
+}
+
+.sp-card-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(196, 180, 84, 0.1) 0%, transparent 50%, transparent 100%);
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.sp-card-glow:hover::before {
+  opacity: 1;
+}
+
+/* ═══ PREMIUM METRICS ═══ */
+.sp-metric-premium {
+  background: linear-gradient(145deg, #1e1a16 0%, #161412 100%);
+  border: 1px solid #2a2620;
+  border-radius: 8px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.sp-metric-premium::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--sp-mustard), transparent);
+  opacity: 0.5;
+}
+
+.sp-metric-premium:hover {
+  border-color: #3a3430;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+}
+
+.sp-metric-premium.success::before {
+  background: linear-gradient(90deg, transparent, var(--sp-green-bright), transparent);
+}
+
+.sp-metric-premium.warning::before {
+  background: linear-gradient(90deg, transparent, var(--sp-mustard), transparent);
+}
+
+.sp-metric-premium.danger::before {
+  background: linear-gradient(90deg, transparent, var(--sp-blood-bright), transparent);
+}
+
+.sp-metric-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  margin-bottom: 12px;
+  background: rgba(196, 180, 84, 0.1);
+  border: 1px solid rgba(196, 180, 84, 0.2);
+  color: var(--sp-mustard);
+}
+
+.sp-metric-icon.success {
+  background: rgba(90, 138, 58, 0.1);
+  border-color: rgba(90, 138, 58, 0.2);
+  color: var(--sp-green-bright);
+}
+
+.sp-metric-icon.warning {
+  background: rgba(196, 180, 84, 0.1);
+  border-color: rgba(196, 180, 84, 0.2);
+  color: var(--sp-mustard);
+}
+
+.sp-metric-icon.danger {
+  background: rgba(138, 58, 58, 0.1);
+  border-color: rgba(138, 58, 58, 0.2);
+  color: var(--sp-blood-bright);
+}
+
+.sp-metric-label-premium {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--sp-text-muted);
+  margin-bottom: 8px;
+}
+
+.sp-metric-value-premium {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--sp-text-primary);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.sp-metric-value-premium.success {
+  color: var(--sp-green-bright);
+}
+
+.sp-metric-value-premium.warning {
+  color: var(--sp-mustard);
+}
+
+.sp-metric-value-premium.danger {
+  color: var(--sp-blood-bright);
+}
+
+/* ═══ PREMIUM CHART ═══ */
+.sp-chart-premium {
+  background: linear-gradient(145deg, #161412 0%, #12100e 100%);
+  border: 1px solid #2a2620;
+  border-radius: 8px;
+  padding: 20px;
+  position: relative;
+}
+
+.sp-chart-header-premium {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #2a2620;
+}
+
+.sp-chart-title-premium {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--sp-mustard);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sp-chart-subtitle {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--sp-text-muted);
+  margin-top: 4px;
+}
+
+.sp-chart-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(90, 138, 58, 0.1);
+  color: var(--sp-green-bright);
+  border: 1px solid rgba(90, 138, 58, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sp-chart-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--sp-green-bright);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--sp-green-bright);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ═══ PREMIUM LIST ITEMS ═══ */
+.sp-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #2a2620;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.sp-list-item:last-child {
+  border-bottom: none;
+}
+
+.sp-list-item:hover {
+  background: rgba(196, 180, 84, 0.03);
+  padding-left: 20px;
+}
+
+.sp-list-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.sp-list-icon.success {
+  background: rgba(90, 138, 58, 0.1);
+  color: var(--sp-green-bright);
+}
+
+.sp-list-icon.warning {
+  background: rgba(196, 180, 84, 0.1);
+  color: var(--sp-mustard);
+}
+
+.sp-list-icon.danger {
+  background: rgba(138, 58, 58, 0.1);
+  color: var(--sp-blood-bright);
+}
+
+.sp-list-icon.info {
+  background: rgba(184, 160, 96, 0.1);
+  color: var(--sp-gold);
+}
+
+.sp-list-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.sp-list-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--sp-text-primary);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sp-list-subtitle {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--sp-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sp-list-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--sp-text-muted);
+  flex-shrink: 0;
+}
+
+/* ═══ PREMIUM TABLE ═══ */
+.sp-table-premium {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+}
+
+.sp-table-premium th {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--sp-mustard-dim);
+  padding: 14px 16px;
+  text-align: left;
+  background: #1a1714;
+  border-bottom: 2px solid #2a2620;
+  white-space: nowrap;
+}
+
+.sp-table-premium th:first-child {
+  border-radius: 6px 0 0 0;
+}
+
+.sp-table-premium th:last-child {
+  border-radius: 0 6px 0 0;
+}
+
+.sp-table-premium td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #2a2620;
+  color: var(--sp-text-secondary);
+  transition: all 0.15s ease;
+}
+
+.sp-table-premium tbody tr {
+  transition: all 0.15s ease;
+}
+
+.sp-table-premium tbody tr:hover {
+  background: rgba(196, 180, 84, 0.03);
+}
+
+.sp-table-premium tbody tr:hover td {
+  color: var(--sp-text-primary);
+}
+
+.sp-table-rank {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  color: var(--sp-mustard);
+  width: 50px;
+  font-size: 16px;
+}
+
+.sp-table-value {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--sp-green-bright);
+  font-weight: 600;
+  text-align: right;
+}
+
+/* ═══ PREMIUM BUTTONS ═══ */
+.sp-btn-premium {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 12px 20px;
+  border-radius: 6px;
+  border: 1px solid #2a2620;
+  background: linear-gradient(180deg, #1e1a16 0%, #161412 100%);
+  color: var(--sp-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.sp-btn-premium::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  transition: left 0.5s ease;
+}
+
+.sp-btn-premium:hover {
+  border-color: #3a3430;
+  color: var(--sp-text-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.sp-btn-premium:hover::before {
+  left: 100%;
+}
+
+.sp-btn-premium:active {
+  transform: translateY(1px);
+}
+
+.sp-btn-premium-primary {
+  background: linear-gradient(180deg, rgba(90, 138, 58, 0.15) 0%, rgba(90, 138, 58, 0.08) 100%);
+  border-color: rgba(90, 138, 58, 0.3);
+  color: var(--sp-green-bright);
+}
+
+.sp-btn-premium-primary:hover {
+  border-color: var(--sp-green-bright);
+  box-shadow: 0 0 16px rgba(90, 138, 58, 0.2);
+}
+
+.sp-btn-premium-danger {
+  background: linear-gradient(180deg, rgba(138, 58, 58, 0.15) 0%, rgba(138, 58, 58, 0.08) 100%);
+  border-color: rgba(138, 58, 58, 0.3);
+  color: var(--sp-blood-bright);
+}
+
+.sp-btn-premium-danger:hover {
+  border-color: var(--sp-blood-bright);
+  box-shadow: 0 0 16px rgba(138, 58, 58, 0.2);
+}
+
+/* ═══ PREMIUM STATUS DOTS ═══ */
+.sp-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+}
+
+.sp-status-dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+.sp-status-dot.success {
+  background: var(--sp-green-bright);
+  box-shadow: 0 0 8px var(--sp-green-bright);
+}
+
+.sp-status-dot.success::after {
+  border: 1px solid var(--sp-green-bright);
+}
+
+.sp-status-dot.warning {
+  background: var(--sp-mustard);
+  box-shadow: 0 0 8px var(--sp-mustard);
+}
+
+.sp-status-dot.warning::after {
+  border: 1px solid var(--sp-mustard);
+}
+
+.sp-status-dot.danger {
+  background: var(--sp-blood-bright);
+  box-shadow: 0 0 8px var(--sp-blood-bright);
+}
+
+.sp-status-dot.danger::after {
+  border: 1px solid var(--sp-blood-bright);
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* ═══ PREMIUM HEADER ═══ */
+.sp-header-premium {
+  background: linear-gradient(180deg, #1e1a16 0%, #161412 100%);
+  border-bottom: 1px solid #2a2620;
+  padding: 24px;
+  border-radius: 8px 8px 0 0;
+  margin-bottom: 0;
+}
+
+.sp-header-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--sp-mustard);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sp-header-subtitle {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--sp-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-header-breadcrumb {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--sp-mustard-dim);
+  margin-bottom: 16px;
+}
+
+.sp-header-breadcrumb span {
+  color: var(--sp-text-muted);
+}
+
+/* ═══ PREMIUM SECTION ═══ */
+.sp-section-premium {
+  margin-bottom: 24px;
+}
+
+.sp-section-header-premium {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #2a2620;
+}
+
+.sp-section-title-premium {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--sp-mustard);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sp-section-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ═══ PREMIUM ALERTS ═══ */
+.sp-alert-premium {
+  padding: 16px 20px;
+  border-radius: 8px;
+  border-left: 3px solid;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sp-alert-icon-premium {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.sp-alert-content-premium {
+  flex: 1;
+}
+
+.sp-alert-title-premium {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.sp-alert-text-premium {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--sp-text-secondary);
+  line-height: 1.5;
+}
+
+.sp-alert-premium.success {
+  background: rgba(90, 138, 58, 0.08);
+  border-color: var(--sp-green);
+}
+
+.sp-alert-premium.success .sp-alert-icon-premium {
+  background: rgba(90, 138, 58, 0.15);
+  color: var(--sp-green-bright);
+}
+
+.sp-alert-premium.success .sp-alert-title-premium {
+  color: var(--sp-green-bright);
+}
+
+.sp-alert-premium.warning {
+  background: rgba(196, 180, 84, 0.08);
+  border-color: var(--sp-mustard);
+}
+
+.sp-alert-premium.warning .sp-alert-icon-premium {
+  background: rgba(196, 180, 84, 0.15);
+  color: var(--sp-mustard);
+}
+
+.sp-alert-premium.warning .sp-alert-title-premium {
+  color: var(--sp-mustard);
+}
+
+.sp-alert-premium.danger {
+  background: rgba(138, 58, 58, 0.08);
+  border-color: var(--sp-blood);
+}
+
+.sp-alert-premium.danger .sp-alert-icon-premium {
+  background: rgba(138, 58, 58, 0.15);
+  color: var(--sp-blood-bright);
+}
+
+.sp-alert-premium.danger .sp-alert-title-premium {
+  color: var(--sp-blood-bright);
+}
+
+/* ═══ PREMIUM GRID LAYOUTS ═══ */
+.sp-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.sp-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.sp-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 1200px) {
+  .sp-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+
+  .sp-grid-4,
+  .sp-grid-3,
+  .sp-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ═══ PREMIUM DIVIDER ═══ */
+.sp-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #2a2620, transparent);
+  margin: 24px 0;
+}
+
+/* ═══ PREMIUM FOOTER ═══ */
+.sp-footer-premium {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  margin-top: 24px;
+  border-top: 1px solid #2a2620;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--sp-text-muted);
+}
+
+.sp-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-footer-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sp-green-bright);
+}
+
+/* ═══ MOBILE RESPONSIVE ENHANCEMENTS ═══ */
+@media (max-width: 768px) {
+  .springtrap-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+  .afton-watermark {
+    font-size: 8px;
+    bottom: 5px;
+    right: 10px;
+  }
+
+  .springtrap-table th,
+  .springtrap-table td {
+    padding: 8px;
+    font-size: 11px;
+  }
+
+  /* Balanced mobile adjustments */
+  .sp-metric-value {
+    font-size: 22px;
+  }
+
+  .sp-card {
+    margin-bottom: 12px;
+  }
+
+  .sp-section-title {
+    font-size: 14px;
+  }
+
+  .sp-metric-value-premium {
+    font-size: 24px;
+  }
+
+  .sp-list-item {
+    padding: 12px;
+  }
+
+  .sp-list-title {
+    font-size: 13px;
+  }
+
+  .sp-header-premium {
+    padding: 16px;
+  }
+
+  .sp-header-title {
+    font-size: 16px;
+  }
+}

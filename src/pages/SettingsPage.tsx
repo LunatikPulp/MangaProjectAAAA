@@ -5,6 +5,7 @@ import { ToasterContext } from '../contexts/ToasterContext';
 import Avatar from '../components/Avatar';
 import Modal from '../components/Modal';
 import { API_BASE } from '../services/externalApiService';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/iosScrollLock';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 
@@ -92,9 +93,9 @@ const SettingsPage: React.FC = () => {
 
     // Lock body scroll when crop modal open
     useEffect(() => {
-        if (cropImageSrc) document.body.style.overflow = 'hidden';
-        else document.body.style.overflow = '';
-        return () => { document.body.style.overflow = ''; };
+        if (cropImageSrc) lockBodyScroll();
+        else unlockBodyScroll();
+        return () => unlockBodyScroll();
     }, [cropImageSrc]);
 
     if (!user) return <div className="text-center p-8 font-mono text-muted">[ ЗАГРУЗКА ]</div>;

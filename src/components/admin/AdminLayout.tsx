@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import SpringSidebar from './SpringSidebar';
+import '../../styles/springos.css';
 
 // Simple icons
 const IconMenu = () => (

@@ -106,8 +106,7 @@ const ShopPageAdmin: React.FC = () => {
 
   useEffect(() => { Promise.all([fetchItems(), fetchPersReqs()]).finally(() => setLoading(false)); }, []);
 
-  // Скрываем рамки за уровни (Frames_lvl) — они не продаются, управляются отдельно
-  const shopItems = items.filter(i => !(i.category === 'frame' && i.preview?.includes('/Frames_lvl/')));
+  const shopItems = items;
   const filtered = shopItems.filter(i => {
     if (filterCat && i.category !== filterCat) return false;
     if (searchQuery && !i.name.toLowerCase().includes(searchQuery.toLowerCase()) && !i.key.toLowerCase().includes(searchQuery.toLowerCase())) return false;

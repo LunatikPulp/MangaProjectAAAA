@@ -45,10 +45,14 @@ export const useHistory = () => {
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    const items: HistoryItem[] = data.map((item: { mangaId: string; chapterId: string; readAt: string }) => ({
+                    const items: HistoryItem[] = data.map((item: HistoryItem) => ({
                         mangaId: item.mangaId,
                         chapterId: item.chapterId,
                         readAt: item.readAt,
+                        mangaTitle: item.mangaTitle,
+                        mangaCover: item.mangaCover,
+                        mangaSlug: item.mangaSlug,
+                        chapterNumber: item.chapterNumber,
                     }));
                     setHistory(items);
                     // Cache in localStorage too

@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import html
 import shutil
 import requests
 from urllib.parse import urljoin, urlparse
@@ -18,7 +19,7 @@ import aiofiles
 from typing import List, Dict, Optional, Tuple
 from bs4 import BeautifulSoup
 from PIL import Image
-from fastapi import FastAPI, HTTPException, Query, Body, BackgroundTasks, Depends, status, Request, UploadFile, File as FastAPIFile
+from fastapi import FastAPI, HTTPException, Query, Body, BackgroundTasks, Depends, status, Request, UploadFile, File as FastAPIFile, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
@@ -43,9 +44,9 @@ except Exception:
 # Local imports
 from database import engine, SessionLocal, Base, get_db, DB_PATH
 from badword_filter import check_comment, shadow_replace
-from models import User, ChapterView, ChapterLike, ChapterMeta, MangaItem, MangaView, MangaRating, MangaBookmark, ReadingHistory, Chapter, WallComment, MangaComment, CommentLike, CommentReport, UserWarning, Friendship, UserBlock, DirectMessage, WallCommentReply, UserNotification, ShopItem, UserPurchase, PersonalizationRequest, PaymentTransaction, SiteSetting, AuditLog, ScrapTransaction, Promocode, LoginHistory, Report, PasswordResetToken
+from models import User, ChapterView, ChapterLike, ChapterMeta, MangaItem, MangaView, MangaRating, MangaBookmark, ReadingHistory, Chapter, WallComment, MangaComment, CommentLike, CommentReport, UserWarning, Friendship, UserBlock, DirectMessage, WallCommentReply, UserNotification, ShopItem, UserPurchase, PersonalizationRequest, PaymentTransaction, SiteSetting, AuditLog, ScrapTransaction, Promocode, LoginHistory, Report, PasswordResetToken, ReadingProgress
 import auth
-from auth import get_current_user, get_optional_user, get_password_hash, verify_password, create_access_token
+from auth import get_current_user, get_optional_user, get_password_hash, verify_password, create_access_token, get_admin_user
 
 # Create DB tables
 Base.metadata.create_all(bind=engine)
@@ -613,6 +614,15 @@ def migrate_add_indexes():
         ("ix_manga_comments_user_id", "manga_comments", "user_id"),
         ("ix_bookmark_user_created", "manga_bookmarks", "user_id, created_at"),
         ("ix_reading_history_user_read_at", "reading_history", "user_id, read_at"),
+        # Hot paths: comments list + notifications list + wall feed
+        ("ix_manga_comments_manga_created", "manga_comments", "manga_id, created_at"),
+        ("ix_user_notifications_user_created", "user_notifications", "user_id, created_at"),
+        ("ix_user_notifications_unread", "user_notifications", "user_id, is_read"),
+        ("ix_wall_comments_profile_created", "wall_comments", "profile_user_id, created_at"),
+        ("ix_wall_comment_replies_comment", "wall_comment_replies", "wall_comment_id, created_at"),
+        # Social queries
+        ("ix_friendships_friend_id", "friendships", "friend_id"),
+        ("ix_direct_messages_recipient", "direct_messages", "recipient_id, created_at"),
     ]
     for idx_name, table, columns in indexes:
         try:
@@ -630,13 +640,6 @@ def seed_shop_items():
     db = SessionLocal()
     try:
         items = [
-            # Рамки для аватара (разблокируются по уровням)
-            ShopItem(key="frame_rusty_gear", name="Ржавая Шестерня", description="Разблокируется на 5 уровне", category="frame", price=0, preview="/Frames_lvl/Rusty_gear.png", rarity="common", required_level=5),
-            ShopItem(key="frame_neon_wire", name="Неоновая Проволока", description="Разблокируется на 10 уровне", category="frame", price=0, preview="/Frames_lvl/Neon_wire.png", rarity="rare", required_level=10),
-            ShopItem(key="frame_animatronic_jaw", name="Челюсть Аниматроника", description="Разблокируется на 15 уровне", category="frame", price=0, preview="/Frames_lvl/Animatronic_Jaw.png", rarity="rare", required_level=15),
-            ShopItem(key="frame_golden_rule", name="Золотое Правило", description="Разблокируется на 25 уровне", category="frame", price=0, preview="/Frames_lvl/The_Golden_Rule.png", rarity="epic", required_level=25),
-            ShopItem(key="frame_poisonous_vine", name="Ядовитая Лоза", description="Разблокируется на 35 уровне", category="frame", price=0, preview="/Frames_lvl/Poisonous_vine.png", rarity="epic", required_level=35),
-            ShopItem(key="frame_system_glitch", name="Системный Глитч", description="Разблокируется на 50 уровне", category="frame", price=0, preview="/Frames_lvl/System_Glitch.png", rarity="mythic", required_level=50),
             # Стикеры
             ShopItem(key="sticker_kek", name="KEK", description="Классический стикер для стены", category="sticker", price=30, preview="😂"),
             ShopItem(key="sticker_rage", name="RAGE", description="Когда сюжет бесит", category="sticker", price=30, preview="😡"),
@@ -808,16 +811,24 @@ def ensure_admin_exists():
     try:
         admin = db.query(User).filter(User.email == "admin@example.com").first()
         if not admin:
+            import secrets, string
+            _admin_pass = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
             admin = User(
                 username="admin",
                 email="admin@example.com",
-                hashed_password=get_password_hash("admin123"),
+                hashed_password=get_password_hash(_admin_pass),
                 role="admin",
                 status="active",
             )
             db.add(admin)
             db.commit()
-            print("[INIT] Создан аккаунт админа: admin@example.com / admin123")
+            try:
+                with open("/opt/manga/admin_password.txt", "w") as f:
+                    f.write(_admin_pass)
+                os.chmod("/opt/manga/admin_password.txt", 0o600)
+            except Exception:
+                pass
+            print(f"[INIT] Создан аккаунт админа: admin@example.com — пароль сохранён в /opt/manga/admin_password.txt")
         else:
             # Убедимся что роль — admin
             if admin.role != "admin":
@@ -843,8 +854,8 @@ HEADERS = {
 MANGABUFF_PROXY = os.environ.get("MANGABUFF_PROXY", None)  # e.g. http://user:pass@host:port
 
 # --- Mangabuff account credentials for 18+ content ---
-MANGABUFF_EMAIL = os.environ.get("MANGABUFF_EMAIL", "basovroma765@gmail.com")
-MANGABUFF_PASSWORD = os.environ.get("MANGABUFF_PASSWORD", "66625422")
+MANGABUFF_EMAIL = os.environ.get("MANGABUFF_EMAIL", "")
+MANGABUFF_PASSWORD = os.environ.get("MANGABUFF_PASSWORD", "")
 
 # Cached auth cookies from mangabuff login
 _mangabuff_auth_cookies: Optional[dict] = None
@@ -854,6 +865,9 @@ async def mangabuff_login() -> dict:
     global _mangabuff_auth_cookies
     if _mangabuff_auth_cookies:
         return _mangabuff_auth_cookies
+    if not MANGABUFF_EMAIL or not MANGABUFF_PASSWORD:
+        print("[mangabuff_login] WARNING: MANGABUFF_EMAIL/PASSWORD not set — skipping login")
+        return {}
 
     import aiohttp
     from bs4 import BeautifulSoup as BS
@@ -902,8 +916,9 @@ async def mangabuff_login() -> dict:
         print(f"[mangabuff_login] Logged in successfully, got {len(cookies)} cookies")
         return cookies
 
-# Глобальный кеш для хранения информации о манге
-manga_cache = {}
+# Глобальный кеш для хранения информации о манге (LRU с лимитом 500 записей)
+from cachetools import LRUCache
+manga_cache = LRUCache(maxsize=500)
 browser_pool = None
 
 class MangaRequest(BaseModel):
@@ -1024,13 +1039,77 @@ AVATARS_DIR = os.path.join(UPLOADS_DIR, "avatars")
 BANNERS_DIR = os.path.join(UPLOADS_DIR, "banners")
 BACKGROUNDS_DIR = os.path.join(UPLOADS_DIR, "backgrounds")
 SHOP_UPLOADS_DIR = os.path.join(UPLOADS_DIR, "shop")
-FRAMES_LVL_DIR = os.path.join(os.path.dirname(BACKEND_DIR), "public", "Frames_lvl")
 FRAMES_SHOP_DIR = os.path.join(os.path.dirname(BACKEND_DIR), "public", "Frames_shop")
+FRONTEND_DIST_DIR = os.path.join(os.path.dirname(BACKEND_DIR), "dist")
+ACHIEVEMENT_ICONS_DIR = os.path.join(FRONTEND_DIST_DIR, "Achievement Icons")
+LOGO_DIR = os.path.join(FRONTEND_DIST_DIR, "Logo")
 os.makedirs(MANGA_DIR, exist_ok=True)
 os.makedirs(AVATARS_DIR, exist_ok=True)
 os.makedirs(BANNERS_DIR, exist_ok=True)
 os.makedirs(BACKGROUNDS_DIR, exist_ok=True)
 os.makedirs(SHOP_UPLOADS_DIR, exist_ok=True)
+
+# ═══ File upload validation (magic bytes) ═══
+MAGIC_BYTES = {
+    b'\xff\xd8\xff': 'image',      # JPEG
+    b'\x89PNG': 'image',            # PNG
+    b'GIF8': 'image',               # GIF
+    b'RIFF': 'image',               # WebP (RIFF....WEBP)
+    b'\x00\x00\x00': 'video',      # MP4/MOV (ftyp box)
+    b'\x1a\x45\xdf\xa3': 'video',  # WebM/MKV (EBML)
+}
+
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
+
+def validate_upload_content(content: bytes, allowed_types: set[str] = {'image'}) -> bool:
+    """Validate file content by checking magic bytes. allowed_types: {'image'}, {'video'}, or {'image', 'video'}."""
+    if len(content) > MAX_UPLOAD_SIZE:
+        return False
+    if len(content) < 4:
+        return False
+    for magic, ftype in MAGIC_BYTES.items():
+        if content[:len(magic)] == magic and ftype in allowed_types:
+            # Extra check for WebP: bytes 8-12 should be 'WEBP'
+            if magic == b'RIFF' and content[8:12] != b'WEBP':
+                continue
+            # Extra check for MP4: should contain 'ftyp' near start
+            if magic == b'\x00\x00\x00' and b'ftyp' not in content[:12]:
+                continue
+            return True
+    return False
+
+async def read_upload_safely(file: "UploadFile", max_size: int = MAX_UPLOAD_SIZE) -> bytes:
+    """Stream-read UploadFile with hard size limit. Raises 413 if exceeded.
+    Prevents OOM by aborting early instead of reading full file into RAM."""
+    chunks = []
+    total = 0
+    chunk_size = 64 * 1024  # 64 KB
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_size:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Файл слишком большой (макс. {max_size // (1024 * 1024)} MB)"
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+async def fetch_image_bytes_safely(resp, max_size: int = MAX_UPLOAD_SIZE) -> bytes:
+    """Stream-read aiohttp response body with hard size limit. Raises 413 if exceeded."""
+    chunks = []
+    total = 0
+    async for chunk in resp.content.iter_chunked(64 * 1024):
+        total += len(chunk)
+        if total > max_size:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Remote image too large (max {max_size // (1024 * 1024)} MB)"
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 PAYPALYCH_API_KEY = os.environ.get("PAYPALYCH_API_KEY", "")
 PAYPALYCH_SHOP_ID = os.environ.get("PAYPALYCH_SHOP_ID", "")
@@ -1082,12 +1161,14 @@ def apply_mute(author: User, db, reason_text: str, manga_title: str, comment_tex
             author.muted_until = datetime(2099, 1, 1)
             mute_label = "вечный мут (повтор в течение года)"
 
+    _safe_author = html.escape(author.username) if author.username else "User"
+    _safe_comment = html.escape(comment_text[:100])
     notif_msg = (
         f'<b>🔇 {mute_label}</b><br>'
         f'Причина: <span style="color:#ff4444">{reason_text}</span><br>'
         f'Тайтл: <a href="/manga/{manga_id}" style="color:#6cacff">{manga_title}</a><br>'
-        f'Удалённый комментарий: <i>"{comment_text[:100]}{"..." if len(comment_text) > 100 else ""}"</i><br>'
-        f'Предупреждение {author.warnings_count}/{len(stages)}<br>'
+        f'Удалённый комментарий: <i>"{_safe_comment}{"..." if len(comment_text) > 100 else ""}"</i><br>'
+        f'Предупреждение {author.warnings_count}/{len(stages)}</b><br>'
         f'<span style="color:#ff6666">При повторных нарушениях — более строгий мут</span>'
     )
     create_notification(db, author.id, notif_msg, f"/manga/{manga_id}", "warning")
@@ -1097,22 +1178,33 @@ def apply_mute(author: User, db, reason_text: str, manga_title: str, comment_tex
 # Раздаём файлы из папки "manga" по адресу /static
 app.mount("/static", StaticFiles(directory=MANGA_DIR), name="static")
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
-app.mount("/Frames_lvl", StaticFiles(directory=FRAMES_LVL_DIR), name="frames_lvl")
 app.mount("/Frames_shop", StaticFiles(directory=FRAMES_SHOP_DIR), name="frames_shop")
+app.mount("/Achievement Icons", StaticFiles(directory=ACHIEVEMENT_ICONS_DIR), name="achievement_icons")
+app.mount("/Logo", StaticFiles(directory=LOGO_DIR), name="logo")
 
-# 👇 Разрешаем фронту обращаться к API
-_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://springmanga.duckdns.org").split(",")
+# 👇 Compression handled by nginx: GZip for API, Brotli_static for pre-compressed assets
+
+# 👇 Security middleware (rate limiting, IP blacklist, SSL redirect, security headers)
+from security_middleware import SecurityMiddleware
+app.add_middleware(SecurityMiddleware, db_session_factory=SessionLocal)
+
+# 👇 CORS — MUST be added AFTER other middleware (FastAPI middleware is LIFO, last added runs first)
+# This ensures CORS handles OPTIONS preflight before SecurityMiddleware can reject it.
+_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8082,http://127.0.0.1:8082,http://localhost:8083,http://127.0.0.1:8083,https://springmanga.duckdns.org").split(",")
+# Local dev: allow all origins (Expo preview uses random ports)
+_is_dev = os.environ.get("DEV_MODE") == "1" or not os.environ.get("CORS_ORIGINS")
+if _is_dev:
+    _cors_origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=not _is_dev,  # wildcard + credentials is invalid in CORS
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-TOKEN", "X-Requested-With"],
 )
 
-# 👇 Security middleware (rate limiting, IP blacklist, SSL redirect)
-from security_middleware import SecurityMiddleware
-app.add_middleware(SecurityMiddleware, db_session_factory=SessionLocal)
+from reading_progress_routes import router as reading_progress_router
+app.include_router(reading_progress_router)
 
 
 def get_setting_value(key: str, default: str = "false") -> str:
@@ -1240,7 +1332,7 @@ class FastMangaParser:
         """Нарезает длинное изображение на части, если height/width > max_ratio"""
         try:
             # Увеличиваем лимит для очень больших изображений (защита PIL)
-            Image.MAX_IMAGE_PIXELS = None
+            Image.MAX_IMAGE_PIXELS = 100_000_000
             
             with Image.open(image_path) as img:
                 width, height = img.size
@@ -2541,6 +2633,7 @@ class MangaSaveRequest(BaseModel):
 
 @app.get("/manga/list", summary="Получить список сохранённых манг")
 async def get_manga_list(
+    response: Response,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
     page: int = Query(1, ge=1),
@@ -2560,6 +2653,7 @@ async def get_manga_list(
     chapters_min: Optional[int] = Query(None),
     chapters_max: Optional[int] = Query(None),
 ):
+    response.headers["Cache-Control"] = "public, max-age=60, s-maxage=60, stale-while-revalidate=300"
     cache_key = f"manga_list:{page}:{limit}:{sort}:{manga_type}:{status}:{genre}:{year}:{search}:{age_rating}:{category}:{rating_min}:{rating_max}:{year_min}:{year_max}:{chapters_min}:{chapters_max}"
     if redis_client:
         cached = redis_client.get(cache_key)
@@ -2584,13 +2678,22 @@ async def get_manga_list(
     if genre:
         query = query.filter(MangaItem.genres.contains(genre))
     if search:
-        _conn = sqlite3.connect(DB_PATH)
-        try:
-            _rows = _conn.execute("SELECT rowid FROM manga_fts WHERE manga_fts MATCH ? ORDER BY rank LIMIT 5000", (search,)).fetchall()
-            _ids = [str(r[0]) for r in _rows]
-        except Exception:
-            _ids = []
-        _conn.close()
+        # Sanitize FTS5 input: strip special operators to prevent DoS via boolean recursion
+        # and SQL-like injection. Keep only alphanumeric + whitespace + cyrillic.
+        search_clean = re.sub(r'[^\w\s\u0400-\u04FF]', ' ', search).strip()
+        search_clean = re.sub(r'\s+', ' ', search_clean)[:200]  # cap length
+        _ids = []
+        if search_clean:
+            _conn = sqlite3.connect(DB_PATH)
+            try:
+                # Wrap each token in quotes to force phrase matching (no operators)
+                tokens = [f'"{t}"' for t in search_clean.split() if t]
+                fts_query = " ".join(tokens)
+                _rows = _conn.execute("SELECT rowid FROM manga_fts WHERE manga_fts MATCH ? ORDER BY rank LIMIT 5000", (fts_query,)).fetchall()
+                _ids = [str(r[0]) for r in _rows]
+            except Exception:
+                _ids = []
+            _conn.close()
         if _ids:
             query = query.filter(MangaItem.id.in_([int(i) for i in _ids]))
         else:
@@ -2782,9 +2885,11 @@ async def get_manga_list(
 @app.get("/manga/{manga_id}/detail", summary="Получить одну мангу по ID")
 async def get_manga_detail(
     manga_id: str,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ):
+    response.headers["Cache-Control"] = "public, max-age=180, s-maxage=180, stale-while-revalidate=600"
     from sqlalchemy import func
     from collections import Counter
     item = resolve_manga(db, manga_id)
@@ -2842,9 +2947,11 @@ async def get_manga_detail(
 @app.get("/manga/{manga_id}/chapters", summary="Получить главы конкретной манги")
 async def get_manga_chapters(
     manga_id: str,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ):
+    response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300, stale-while-revalidate=900"
     from collections import Counter
     item = resolve_manga(db, manga_id)
     real_id = item.manga_id if item else manga_id
@@ -2875,7 +2982,7 @@ async def get_manga_chapters(
 
 
 @app.post("/manga/save", summary="Сохранить мангу в библиотеку")
-async def save_manga(data: MangaSaveRequest, db: Session = Depends(get_db)):
+async def save_manga(data: MangaSaveRequest, admin_user: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     existing = db.query(MangaItem).filter(MangaItem.manga_id == data.manga_id).first()
     if existing:
         # Обновляем существующую запись
@@ -2918,7 +3025,7 @@ async def save_manga(data: MangaSaveRequest, db: Session = Depends(get_db)):
     return {"status": "created", "manga_id": data.manga_id}
 
 @app.delete("/manga/{manga_id}", summary="Удалить мангу из библиотеки")
-async def delete_manga(manga_id: str, db: Session = Depends(get_db)):
+async def delete_manga(manga_id: str, admin_user: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     item = resolve_manga(db, manga_id)
     if not item:
         raise HTTPException(status_code=404, detail="Манга не найдена")
@@ -3156,6 +3263,7 @@ class MassParseRequest(BaseModel):
 @app.post("/manga/mass-parse", summary="Массовый парсинг манг через API")
 async def mass_parse_manga(
     body: MassParseRequest = Body(...),
+    admin_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
     """
@@ -3194,12 +3302,32 @@ async def mass_parse_manga(
                         existing.chapters = chapters_json
                         existing.title = manga_info.get("title", existing.title)
                         existing.description = manga_info.get("description", existing.description)
-                        existing.cover_url = manga_info.get("cover_url", existing.cover_url)
                         existing.genres = json.dumps(manga_info.get("genres", []), ensure_ascii=False)
                         existing.manga_type = additional.get("type", existing.manga_type)
                         existing.year = int(additional.get("year", existing.year or 0) or 0)
                         existing.status = additional.get("status", existing.status or "В процессе")
                         existing.additional_info = json.dumps(additional, ensure_ascii=False)
+                        # Скачать обложку если её нет локально
+                        cover_url_remote = manga_info.get("cover_url", "")
+                        if cover_url_remote and not cover_url_remote.startswith("data:"):
+                            cover_path = os.path.join(MANGA_DIR, manga_id, "covers", "main_cover.jpg")
+                            if not os.path.exists(cover_path):
+                                try:
+                                    full_url = urljoin(BASE_URL, cover_url_remote) if cover_url_remote.startswith("/") else cover_url_remote
+                                    r = requests.get(full_url, headers={**HEADERS, "Referer": BASE_URL}, timeout=30, proxies={"http": MANGABUFF_PROXY, "https": MANGABUFF_PROXY} if MANGABUFF_PROXY else None)
+                                    r.raise_for_status()
+                                    os.makedirs(os.path.dirname(cover_path), exist_ok=True)
+                                    with open(cover_path, "wb") as f:
+                                        f.write(r.content)
+                                    relative = os.path.relpath(cover_path, MANGA_DIR).replace("\\", "/")
+                                    existing.cover_url = f"/static/{relative}"
+                                    print(f"[MASS_PARSE] Обложка скачана: {manga_id}")
+                                except Exception as e:
+                                    print(f"[MASS_PARSE] Не удалось скачать обложку {manga_id}: {e}")
+                            else:
+                                existing.cover_url = existing.cover_url
+                        else:
+                            existing.cover_url = existing.cover_url
                     else:
                         new_item = MangaItem(
                             manga_id=manga_id,
@@ -3467,12 +3595,32 @@ def _cache_path(url: str, wm: str) -> str:
     return os.path.join(CACHE_DIR, _cache_key(url, wm))
 
 
+_ALLOWED_IMAGE_HOSTS = {
+    "mangabuff.ru", "www.mangabuff.ru",
+    "cdn.mangabuff.ru", "static.mangabuff.ru",
+    "mangaclub.ru", "cdn.mangaclub.ru",
+}
+
+def _validate_image_url(url: str) -> None:
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="Invalid URL scheme")
+    if host in ("localhost", "127.0.0.1", "0.0.0.0", "::1") or host.startswith("10.") or host.startswith("192.168.") or host.startswith("172."):
+        raise HTTPException(status_code=400, detail="Internal URLs not allowed")
+    if host.startswith("169.254."):
+        raise HTTPException(status_code=400, detail="Metadata URLs not allowed")
+    if _ALLOWED_IMAGE_HOSTS and host not in _ALLOWED_IMAGE_HOSTS:
+        pass
+
 @app.get("/proxy/image", summary="Проксирование изображений с заменой watermark")
 async def proxy_image(url: str = Query(..., description="URL изображения"), wm: str = Query("", description="Watermark mode: top, bottom, both, or empty")):
     from fastapi.responses import Response, FileResponse
 
     if not url.startswith("http"):
         raise HTTPException(status_code=400, detail="Invalid URL")
+    _validate_image_url(url)
 
     cpath = _cache_path(url, wm)
     if os.path.exists(cpath):
@@ -3484,7 +3632,7 @@ async def proxy_image(url: str = Query(..., description="URL изображен�
             if resp.status != 200:
                 raise HTTPException(status_code=resp.status, detail="Failed to fetch image")
             content_type = resp.content_type or "image/jpeg"
-            image_bytes = await resp.read()
+            image_bytes = await fetch_image_bytes_safely(resp)
     except HTTPException:
         raise
     except Exception as e:
@@ -3523,13 +3671,14 @@ async def serve_cached_image(filename: str, url: str = Query(""), wm: str = Quer
     # Not cached yet — need original URL to fetch
     if not url or not url.startswith("http"):
         raise HTTPException(status_code=404, detail="Image not cached and no source URL provided")
+    _validate_image_url(url)
 
     try:
         session = await get_chapter_session()
         async with session.get(url, headers={**HEADERS, "Referer": BASE_URL}, proxy=MANGABUFF_PROXY) as resp:
             if resp.status != 200:
                 raise HTTPException(status_code=resp.status, detail="Failed to fetch image")
-            image_bytes = await resp.read()
+            image_bytes = await fetch_image_bytes_safely(resp)
     except HTTPException:
         raise
     except Exception as e:
@@ -3552,11 +3701,26 @@ async def serve_cached_image(filename: str, url: str = Query(""), wm: str = Quer
     )
 
 
+def validate_password_strength(password: str) -> str | None:
+    """Returns error message if password is weak, None if OK."""
+    if len(password) < 8:
+        return "Пароль должен содержать минимум 8 символов"
+    if not re.search(r'[a-z]', password):
+        return "Пароль должен содержать строчную латинскую букву"
+    if not re.search(r'[A-Z]', password):
+        return "Пароль должен содержать заглавную латинскую букву"
+    if not re.search(r'\d', password):
+        return "Пароль должен содержать хотя бы одну цифру"
+    return None
+
 @app.post("/auth/register", summary="Регистрация пользователя")
 async def register(user: UserCreate, db: Session = Depends(get_db)):
     reg_open = get_setting_value("registration_open", "true")
     if reg_open != "true":
         raise HTTPException(status_code=403, detail="Регистрация временно закрыта")
+    pwd_err = validate_password_strength(user.password)
+    if pwd_err:
+        raise HTTPException(status_code=400, detail=pwd_err)
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -3616,7 +3780,8 @@ async def logout():
     return response
 
 @app.get("/auth/me", summary="Получить текущего пользователя")
-async def get_me(current_user: User = Depends(get_current_user)):
+async def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    chapters_read = db.query(ReadingHistory).filter(ReadingHistory.user_id == current_user.id).count()
     return {
         "id": current_user.id,
         "username": current_user.username,
@@ -3651,6 +3816,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "telegram_username": current_user.telegram_username or "",
         "google_id": current_user.google_id or "",
         "yandex_id": current_user.yandex_id or "",
+        "chapters_read": chapters_read,
     }
 
 @app.put("/auth/profile", summary="Обновить профиль")
@@ -3722,8 +3888,9 @@ async def update_profile(data: ProfileUpdate, current_user: User = Depends(get_c
 async def change_password(data: PasswordChange, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not current_user.hashed_password or not verify_password(data.old_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Неверный текущий пароль")
-    if len(data.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Пароль должен содержать минимум 6 символов")
+    pwd_err = validate_password_strength(data.new_password)
+    if pwd_err:
+        raise HTTPException(status_code=400, detail=pwd_err)
     current_user.hashed_password = get_password_hash(data.new_password)
     db.commit()
     return {"ok": True}
@@ -3831,8 +3998,9 @@ async def reset_password(data: dict = Body(...), db: Session = Depends(get_db)):
     new_pass = data.get("new_password", "")
     if not token_val or not new_pass:
         raise HTTPException(status_code=400, detail="Токен и новый пароль обязательны")
-    if len(new_pass) < 6:
-        raise HTTPException(status_code=400, detail="Пароль минимум 6 символов")
+    pwd_err = validate_password_strength(new_pass)
+    if pwd_err:
+        raise HTTPException(status_code=400, detail=pwd_err)
     reset_entry = db.query(PasswordResetToken).filter(PasswordResetToken.token == token_val, PasswordResetToken.used == False).first()
     if not reset_entry:
         raise HTTPException(status_code=400, detail="Токен недействителен или истёк")
@@ -3857,7 +4025,9 @@ async def upload_avatar(file: UploadFile = FastAPIFile(...), current_user: User 
         raise HTTPException(status_code=403, detail="GIF-аватар доступен только для ADMIN и SPRINGPRO")
     filename = f"{current_user.id}{ext}"
     filepath = os.path.join(AVATARS_DIR, filename)
-    content = await file.read()
+    content = await read_upload_safely(file)
+    if not validate_upload_content(content, {'image'}):
+        raise HTTPException(status_code=400, detail="Файл не является допустимым изображением")
     with open(filepath, "wb") as f:
         f.write(content)
     import time as _time
@@ -3876,12 +4046,14 @@ async def upload_banner(file: UploadFile = FastAPIFile(...), current_user: User 
     if not ext or ext not in ALLOWED_EXTS:
         ext = MIME_TO_EXT.get(file.content_type or "", "")
     if ext not in ALLOWED_EXTS:
-        raise HTTPException(status_code=400, detail=f"Недопустимый формат: {ext or 'неизвестный'} (файл: {file.filename}, тип: {file.content_type})")
+        raise HTTPException(status_code=400, detail="Недопустимый формат файла")
     import time
     ts = int(time.time())
     filename = f"{current_user.id}_banner_{ts}{ext}"
     filepath = os.path.join(BANNERS_DIR, filename)
-    content = await file.read()
+    content = await read_upload_safely(file)
+    if not validate_upload_content(content, {'image', 'video'}):
+        raise HTTPException(status_code=400, detail="Файл не является допустимым изображением или видео")
     with open(filepath, "wb") as f:
         f.write(content)
     current_user.profile_banner_url = f"/uploads/banners/{filename}"
@@ -3899,7 +4071,9 @@ async def upload_background(file: UploadFile = FastAPIFile(...), current_user: U
     ts = int(time.time())
     filename = f"{current_user.id}_bg_{ts}{ext}"
     filepath = os.path.join(BACKGROUNDS_DIR, filename)
-    content = await file.read()
+    content = await read_upload_safely(file)
+    if not validate_upload_content(content, {'image', 'video'}):
+        raise HTTPException(status_code=400, detail="Файл не является допустимым изображением или видео")
     with open(filepath, "wb") as f:
         f.write(content)
     current_user.profile_background_url = f"/uploads/backgrounds/{filename}"
@@ -3914,9 +4088,14 @@ class WallCommentCreate(BaseModel):
 @app.get("/auth/wall-comments/{user_id}", summary="Получить комментарии на стене профиля")
 async def get_wall_comments(user_id: int, db: Session = Depends(get_db)):
     comments = db.query(WallComment).filter(WallComment.profile_user_id == user_id).order_by(WallComment.created_at.desc()).limit(50).all()
+    if not comments:
+        return []
+    # Batch load all authors in a single query to avoid N+1
+    author_ids = {c.author_id for c in comments}
+    authors_map = {u.id: u for u in db.query(User).filter(User.id.in_(author_ids)).all()}
     result = []
     for c in comments:
-        author = db.query(User).filter(User.id == c.author_id).first()
+        author = authors_map.get(c.author_id)
         result.append({
             "id": c.id,
             "author_id": c.author_id,
@@ -3951,13 +4130,14 @@ async def add_wall_comment(user_id: int, data: WallCommentCreate, current_user: 
             })
         elif bw_result['severity'] in ('warn', 'freeze'):
             raise HTTPException(status_code=400, detail=f"Комментарий отклонён: {bw_result['reason']}")
+    cleaned_text = html.escape(cleaned_text)
     comment = WallComment(profile_user_id=user_id, author_id=current_user.id, text=cleaned_text)
     db.add(comment)
     db.commit()
     db.refresh(comment)
     # Notify profile owner
     if user_id != current_user.id:
-        notif_msg = f'<a href="/user/{current_user.id}" class="text-brand-accent hover:underline font-bold">{current_user.username}</a> оставил комментарий в вашем <a href="/user/{user_id}" class="text-brand-accent hover:underline">профиле</a>'
+        notif_msg = f'<a href="/user/{current_user.id}" class="text-brand-accent hover:underline font-bold">{html.escape(current_user.username)}</a> оставил комментарий в вашем <a href="/user/{user_id}" class="text-brand-accent hover:underline">профиле</a>'
         create_notification(db, user_id, notif_msg, f"/user/{user_id}", "social")
     # ── Scrap for comment (max 5/day) ──
     from datetime import date as _date
@@ -5390,14 +5570,23 @@ async def get_user_bookmarks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    bookmarks = db.query(MangaBookmark).filter(MangaBookmark.user_id == current_user.id).all()
+    bookmarks = (
+        db.query(MangaBookmark, MangaItem.title, MangaItem.cover_url, MangaItem.slug)
+        .join(MangaItem, MangaBookmark.manga_id == MangaItem.manga_id)
+        .filter(MangaBookmark.user_id == current_user.id)
+        .order_by(MangaBookmark.created_at.desc())
+        .all()
+    )
     return [
         {
             "mangaId": b.manga_id,
             "status": b.status,
             "addedAt": b.created_at.isoformat() if b.created_at else None,
+            "manga_title": title or "",
+            "manga_cover": cover or "",
+            "manga_slug": slug or b.manga_id,
         }
-        for b in bookmarks
+        for b, title, cover, slug in bookmarks
     ]
 
 @app.post("/manga/{manga_id}/bookmark", summary="Добавить/обновить закладку")
@@ -5570,11 +5759,27 @@ async def get_quiz_question(mode: str = Query("cover", pattern="^(cover|genre|ch
 async def answer_quiz(
     mode: str = Body(...),
     answer: str = Body(...),
-    correct: str = Body(...),
+    correct_manga_id: str = Body(None),
     current_user: User = Depends(get_optional_user),
     db: Session = Depends(get_db)
 ):
-    is_correct = answer == correct
+    is_correct = False
+    xp_gained = 0
+
+    if mode == "cover" and correct_manga_id:
+        manga = db.query(MangaItem).filter(MangaItem.manga_id == correct_manga_id).first()
+        if manga and answer == manga.manga_id:
+            is_correct = True
+    elif mode == "genre" and correct_manga_id:
+        import json as _json
+        manga = db.query(MangaItem).filter(MangaItem.manga_id == correct_manga_id).first()
+        if manga:
+            try:
+                genres = _json.loads(manga.genres) if isinstance(manga.genres, str) else (manga.genres or [])
+                if answer in genres:
+                    is_correct = True
+            except:
+                pass
     xp_gained = 0
 
     if is_correct and current_user:
@@ -5750,7 +5955,7 @@ async def add_manga_comment(
         chapter_id=data.chapter_id,
         parent_id=data.parent_id,
         user_id=current_user.id,
-        text=data.text.strip(),
+        text=html.escape(data.text.strip()),
         status=comment_status,
     )
     db.add(comment)
@@ -5760,7 +5965,7 @@ async def add_manga_comment(
     if data.parent_id and comment_status == "approved":
         parent = db.query(MangaComment).filter(MangaComment.id == data.parent_id).first()
         if parent and parent.user_id != current_user.id:
-            notif_msg = f'<a href="/user/{current_user.id}" class="text-brand-accent hover:underline font-bold">{current_user.username}</a> ответил на ваш <a href="/manga/{manga_id}" class="text-brand-accent hover:underline">комментарий</a>'
+            notif_msg = f'<a href="/user/{current_user.id}" class="text-brand-accent hover:underline font-bold">{html.escape(current_user.username)}</a> ответил на ваш <a href="/manga/{manga_id}" class="text-brand-accent hover:underline">комментарий</a>'
             create_notification(db, parent.user_id, notif_msg, f"/manga/{manga_id}", "social")
 
     from datetime import date as _date
@@ -6156,10 +6361,46 @@ async def get_history(
     items = db.query(ReadingHistory).filter(
         ReadingHistory.user_id == current_user.id
     ).order_by(ReadingHistory.read_at.desc()).limit(50).all()
-    return [
-        {"mangaId": item.manga_id, "chapterId": item.chapter_id, "readAt": item.read_at.isoformat()}
-        for item in items
-    ]
+
+    if not items:
+        return []
+
+    # Batch-fetch all referenced manga in a single query (avoid N+1).
+    manga_keys = list({i.manga_id for i in items})
+    manga_rows = db.query(MangaItem).filter(
+        (MangaItem.manga_id.in_(manga_keys)) | (MangaItem.slug.in_(manga_keys))
+    ).all()
+    manga_index: dict[str, MangaItem] = {}
+    for m in manga_rows:
+        if m.manga_id:
+            manga_index[m.manga_id] = m
+        if m.slug:
+            manga_index[m.slug] = m
+
+    # Batch-fetch chapter numbers for the referenced (manga_id, chapter_id) pairs.
+    chapter_pairs = {(i.manga_id, i.chapter_id) for i in items}
+    chapter_rows = db.query(Chapter).filter(
+        Chapter.manga_id.in_([p[0] for p in chapter_pairs])
+    ).all()
+    chapter_index: dict[tuple, str] = {}
+    for ch in chapter_rows:
+        chapter_index[(ch.manga_id, ch.chapter_id)] = ch.chapter_number or ""
+
+    result = []
+    for item in items:
+        manga = manga_index.get(item.manga_id)
+        chapter_number = chapter_index.get((item.manga_id, item.chapter_id), "")
+        result.append({
+            "mangaId": item.manga_id,
+            "chapterId": item.chapter_id,
+            "readAt": item.read_at.isoformat(),
+            # Enriched fields (let frontend render without an extra lookup).
+            "mangaTitle": manga.title if manga else "",
+            "mangaCover": (manga.cover_url or "") if manga else "",
+            "mangaSlug": (manga.slug or item.manga_id) if manga else item.manga_id,
+            "chapterNumber": chapter_number,
+        })
+    return result
 
 @app.post("/history", summary="Добавить запись в историю чтения")
 async def add_history(
@@ -6250,6 +6491,76 @@ async def clear_history(
     db.query(ReadingHistory).filter(ReadingHistory.user_id == current_user.id).delete()
     db.commit()
     return {"status": "ok"}
+
+@app.get("/continue-reading", summary="Продолжить чтение — последние манги с прогрессом")
+async def get_continue_reading(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from sqlalchemy import func as sa_func
+    latest_per_manga = db.query(
+        ReadingHistory.manga_id,
+        sa_func.max(ReadingHistory.read_at).label("max_read_at")
+    ).filter(
+        ReadingHistory.user_id == current_user.id
+    ).group_by(ReadingHistory.manga_id).order_by(sa_func.max(ReadingHistory.read_at).desc()).limit(8).subquery()
+
+    history_rows = db.query(ReadingHistory).filter(
+        ReadingHistory.user_id == current_user.id,
+        ReadingHistory.manga_id == latest_per_manga.c.manga_id
+    ).order_by(ReadingHistory.read_at.desc()).all()
+
+    seen = set()
+    deduped = []
+    for h in history_rows:
+        if h.manga_id not in seen:
+            seen.add(h.manga_id)
+            deduped.append(h)
+
+    results = []
+    for h in deduped[:4]:
+        manga = db.query(MangaItem).filter(MangaItem.slug == h.manga_id).first()
+        if not manga:
+            manga = db.query(MangaItem).filter(MangaItem.manga_id == h.manga_id).first()
+        if not manga:
+            continue
+
+        progress_rows = db.query(ReadingProgress).filter(
+            ReadingProgress.user_id == current_user.id,
+            ReadingProgress.manga_id == h.manga_id
+        ).order_by(ReadingProgress.last_read_at.desc()).all()
+
+        best = None
+        for p in progress_rows:
+            if p.current_page > 1 or p.is_complete:
+                if best is None or (p.last_read_at and best.last_read_at and p.last_read_at > best.last_read_at):
+                    best = p
+        if best is None and progress_rows:
+            best = progress_rows[0]
+
+        cover_url = manga.cover_url or ""
+
+        chapter_number = ""
+        if best:
+            chapter_number = best.chapter_number or ""
+        else:
+            ch = db.query(Chapter).filter(Chapter.chapter_id == h.chapter_id).first()
+            if ch:
+                chapter_number = ch.chapter_number or ""
+
+        results.append({
+            "mangaId": h.manga_id,
+            "mangaTitle": manga.title,
+            "mangaCover": cover_url,
+            "mangaSlug": manga.slug or h.manga_id,
+            "chapterId": best.chapter_id if best else h.chapter_id,
+            "chapterNumber": chapter_number,
+            "currentPage": best.current_page if best else 1,
+            "totalPages": best.total_pages if best else 0,
+            "isComplete": best.is_complete if best else False,
+        })
+
+    return results
 
 # ═══════════ Коллекционные карточки ═══════════
 
@@ -6387,7 +6698,7 @@ async def get_chapter_session() -> aiohttp.ClientSession:
 
 
 @app.post("/catalog/import", summary="Импорт каталога с mangabuff.ru")
-async def import_catalog(db: Session = Depends(get_db)):
+async def import_catalog(admin_user: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     """Пагинированно читает каталог mangabuff.ru (HTML), сохраняет в manga_items (без глав)."""
     import aiohttp, asyncio
 
@@ -6595,7 +6906,23 @@ async def import_catalog(db: Session = Depends(get_db)):
             try:
                 existing = db.query(MangaItem).filter(MangaItem.manga_id == manga_id).first()
                 if existing:
-                    # Только обновляем метаданные, обложку не перекачиваем
+                    # Скачать обложку если её нет локально
+                    if cover and not cover.startswith("data:"):
+                        cover_path = os.path.join(MANGA_DIR, manga_id, "covers", "main_cover.jpg")
+                        if not os.path.exists(cover_path):
+                            try:
+                                async with sem:
+                                    async with session.get(cover, headers={**HEADERS, "Referer": BASE_URL}, proxy=MANGABUFF_PROXY) as r:
+                                        if r.status == 200:
+                                            content = await r.read()
+                                            os.makedirs(os.path.dirname(cover_path), exist_ok=True)
+                                            async with aiofiles.open(cover_path, 'wb') as f:
+                                                await f.write(content)
+                                            relative = os.path.relpath(cover_path, MANGA_DIR).replace("\\", "/")
+                                            existing.cover_url = f"/static/{relative}"
+                                            print(f"[CATALOG] Обложка скачана: {slug}")
+                            except Exception as e:
+                                print(f"[CATALOG] Не удалось скачать обложку {slug}: {e}")
                     existing.title = title or existing.title
                     existing.description = description or existing.description
                     existing.source_url = source_url
@@ -6883,6 +7210,7 @@ async def background_chapter_crawler(force: bool = False, update: bool = False):
 @app.post("/catalog/crawl-chapters", summary="Запустить фоновый краулер глав")
 async def start_chapter_crawler(
     force: bool = Query(False, description="Перепарсить ВСЕ манги, УДАЛИВ старые главы"),
+    admin_user: User = Depends(get_admin_user),
     update: bool = Query(False, description="Проверить ВСЕ манги и добавить только НОВЫЕ главы (без удаления)")
 ):
     global crawler_status
@@ -6893,7 +7221,7 @@ async def start_chapter_crawler(
 
 
 @app.post("/catalog/recrawl-manga/{manga_id}", summary="Перепарсить главы и год для конкретной манги")
-async def recrawl_single_manga(manga_id: str, db: Session = Depends(get_db)):
+async def recrawl_single_manga(manga_id: str, admin_user: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     """Удаляет старые главы, заново парсит страницу манги и сохраняет главы + год."""
     item = db.query(MangaItem).filter(MangaItem.manga_id == manga_id).first()
     if not item or not item.source_url:
@@ -7212,8 +7540,16 @@ async def get_chapter_pages(chapter_slug: str, manga_id: Optional[str] = Query(N
 
 
 @app.get("/manga/filters-meta", summary="Метаданные для фильтров каталога")
-async def get_filters_meta(db: Session = Depends(get_db)):
+async def get_filters_meta(response: Response, db: Session = Depends(get_db)):
     """Возвращает все уникальные типы, статусы, жанры и категории для фильтров."""
+    response.headers["Cache-Control"] = "public, max-age=300, s-maxage=300, stale-while-revalidate=600"
+    if redis_client:
+        try:
+            cached = redis_client.get("filters_meta")
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            pass
     items = db.query(MangaItem.manga_type, MangaItem.status, MangaItem.genres).all()
 
     types_set = set()
@@ -7251,12 +7587,18 @@ async def get_filters_meta(db: Session = Depends(get_db)):
             else:
                 genres_set.add(gl)
 
-    return {
+    result = {
         "types": sorted(types_set),
         "statuses": sorted(statuses_set),
         "genres": sorted(genres_set),
         "categories": sorted(categories_set),
     }
+    if redis_client:
+        try:
+            redis_client.setex("filters_meta", 300, json.dumps(result, default=str))
+        except Exception:
+            pass
+    return result
 
 
 # ─── Скрапинг рангов с mangabuff ───────────────────────────────────
@@ -7267,6 +7609,7 @@ _scrape_ranks_progress = {"status": "idle", "sort": "", "page": 0, "total_pages"
 @app.post("/catalog/scrape-ranks", summary="Скрапинг рангов популярности/рейтинга с mangabuff")
 async def scrape_mangabuff_ranks(
     background_tasks: BackgroundTasks,
+    admin_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
     global _scrape_ranks_running
@@ -7396,6 +7739,7 @@ _scrape_views_progress = {"status": "idle", "current": 0, "total": 0, "updated":
 @app.post("/catalog/scrape-views", summary="Скрапинг просмотров с mangabuff (со страниц каждой манги)")
 async def scrape_mangabuff_views(
     background_tasks: BackgroundTasks,
+    admin_user: User = Depends(get_admin_user),
 ):
     global _scrape_views_running
     if _scrape_views_running:
@@ -7524,7 +7868,8 @@ async def _do_scrape_views():
 # ─── Эндпоинт для главной страницы ────────────────────────────────
 
 @app.get("/manga/home-sections", summary="Секции для главной страницы")
-async def get_home_sections(db: Session = Depends(get_db)):
+async def get_home_sections(response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "public, max-age=120, s-maxage=120, stale-while-revalidate=300"
     if redis_client:
         cached = redis_client.get("home_sections")
         if cached:
@@ -7612,7 +7957,7 @@ async def _get_home_sections_inner(db: Session):
         MangaRating.manga_id,
         sa_fn.avg(MangaRating.rating).label("avg_r"),
         sa_fn.count(MangaRating.id).label("r_cnt")
-    ).group_by(MangaRating.manga_id).having(sa_fn.count(MangaRating.id) >= 20).subquery()
+    ).group_by(MangaRating.manga_id).having(sa_fn.count(MangaRating.id) >= 5).subquery()
 
     # Просмотры за 48 часов (для "В тренде")
     views_48h_sq = db.query(
@@ -7739,9 +8084,9 @@ async def _get_home_sections_inner(db: Session):
         (sa_fn.coalesce(views_7d_sq.c.v7, 0) + sa_fn.coalesce(bookmarks_7d_sq.c.b7, 0)).desc()
     )
 
-    # --- "Свежие главы" = то же что "обновления" ---
+    # --- "Свежие главы" = тайтлы с новыми главами за последние 7 дней ---
     fresh_q = db.query(MangaItem).filter(
-        MangaItem.updated_at != None
+        MangaItem.updated_at >= seven_days_ago
     ).order_by(MangaItem.updated_at.desc())
 
     # --- "В тренде": быстрый рост за 48 часов ---
@@ -7868,7 +8213,7 @@ async def get_section_list(section_key: str, db: Session = Depends(get_db)):
         MangaRating.manga_id,
         sa_fn.avg(MangaRating.rating).label("avg_r"),
         sa_fn.count(MangaRating.id).label("r_cnt")
-    ).group_by(MangaRating.manga_id).having(sa_fn.count(MangaRating.id) >= 20).subquery()
+    ).group_by(MangaRating.manga_id).having(sa_fn.count(MangaRating.id) >= 5).subquery()
 
     views_48h_sq = db.query(
         MangaView.manga_id, sa_fn.count(MangaView.id).label("v48")
@@ -8279,7 +8624,7 @@ async def send_message(user_id: int, data: SendMessageBody, current_user: User =
     target = db.query(User).filter(User.id == user_id, User.status == "active").first()
     if not target:
         raise HTTPException(404, "Пользователь не найден")
-    msg = DirectMessage(sender_id=current_user.id, receiver_id=user_id, text=data.text.strip())
+    msg = DirectMessage(sender_id=current_user.id, receiver_id=user_id, text=html.escape(data.text.strip()))
     db.add(msg)
     db.commit()
     db.refresh(msg)
@@ -8365,13 +8710,13 @@ async def reply_to_wall_comment(comment_id: int, data: WallReplyCreate, current_
         raise HTTPException(400, "Пустой ответ")
     if len(data.text) > 500:
         raise HTTPException(400, "Слишком длинный ответ")
-    reply = WallCommentReply(wall_comment_id=comment_id, author_id=current_user.id, text=data.text.strip())
+    reply = WallCommentReply(wall_comment_id=comment_id, author_id=current_user.id, text=html.escape(data.text.strip()))
     db.add(reply)
     db.commit()
     db.refresh(reply)
     # Notify the original comment author
     if comment.author_id != current_user.id:
-        notif_msg = f'<a href="/user/{current_user.id}" class="text-brand-accent hover:underline font-bold">{current_user.username}</a> ответил на ваш <a href="/user/{comment.profile_user_id}" class="text-brand-accent hover:underline">комментарий</a>'
+        notif_msg = f'<a href="/user/{current_user.id}" class="text-brand-accent hover:underline font-bold">{html.escape(current_user.username)}</a> ответил на ваш <a href="/user/{comment.profile_user_id}" class="text-brand-accent hover:underline">комментарий</a>'
         create_notification(db, comment.author_id, notif_msg, f"/user/{comment.profile_user_id}", "social")
     return {
         "id": reply.id,
@@ -8937,7 +9282,9 @@ async def create_personalization_request(
         raise HTTPException(400, f"Недопустимый формат: {ext}")
     filename = f"{current_user.id}_{type}_{int(datetime.utcnow().timestamp())}{ext}"
     filepath = os.path.join(PERSONALIZATION_DIR, filename)
-    content = await file.read()
+    content = await read_upload_safely(file)
+    if not validate_upload_content(content, {'image', 'video'}):
+        raise HTTPException(status_code=400, detail="Файл не является допустимым изображением или видео")
     with open(filepath, "wb") as f:
         f.write(content)
     file_url = f"/uploads/personalization/{filename}"
@@ -9177,8 +9524,9 @@ async def payment_webhook(request: Request, db: Session = Depends(get_db)):
     if not order_id:
         raise HTTPException(400, "Missing order_id")
 
-    # Verify signature if secret is configured
-    if PAYPALYCH_SECRET and sign:
+    if PAYPALYCH_SECRET:
+        if not sign:
+            raise HTTPException(403, "Missing signature")
         import hmac as _hmac
         expected = _hmac.new(PAYPALYCH_SECRET.encode(), order_id.encode(), hashlib.sha256).hexdigest()
         if sign.lower() != expected.lower():
@@ -9254,7 +9602,9 @@ async def admin_shop_upload(file: UploadFile = FastAPIFile(...), current_user: U
     import uuid
     filename = f"{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(SHOP_UPLOADS_DIR, filename)
-    content = await file.read()
+    content = await read_upload_safely(file)
+    if not validate_upload_content(content, {'image', 'video'}):
+        raise HTTPException(status_code=400, detail="Файл не является допустимым изображением или видео")
     with open(filepath, "wb") as f:
         f.write(content)
     return {"url": f"/uploads/shop/{filename}"}

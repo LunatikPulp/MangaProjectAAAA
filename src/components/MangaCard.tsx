@@ -7,7 +7,7 @@ interface MangaCardProps {
     manga: Manga;
 }
 
-const MangaCard: React.FC<MangaCardProps> = ({ manga }) => {
+const MangaCard = React.memo<MangaCardProps>(({ manga }) => {
     return (
         <Link to={`/manga/${manga.slug || manga.id}`} className="block group relative">
             <div className="relative aspect-[2/3] w-full overflow-hidden bg-surface border border-overlay transition-all duration-300 group-hover:border-brand-accent group-hover:shadow-[0_0_16px_rgba(169,255,0,0.15)] group-hover:-translate-y-1 manga-cover-glitch">
@@ -59,6 +59,6 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga }) => {
             </div>
         </Link>
     );
-};
+});
 
 export default MangaCard;

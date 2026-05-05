@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useContext } from 'rea
 import './SpringtrapNightmare.css';
 import { API_BASE } from '../services/externalApiService';
 import { ToasterContext } from '../contexts/ToasterContext';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/iosScrollLock';
 
 const SpringtrapNightmare: React.FC = () => {
   const { showToaster } = useContext(ToasterContext);
@@ -127,15 +128,13 @@ const SpringtrapNightmare: React.FC = () => {
 
 
   const startVideoSequence = () => {
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
+    lockBodyScroll();
     setShowVideo(true);
   };
 
   const handleVideoEnded = () => {
     setShowVideo(false);
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
+    unlockBodyScroll();
     activateNightmareMode();
   };
 
@@ -145,7 +144,7 @@ const SpringtrapNightmare: React.FC = () => {
 
     const videoBg = document.createElement('div');
     videoBg.id = 'nightmare-video-bg';
-    videoBg.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;overflow:hidden;pointer-events:none;';
+    videoBg.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100dvh;z-index:0;overflow:hidden;pointer-events:none;';
     videoBg.innerHTML = `
       <video src="/Horror_design/springmanga_background.mp4" autoplay loop muted playsinline preload="auto" poster="/Horror_design/scratches.png" style="width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.5s ease;"></video>
       <div style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(18,18,18,0.72);pointer-events:none;"></div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { MangaContext } from '../contexts/MangaContext';
 import { useHistory } from '../hooks/useHistory';
 import { HistoryItem } from '../types';
+import { API_BASE } from '../services/externalApiService';
 
 const HistoryPage: React.FC = () => {
     const { history, clearHistory } = useHistory();
@@ -20,7 +21,7 @@ const HistoryPage: React.FC = () => {
             </div>
         )
     }
-    
+
     // Deduplicate: one entry per manga (latest chapter)
     const dedupedHistory = (() => {
         const seen = new Set<string>();
@@ -55,11 +56,16 @@ const HistoryPage: React.FC = () => {
                         <h2 className="text-lg font-semibold text-text-secondary mb-3 pb-2 border-b border-surface">{date}</h2>
                         <div className="space-y-3">
                             {items.map((item, index) => {
-                                const manga = getMangaById(item.mangaId);
-                                if (!manga) return null;
-
-                                // FIX: Find the chapter to display its number instead of its ID.
-                                const chapter = manga.chapters.find(c => c.id === item.chapterId);
+                                // Prefer enriched fields from API; fall back to catalog lookup
+                                // (keeps old localStorage cache from previous versions working).
+                                const fallback = getMangaById(item.mangaId);
+                                const title = item.mangaTitle || fallback?.title || item.mangaId;
+                                const rawCover = item.mangaCover || fallback?.cover || '';
+                                const cover = rawCover && rawCover.startsWith('/') ? `${API_BASE}${rawCover}` : rawCover;
+                                const slug = item.mangaSlug || fallback?.slug || fallback?.id || item.mangaId;
+                                const chapter = fallback?.chapters.find(c => c.id === item.chapterId);
+                                const chapterNum = item.chapterNumber || chapter?.chapterNumber || item.chapterId;
+                                const totalChapters = fallback?.chapters.length;
 
                                 const time = new Date(item.readAt).toLocaleTimeString('ru-RU', {
                                     hour: '2-digit',
@@ -70,12 +76,16 @@ const HistoryPage: React.FC = () => {
                                     <div key={index} className="flex items-center gap-4 p-2 rounded-lg hover:bg-surface transition-colors">
                                         <span className="text-sm text-muted">{time}</span>
                                         <div className="w-1 h-8 bg-surface rounded-none"></div>
-                                        <img src={manga.cover} alt={manga.title} className="w-12 h-16 object-cover rounded-md" />
-                                        <div className="flex-1">
-                                            <Link to={`/manga/${manga.slug || manga.id}`} className="font-semibold text-text-primary hover:text-brand transition-colors">{manga.title}</Link>
+                                        {cover ? (
+                                            <img src={cover} alt={title} className="w-12 h-16 object-cover rounded-md" loading="lazy" decoding="async" />
+                                        ) : (
+                                            <div className="w-12 h-16 bg-surface rounded-md" />
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                            <Link to={`/manga/${slug}`} className="font-semibold text-text-primary hover:text-brand transition-colors truncate block">{title}</Link>
                                             <p className="text-sm text-text-secondary mt-1">
-                                        Глава {chapter ? chapter.chapterNumber : item.chapterId} из {manga.chapters.length}
-                                    </p>
+                                                Глава {chapterNum}{totalChapters ? ` из ${totalChapters}` : ''}
+                                            </p>
                                         </div>
                                     </div>
                                 );

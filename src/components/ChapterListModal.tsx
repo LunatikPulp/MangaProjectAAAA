@@ -9,7 +9,8 @@ const ChapterListModal: React.FC<{
     chapters: Chapter[];
     mangaId: string;
     currentChapterId: string;
-}> = ({ isOpen, onClose, chapters, mangaId, currentChapterId }) => {
+    isChapterRead?: (chapterId: string) => boolean;
+}> = ({ isOpen, onClose, chapters, mangaId, currentChapterId, isChapterRead }) => {
 
     const [searchTerm, setSearchTerm] = useState('');
     const sortedChapters = [...chapters].sort((a, b) => parseFloat(b.chapterNumber) - parseFloat(a.chapterNumber));
@@ -40,10 +41,14 @@ const ChapterListModal: React.FC<{
                                 chapter.id === currentChapterId ? 'bg-brand-20 text-brand' : 'bg-base hover:bg-overlay'
                             }`}
                         >
-                            <p className="font-medium text-sm">{(() => {
-                                const tomMatch = chapter.title?.match(/Том\s+(\S+)\s+Глава\s+(\S+)/i);
-                                return tomMatch ? `${tomMatch[1]} Глава ${tomMatch[2]}` : `Глава ${chapter.chapterNumber}`;
-                            })()}</p>
+                            <div className="flex items-center gap-2">
+                                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isChapterRead?.(chapter.id) ? 'bg-brand' : 'bg-overlay'}`} />
+                                <p className={`font-medium text-sm ${isChapterRead?.(chapter.id) ? 'text-muted' : ''}`}>{(() => {
+                                    const tomMatch = chapter.title?.match(/Том\s+(\S+)\s+Глава\s+(\S+)/i);
+                                    return tomMatch ? `${tomMatch[1]} Глава ${tomMatch[2]}` : `Глава ${chapter.chapterNumber}`;
+                                })()}</p>
+                                {isChapterRead?.(chapter.id) && <span className="text-[9px] bg-surface border border-overlay text-muted px-1 py-0.5 rounded font-bold">✓</span>}
+                            </div>
                         </Link>
                     ))}
                 </div>

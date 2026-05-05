@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { API_BASE } from '../services/externalApiService';
 
 const ScrapIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
-    <img src="/money/scrap.png" alt="scrap" className={`inline-block align-middle ${className}`} />
+    <img src="/money/scrap.webp" alt="scrap" className={`inline-block align-middle ${className}`} />
 );
 
 interface ShopItem {
@@ -99,8 +99,6 @@ const ShopModal: React.FC<ShopModalProps> = ({
             .filter(i => {
                 // Фильтруем по категории
                 if (i.category !== activeTab) return false;
-                // Исключаем рамки за уровни
-                if (activeTab === 'frame' && i.preview.includes('/Frames_lvl/')) return false;
                 return true;
             })
             .sort((a, b) => {

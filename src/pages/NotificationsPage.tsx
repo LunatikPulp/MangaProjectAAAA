@@ -1,6 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import DOMPurify from 'dompurify';
 import { NotificationContext } from '../contexts/NotificationContext';
 import { NotificationCategory } from '../types';
 
@@ -89,7 +90,7 @@ const NotificationsPage: React.FC = () => {
                                     <div className="flex-1 min-w-0">
                                         <p
                                             className="text-sm text-text-primary font-mono leading-relaxed"
-                                            dangerouslySetInnerHTML={{ __html: notif.message }}
+                                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(notif.message) }}
                                         />
                                         <div className="flex items-center gap-2 mt-2">
                                             <span className="text-[10px] text-muted font-mono">

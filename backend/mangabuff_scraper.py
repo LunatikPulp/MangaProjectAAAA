@@ -19,12 +19,16 @@ class MangaBuffScraper:
         self.proxy = None
 
         if use_proxy:
-            # HTTP прокси с авторизацией
-            self.proxy = {
-                'http': 'http://tube_vpn:tube_vpn@95.85.242.196:53671',
-                'https': 'http://tube_vpn:tube_vpn@95.85.242.196:53671'
-            }
-            logger.info("Using HTTP proxy: 95.85.242.196:53671")
+            proxy_url = os.environ.get("MANGABUFF_PROXY")
+            if proxy_url:
+                self.proxy = {
+                    'http': proxy_url,
+                    'https': proxy_url
+                }
+                logger.info(f"Using HTTP proxy from env")
+            else:
+                self.proxy = None
+                logger.warning("Proxy requested but MANGABUFF_PROXY env not set, using direct connection")
         else:
             logger.info("Proxy disabled, direct connection")
 

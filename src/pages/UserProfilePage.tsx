@@ -7,6 +7,7 @@ import FramedAvatar from '../components/FramedAvatar';
 import RankBadge from '../components/RankBadge';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
+import '../styles/profile-themes.css';
 
 /* Achievement registry (same as ProfilePage) */
 interface Achievement { icon: string; title: string; description: string; flavorText: string; rarity: 'common' | 'rare' | 'epic' | 'legendary'; secret?: boolean; }
@@ -375,7 +376,7 @@ const UserProfilePage: React.FC = () => {
 
             videoBg = document.createElement('div');
             videoBg.id = 'profile-video-bg';
-            videoBg.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;overflow:hidden;pointer-events:none;';
+            videoBg.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100dvh;z-index:0;overflow:hidden;pointer-events:none;';
             videoBg.innerHTML = `
                 <video src="${backgroundSrcEarly}" autoplay loop muted playsinline style="width:100%;height:100%;object-fit:cover;"></video>
                 <div style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(18,18,18,0.72);pointer-events:none;"></div>

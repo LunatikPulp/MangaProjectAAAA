@@ -294,7 +294,7 @@ const MessagesPage: React.FC = () => {
         <>
             <GlitchStyles />
             <div className="flex overflow-hidden"
-                 style={{ background: '#121212', height: 'calc(100vh - 56px)' }}>
+                 style={{ background: '#121212', height: 'calc(100dvh - 56px)' }}>
 
                 {/* ═══════════════════════════════════════
                     LEFT PANEL — ДИАЛОГОВЫЕ ШЛЮЗЫ (30%)

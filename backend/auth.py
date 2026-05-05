@@ -9,9 +9,11 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "SECRET_KEY_CHANGE_ME")
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable is required. Set it in .env")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 2  # 2 days
 
 COOKIE_NAME = "access_token"
 COOKIE_MAX_AGE = ACCESS_TOKEN_EXPIRE_MINUTES * 60  # seconds
@@ -72,12 +74,13 @@ async def get_current_user(request: Request, token: Optional[str] = Depends(oaut
     user = db.query(User).filter(User.email == email).first()
     if user is None:
         raise credentials_exception
-    # Update last_seen via direct UPDATE to avoid session conflicts
+    # Update last_seen — no more than once every 5 minutes to avoid excessive DB writes
     from sqlalchemy import update
-    db.execute(update(User).where(User.id == user.id).values(last_seen=datetime.utcnow()))
-    db.commit()
-    # Refresh to get updated value
-    db.refresh(user)
+    now = datetime.utcnow()
+    if user.last_seen is None or (now - user.last_seen).total_seconds() > 300:
+        db.execute(update(User).where(User.id == user.id).values(last_seen=now))
+        db.commit()
+        db.refresh(user)
     return user
 
 async def get_optional_user(request: Request, token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -91,5 +94,11 @@ async def get_optional_user(request: Request, token: Optional[str] = Depends(oau
             return None
         user = db.query(User).filter(User.email == email).first()
         return user
-    except:
+    except Exception:
         return None
+
+async def get_admin_user(request: Request, token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    user = await get_current_user(request, token, db)
+    if user.role not in ("admin", "moderator"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user

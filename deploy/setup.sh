@@ -26,10 +26,9 @@ echo "[4/10] Installing Redis..."
 apt install -y redis-server
 systemctl enable redis-server
 systemctl start redis-server
-# Verify Redis is running
 redis-cli ping && echo "Redis OK" || echo "Redis FAILED"
 
-# Install nginx brotli modules
+# Install nginx brotli modules (BOTH filter and static)
 echo "[5/10] Installing nginx brotli modules..."
 apt install -y libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static
 
@@ -51,7 +50,7 @@ fi
 
 # Create directory structure
 echo "[8/10] Creating directories..."
-mkdir -p /opt/manga/{backend,frontend}
+mkdir -p /opt/manga/{backend,frontend,public}
 mkdir -p /opt/manga/backend/{uploads/avatars,uploads/banners,uploads/backgrounds,uploads/shop,uploads/personalization,manga,image_cache}
 mkdir -p /var/cache/nginx/proxy
 chown -R manga:manga /opt/manga
@@ -73,20 +72,16 @@ cp /opt/manga/deploy/manga.service /etc/systemd/system/manga.service
 systemctl daemon-reload
 systemctl enable manga
 
-# Setup nginx — global config (gzip + brotli + cache zone)
+# Setup nginx — global config (gzip + brotli_static + cache zone)
 echo "Setting up nginx..."
-# Inject brotli/gzip/cache settings into nginx.conf if not present
-if ! grep -q "brotli on" /etc/nginx/nginx.conf; then
-    # Insert before the closing } of http block
-    sed -i '/include \/etc\/nginx\/sites-enabled/a\\n\t# Brotli compression\n\tbrotli on;\n\tbrotli_comp_level 6;\n\tbrotli_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;' /etc/nginx/nginx.conf
-fi
-if ! grep -q "proxy_cache_path" /etc/nginx/nginx.conf; then
-    sed -i '/include \/etc\/nginx\/sites-enabled/a\\n\tproxy_cache_path /var/cache/nginx/proxy levels=1:2 keys_zone=imgcache:10m max_size=500m inactive=7d use_temp_path=off;' /etc/nginx/nginx.conf
+if ! grep -q "brotli_static" /etc/nginx/nginx.conf; then
+    # Insert GZip + Brotli_static + cache settings before sites-enabled include
+    sed -i '/include \/etc\/nginx\/sites-enabled/i\\n\t# GZip for dynamic API responses\n\tgzip on;\n\tgzip_vary on;\n\tgzip_proxied any;\n\tgzip_comp_level 6;\n\tgzip_buffers 16 8k;\n\tgzip_http_version 1.1;\n\tgzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;\n\n\t# Brotli: only pre-compressed static files (zero CPU)\n\tbrotli_static on;\n\n\t# Image proxy cache zone\n\tproxy_cache_path /var/cache/nginx/proxy levels=1:2 keys_zone=imgcache:10m max_size=500m inactive=7d use_temp_path=off;' /etc/nginx/nginx.conf
 fi
 
 # Setup nginx — site config
 rm -f /etc/nginx/sites-enabled/default
-cp /opt/manga/deploy/nginx.conf /etc/nginx/sites-available/manga
+cp /opt/manga/deploy/nginx_manga.conf /etc/nginx/sites-available/manga
 ln -sf /etc/nginx/sites-available/manga /etc/nginx/sites-enabled/manga
 nginx -t && systemctl reload nginx
 
@@ -102,9 +97,14 @@ echo "=== Setup complete! ==="
 echo ""
 echo "Next steps:"
 echo "  1. Copy your project to /opt/manga/"
-echo "  2. Copy .env.production to /opt/manga/backend/.env and fill in secrets"
-echo "  3. Run: cd /opt/manga && bash deploy/deploy.sh"
-echo "  4. Setup HTTPS: certbot --nginx -d your-domain.com"
+echo "  2. Create symlinks for Frames: ln -sf /opt/manga/frontend/dist/Frames_lvl /opt/manga/public/Frames_lvl && ln -sf /opt/manga/frontend/dist/Frames_shop /opt/manga/public/Frames_shop"
+echo "  3. Copy .env.production to /opt/manga/backend/.env and fill in secrets"
+echo "  4. Run: cd /opt/manga && bash deploy/deploy.sh"
+echo "  5. Setup HTTPS: certbot --nginx -d your-domain.com"
+echo ""
+echo "Compression scheme:"
+echo "  API (dynamic):  GZip by nginx"
+echo "  Static (JS/CSS): Brotli pre-compressed by Vite, served via brotli_static"
 echo ""
 echo "Services:"
 echo "  Redis:  systemctl status redis-server"

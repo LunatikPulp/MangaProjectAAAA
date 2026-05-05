@@ -4,6 +4,19 @@ import { fetchChapterPages, proxyImageUrl } from '../services/externalApiService
 import ChevronLeftIcon from './icons/ChevronLeftIcon';
 import ChevronRightIcon from './icons/ChevronRightIcon';
 
+/** Prefetch next N images so page transitions feel instant */
+const prefetchCache = new Set<string>();
+const prefetchImages = (urls: string[], start: number, count: number) => {
+    for (let i = start; i < Math.min(start + count, urls.length); i++) {
+        const url = urls[i];
+        if (url && !prefetchCache.has(url)) {
+            prefetchCache.add(url);
+            const img = new Image();
+            img.src = url;
+        }
+    }
+};
+
 interface PagedChapterViewProps {
     chapter: Chapter;
     onNextChapter: () => void;
@@ -22,6 +35,10 @@ const getPageSrc = (p: Page, wm: string = ""): string => {
     }
     return '';
 };
+
+function getViewportHeight(): number {
+    return window.visualViewport?.height ?? window.innerHeight;
+}
 
 // Represents a visible slice of a potentially long image
 interface PageSlice {
@@ -83,7 +100,7 @@ const PagedChapterView: React.FC<PagedChapterViewProps> = ({ chapter, onNextChap
     // Calculate total virtual pages (slices) based on loaded image info
     const virtualPages: PageSlice[] = useMemo(() => {
         const result: PageSlice[] = [];
-        const viewportHeight = window.innerHeight;
+        const viewportHeight = getViewportHeight();
 
         pages.forEach((_, index) => {
             const slices = imageSlices[index] || 1; // Default to 1 slice until loaded
@@ -140,7 +157,7 @@ const PagedChapterView: React.FC<PagedChapterViewProps> = ({ chapter, onNextChap
     const handleImageLoad = (index: number, e: React.SyntheticEvent<HTMLImageElement>) => {
         const img = e.currentTarget;
         const naturalHeight = img.naturalHeight;
-        const viewportHeight = window.innerHeight;
+        const viewportHeight = getViewportHeight();
         
         // If image is significantly taller than viewport (e.g. > 1.2x), slice it
         if (naturalHeight > viewportHeight * 1.2) {
@@ -180,6 +197,14 @@ const PagedChapterView: React.FC<PagedChapterViewProps> = ({ chapter, onNextChap
         }
     }, [currentSliceIndex, onPrevChapter, showEndScreen]);
     
+    // Prefetch adjacent pages for instant navigation
+    useEffect(() => {
+        if (pages.length === 0 || !virtualPages[currentSliceIndex]) return;
+        const currentImageIdx = virtualPages[currentSliceIndex].imageIndex;
+        prefetchImages(pages, currentImageIdx + 1, 3); // prefetch next 3 images
+        if (currentImageIdx > 0) prefetchImages(pages, currentImageIdx - 1, 1); // prefetch prev
+    }, [currentSliceIndex, virtualPages, pages]);
+
     // Keyboard navigation
      useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -196,7 +221,7 @@ const PagedChapterView: React.FC<PagedChapterViewProps> = ({ chapter, onNextChap
 
     if (pages.length === 0) {
         return (
-            <div className="flex items-center justify-center h-screen text-muted">
+            <div className="flex items-center justify-center h-[100dvh] text-muted">
                 В этой главе нет страниц.
             </div>
         );
@@ -220,10 +245,11 @@ const PagedChapterView: React.FC<PagedChapterViewProps> = ({ chapter, onNextChap
     const currentImageUrl = pages[currentSlice?.imageIndex || 0];
 
     return (
-        <div className="relative w-full h-screen bg-black flex items-center justify-center overflow-hidden select-none">
+        <div className="relative w-full h-[100dvh] bg-black flex items-center justify-center overflow-hidden select-none">
             {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand"></div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10 gap-4">
+                    <div className="w-[60%] max-w-md aspect-[3/4] bg-white/5 rounded animate-pulse" />
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand"></div>
                 </div>
             )}
             
@@ -239,6 +265,7 @@ const PagedChapterView: React.FC<PagedChapterViewProps> = ({ chapter, onNextChap
             {currentSlice && (
                 <div 
                     className="relative w-full h-full flex items-start justify-center overflow-hidden"
+                    style={{ containerType: 'inline-size' }}
                 >
                     <img
                         key={currentImageUrl}
@@ -251,7 +278,7 @@ const PagedChapterView: React.FC<PagedChapterViewProps> = ({ chapter, onNextChap
                             transform: currentSlice.isLong ? 'none' : 'translateY(-50%)',
                             width: 'auto',
                             height: 'auto',
-                            maxHeight: currentSlice.isLong ? 'none' : '100vh', 
+                            maxHeight: currentSlice.isLong ? 'none' : '100dvh',
                             maxWidth: '100%',
                             opacity: isLoading ? 0 : 1 
                         }}
@@ -263,23 +290,21 @@ const PagedChapterView: React.FC<PagedChapterViewProps> = ({ chapter, onNextChap
                                 className="absolute pointer-events-none select-none"
                                 style={{
                                     top: '50%',
-                                    right: '8px',
+                                    right: '2cqw',
                                     transform: 'translateY(-50%)',
                                     opacity: 0.35,
                                     whiteSpace: 'nowrap',
                                     zIndex: 10,
-                                    width: '160px',
-                                    height: '56px',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                 }}
                             >
-                                <div style={{ fontSize: '1.1rem', fontWeight: 900, letterSpacing: '0.12em', lineHeight: 1.2, color: 'var(--c-brand)', textTransform: 'uppercase', textShadow: '0 0 8px rgba(0,0,0,0.6)' }}>
+                                <div style={{ fontSize: '4cqw', fontWeight: 900, letterSpacing: '0.12em', lineHeight: 1.2, color: 'var(--c-brand)', textTransform: 'uppercase', textShadow: '0 0 8px rgba(0,0,0,0.6)' }}>
                                     SPRINGMANGA
                                 </div>
-                                <div style={{ fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--c-brand)', textShadow: '0 0 5px rgba(0,0,0,0.5)', textAlign: 'center' }}>
+                                <div style={{ fontSize: '2cqw', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--c-brand)', textShadow: '0 0 5px rgba(0,0,0,0.5)', textAlign: 'center' }}>
                                     быстрее только у нас
                                 </div>
                             </div>

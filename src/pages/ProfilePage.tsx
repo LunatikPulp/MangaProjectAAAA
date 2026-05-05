@@ -17,6 +17,8 @@ import { getFrameImage } from '../config/avatarFrames';
 import ShopModal from '../components/ShopModal';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import '../styles/profile-themes.css';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/iosScrollLock';
 
 /** Crop helper — returns a Blob from the cropped pixel area */
 function getCroppedBlob(image: HTMLImageElement, pixelCrop: PixelCrop): Promise<Blob> {
@@ -35,7 +37,6 @@ function getCroppedBlob(image: HTMLImageElement, pixelCrop: PixelCrop): Promise<
     return new Promise((res, rej) => canvas.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/jpeg', 0.92));
 }
 
-type EditTab = 'profile' | 'security' | 'notifications' | 'content' | 'appearance';
 
 /* ═══════════════════════════════════════════════════════════════
    ACHIEVEMENT REGISTRY
@@ -258,16 +259,12 @@ const ProfilePage: React.FC = () => {
     const navigate = useNavigate();
 
     // UI state
-    const [isEditOpen] = useState(false);
-    const [editTab] = useState<EditTab>('profile');
     const [hoveredBadge, setHoveredBadge] = useState<string | null>(null);
     const [selectedBadge, setSelectedBadge] = useState<string | null>(null);
     const [hoveredHeatmapDay, setHoveredHeatmapDay] = useState<{ day: string; count: number; x: number; y: number } | null>(null);
 
     // Profile form
-    const [previewTheme, setPreviewTheme] = useState<string>('base');
-    const [previewFrame] = useState('none');
-
+    const setPreviewTheme = (_key: string) => {}; // kept for skin preview handlers
 
 
     const [allShopItems, setAllShopItems] = useState<any[]>([]);
@@ -295,14 +292,9 @@ const ProfilePage: React.FC = () => {
 
     // Lock body scroll when modal is open
     useEffect(() => {
-        if (selectedBadge) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = '';
-        }
-        return () => {
-            document.body.style.overflow = '';
-        };
+        if (selectedBadge) lockBodyScroll();
+        else unlockBodyScroll();
+        return () => unlockBodyScroll();
     }, [selectedBadge]);
 
     // Loadings
@@ -313,9 +305,28 @@ const ProfilePage: React.FC = () => {
     // Cache-buster for banner/background (forces browser to re-fetch after upload)
     const [mediaCacheBuster, setMediaCacheBuster] = useState(Date.now());
 
-    // Rich profile data from /auth/profile-full
-    const [profileData, setProfileData] = useState<any>(null);
-    const [profileLoading, setProfileLoading] = useState(true);
+    const [profileData, setProfileData] = useState<any>(() => {
+        try {
+            const cached = localStorage.getItem('profileData');
+            if (cached) return JSON.parse(cached);
+        } catch {}
+        return null;
+    });
+
+    const [continueReading, setContinueReading] = useState<{ mangaId: string; mangaTitle: string; mangaCover: string; mangaSlug: string; chapterId: string; chapterNumber: string; currentPage: number; totalPages: number; isComplete: boolean }[]>([]);
+
+    useEffect(() => {
+        fetch(`${API_BASE}/continue-reading`, { credentials: 'include' })
+            .then(r => r.ok ? r.json() : [])
+            .then(setContinueReading)
+            .catch(() => {});
+    }, []);
+    const [profileLoading, setProfileLoading] = useState(() => {
+        try {
+            return !localStorage.getItem('profileData');
+        } catch {}
+        return true;
+    });
     const [badges, setBadges] = useState<string[]>([]);
     const badgesRef = useRef<string[]>([]);
 
@@ -536,7 +547,7 @@ const ProfilePage: React.FC = () => {
 
     // Theme keys
     const currentThemeKey = user?.profile_theme || 'base';
-    const activeThemeKey = previewSkinKey ? previewSkinKey : (isEditOpen && previewTheme !== currentThemeKey ? previewTheme : currentThemeKey);
+    const activeThemeKey = previewSkinKey || currentThemeKey;
 
     const glowOverride = useMemo(() => {
         const color = profileData?.nickname_color;
@@ -551,7 +562,7 @@ const ProfilePage: React.FC = () => {
 
     // Current frame (shop modal preview takes priority)
     const currentFrame = user?.avatar_frame || 'none';
-    const activeFrame = previewFrameKey || (isEditOpen && editTab === 'appearance' ? previewFrame : currentFrame);
+    const activeFrame = previewFrameKey || currentFrame;
     const frameImage = getFrameImage(activeFrame);
 
     // Heatmap data
@@ -572,49 +583,69 @@ const ProfilePage: React.FC = () => {
         if (!user) { setProfileLoading(false); return; }
         try { setBadges(JSON.parse(user.badge_ids || '[]')); } catch { setBadges([]); }
 
-        setProfileLoading(true);
-
-        Promise.all([
-            fetch(`${API_BASE}/auth/profile-full`, { credentials: 'include' }).then(r => r.json()).catch(() => null),
-            fetch(`${API_BASE}/auth/check-achievements`, { method: 'POST', credentials: 'include' }).then(r => r.json()).catch(() => null),
-            fetch(`${API_BASE}/auth/sync-xp`, { method: 'POST', credentials: 'include' }).then(r => r.json()).catch(() => null),
-            fetch(`${API_BASE}/auth/my-purchases`, { credentials: 'include' }).then(r => r.ok ? r.json() : []).catch(() => []),
-            fetch(`${API_BASE}/shop/items`, { credentials: 'include' }).then(r => r.json()).catch(() => []),
-        ]).then(([profileData, achData, xpData, purchases, shopItems]) => {
-            if (profileData) {
-                setProfileData(profileData);
-                if (profileData.user?.badge_ids) setBadges(profileData.user.badge_ids);
-                if (profileData?.nickname_font) {
-                    const fontLink = document.createElement('link');
-                    fontLink.rel = 'stylesheet';
-                    fontLink.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(profileData.nickname_font)}&display=swap`;
-                    fontLink.id = 'nickname-font-link';
-                    const existing = document.getElementById('nickname-font-link');
-                    if (existing) existing.remove();
-                    document.head.appendChild(fontLink);
+        fetch(`${API_BASE}/auth/profile-full`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(pd => {
+                if (pd) {
+                    setProfileData(pd);
+                    try { localStorage.setItem('profileData', JSON.stringify(pd)); } catch {}
+                    if (pd.user?.badge_ids) setBadges(pd.user.badge_ids);
+                    if (pd?.nickname_font) {
+                        const fontId = `nickname-font-${pd.nickname_font.replace(/\s+/g, '-')}`;
+                        if (!document.getElementById(fontId)) {
+                            const fontLink = document.createElement('link');
+                            fontLink.rel = 'stylesheet';
+                            fontLink.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(pd.nickname_font)}&display=swap`;
+                            fontLink.id = fontId;
+                            document.head.appendChild(fontLink);
+                        }
+                    }
                 }
-            }
-            if (achData?.badges) setBadges(achData.badges);
-            if (achData?.new_badges?.length > 0) {
-                const manualAchievements = ['konami_master', 'horror_discoverer'];
-                achData.new_badges.forEach((b: string) => {
-                    if (manualAchievements.includes(b)) return;
-                    const ach = ACHIEVEMENTS[b];
-                    if (ach) showToaster(`🎉 Новая ачивка: ${ach.title}!`);
-                });
-            }
-            if (xpData) {
-                if (xpData.level_up) showToaster(`⚡ Уровень повышен! Теперь вы ${xpData.level} ур.`);
-                if (xpData.daily_scrap > 0) showToaster(`+${xpData.daily_scrap} за ежедневный вход!`);
-                if (xpData.level_scrap > 0) showToaster(`+${xpData.level_scrap} за повышение уровня!`);
-            }
-            if (Array.isArray(purchases)) setMyPurchases(purchases);
-            if (Array.isArray(shopItems)) {
-                const filteredData = shopItems.filter((item: any) => !(item.category === 'frame' && item.preview.includes('/Frames_lvl/')));
-                setAllShopItems(filteredData);
-                setShopSkins(filteredData.filter((i: any) => i.category === 'skin'));
-            }
-        }).finally(() => setProfileLoading(false));
+            })
+            .catch(() => {})
+            .finally(() => setProfileLoading(false));
+
+        fetch(`${API_BASE}/auth/my-purchases`, { credentials: 'include' })
+            .then(r => r.ok ? r.json() : [])
+            .then(purchases => { if (Array.isArray(purchases)) setMyPurchases(purchases); })
+            .catch(() => {});
+
+        fetch(`${API_BASE}/shop/items`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(shopItems => {
+                if (Array.isArray(shopItems)) {
+                    const filteredData = shopItems;
+                    setAllShopItems(filteredData);
+                    setShopSkins(filteredData.filter((i: any) => i.category === 'skin'));
+                }
+            })
+            .catch(() => []);
+
+        fetch(`${API_BASE}/auth/check-achievements`, { method: 'POST', credentials: 'include' })
+            .then(r => r.json())
+            .then(achData => {
+                if (achData?.badges) setBadges(achData.badges);
+                if (achData?.new_badges?.length > 0) {
+                    const manualAchievements = ['konami_master', 'horror_discoverer'];
+                    achData.new_badges.forEach((b: string) => {
+                        if (manualAchievements.includes(b)) return;
+                        const ach = ACHIEVEMENTS[b];
+                        if (ach) showToaster(`🎉 Новая ачивка: ${ach.title}!`);
+                    });
+                }
+            })
+            .catch(() => {});
+
+        fetch(`${API_BASE}/auth/sync-xp`, { method: 'POST', credentials: 'include' })
+            .then(r => r.json())
+            .then(xpData => {
+                if (xpData) {
+                    if (xpData.level_up) showToaster(`⚡ Уровень повышен! Теперь вы ${xpData.level} ур.`);
+                    if (xpData.daily_scrap > 0) showToaster(`+${xpData.daily_scrap} за ежедневный вход!`);
+                    if (xpData.level_scrap > 0) showToaster(`+${xpData.level_scrap} за повышение уровня!`);
+                }
+            })
+            .catch(() => {});
     }, [user?.id]);
 
     // Listen for real-time achievement unlocks from other components (e.g. SpringtrapNightmare)
@@ -1171,9 +1202,9 @@ const ProfilePage: React.FC = () => {
 
             videoBg = document.createElement('div');
             videoBg.id = 'profile-video-bg';
-            videoBg.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;overflow:hidden;pointer-events:none;';
+            videoBg.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100dvh;z-index:0;overflow:hidden;pointer-events:none;';
             videoBg.innerHTML = `
-                <video src="${backgroundSrc}" autoplay loop muted playsinline preload="auto" style="width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease;"></video>
+                <video src="${backgroundSrc}" autoplay loop muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease;"></video>
                 <div style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(18,18,18,0.72);pointer-events:none;"></div>
             `;
             document.body.insertBefore(videoBg, document.body.firstChild);
@@ -1219,7 +1250,7 @@ const ProfilePage: React.FC = () => {
                 {bannerSrc ? (
                     <div className="absolute inset-0 z-0">
                         {isVideo(bannerSrc) ? (
-                            <video src={bannerSrc} autoPlay loop muted playsInline preload="auto" className="w-full h-full object-cover" />
+                            <video src={bannerSrc} autoPlay loop muted playsInline preload="metadata" className="w-full h-full object-cover" />
                         ) : (
                             <img src={bannerSrc} alt="" className="w-full h-full object-cover" />
                         )}
@@ -1255,7 +1286,7 @@ const ProfilePage: React.FC = () => {
                         <div className="flex-1 text-center sm:text-left min-w-0">
                             <div className="flex items-center justify-center sm:justify-start gap-2 mb-1 flex-wrap">
                                 <h1 className={`text-2xl sm:text-3xl md:text-4xl font-display font-bold text-text-primary spring-glitch truncate max-w-[300px] sm:max-w-none ${nicknameEffectClass}`} style={nicknameCustomStyle} data-text={user.username}>{user.username}</h1>
-                                <RankBadge chaptersRead={profileData?.stats?.chapters_read ?? totalChaptersRead} size="md" />
+                                <RankBadge chaptersRead={profileData?.stats?.chapters_read ?? user.chapters_read ?? totalChaptersRead} size="md" />
                                 <span className={`text-[10px] font-mono font-bold px-2 py-0.5 shrink-0 ${
                                     user.role === 'admin' ? 'bg-brand-accent/20 text-brand-accent' :
                                     user.role === 'moderator' ? 'bg-brand/20 text-brand' :
@@ -1376,7 +1407,7 @@ const ProfilePage: React.FC = () => {
                         <div className="space-y-2.5">
                             {profileData && <StatRow label="Уровень" value={`${level}`} accent />}
                             {profileData && <StatRow label="Опыт" value={`${xp} XP`} />}
-                            <StatRow label="Глав прочитано" value={`${profileData?.stats?.chapters_read ?? totalChaptersRead}`} />
+                            <StatRow label="Глав прочитано" value={`${profileData?.stats?.chapters_read ?? user.chapters_read ?? totalChaptersRead}`} />
                             <StatRow label="Лайков" value={`${profileData?.stats?.total_likes ?? 0}`} />
                             <StatRow label="Оценок" value={`${profileData?.stats?.total_ratings ?? 0}`} />
                             <StatRow label="Закладок" value={`${profileData?.stats?.total_bookmarks ?? bookmarks.length}`} />
@@ -1436,6 +1467,33 @@ const ProfilePage: React.FC = () => {
                                         <span className="text-text-primary font-mono font-bold">{count}</span>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Continue Reading */}
+                    {continueReading.length > 0 && (
+                        <div className={`profile-surface-bg border profile-border p-4 ${blockStyleClass}`}>
+                            <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted mb-3 flex items-center gap-1.5">
+                                <span className="profile-glow-text">■</span> ПРОДОЛЖИТЬ ЧТЕНИЕ
+                            </h3>
+                            <div className="space-y-2">
+                                {continueReading.map(item => {
+                                    const coverUrl = item.mangaCover && !item.mangaCover.startsWith('http') && !item.mangaCover.startsWith('//') ? `${API_BASE}${item.mangaCover}` : item.mangaCover;
+                                    const pct = item.totalPages > 0 ? Math.round((item.currentPage / item.totalPages) * 100) : (item.isComplete ? 100 : 0);
+                                    return (
+                                        <Link key={item.mangaId} to={`/manga/${item.mangaSlug}/chapter/${encodeURIComponent(item.chapterId)}${item.currentPage > 1 ? `?page=${item.currentPage}` : ''}`} className="flex items-center gap-3 p-2 rounded-lg hover:bg-overlay transition-colors group">
+                                            <img src={coverUrl} alt={item.mangaTitle} className="w-9 h-12 object-cover border border-overlay flex-shrink-0" loading="lazy" decoding="async" />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-semibold truncate text-text-primary group-hover:text-brand-accent transition-colors">{item.mangaTitle}</p>
+                                                <p className="text-[10px] font-mono text-muted mt-0.5">Глава {item.chapterNumber || '1'}{item.totalPages > 0 ? ` · Стр. ${item.currentPage}/${item.totalPages}` : ''}</p>
+                                                <div className="w-full bg-base h-0.5 mt-1">
+                                                    <div className="bg-brand-accent h-0.5" style={{ width: `${pct}%` }} />
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -1606,7 +1664,7 @@ const ProfilePage: React.FC = () => {
                                     <div key={b.mangaId} className="group relative">
                                         <Link to={`/manga/${b.manga!.slug || b.manga!.id}`}>
                                             <div className="aspect-[2/3] overflow-hidden border profile-border relative profile-card-hover">
-                                                <img src={b.manga!.cover} alt={b.manga!.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                                <img src={b.manga!.cover} alt={b.manga!.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" loading="lazy" />
                                                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                                                 <div className="absolute bottom-0 left-0 right-0 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <p className="text-[9px] font-mono font-bold text-white truncate">{b.manga!.title}</p>
@@ -1653,7 +1711,7 @@ const ProfilePage: React.FC = () => {
                                                         ach.rarity === 'legendary' ? '2px solid rgba(255, 215, 0, 0.7)' : undefined
                                             }}
                                         >
-                                            <img src={ach.icon} alt={ach.title} className="w-full h-full object-cover" />
+                                            <img src={ach.icon} alt={ach.title} className="w-full h-full object-cover" loading="lazy" />
                                         </div>
                                         <span className="text-[9px] font-mono text-text-secondary text-center truncate w-full">{ach.title}</span>
                                         <BadgeTooltip show={hoveredBadge === badgeId} ach={ach} />

@@ -369,7 +369,7 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
 
     return (
         <>
-            <aside className="hidden lg:block w-72 flex-shrink-0 bg-surface rounded-lg sticky top-20 self-start max-h-[calc(100vh-6rem)] overflow-hidden">
+            <aside className="hidden lg:block w-72 flex-shrink-0 bg-surface rounded-lg sticky top-20 self-start max-h-[calc(100dvh-6rem)] overflow-hidden">
                 {sidebarContent}
             </aside>
 

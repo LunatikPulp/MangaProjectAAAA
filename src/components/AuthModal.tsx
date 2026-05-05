@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
 import { ToasterContext } from '../contexts/ToasterContext';
 import { API_BASE } from '../services/externalApiService';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/iosScrollLock';
 
 const AuthModal: React.FC = () => {
   const { authModal, closeAuthModal, setAuthModalView, login, register } = useContext(AuthContext);
@@ -26,24 +27,34 @@ const AuthModal: React.FC = () => {
 
   const providers = useMemo(
     () => [
-      { key: 'telegram', label: 'Telegram', icon: <i className="fa-brands fa-telegram text-xl" /> },
-      { key: 'yandex', label: 'Яндекс', icon: <i className="fa-brands fa-yandex text-xl" style={{color:'#FC3F1D'}} /> },
-      { key: 'vk', label: 'VK', icon: <i className="fa-brands fa-vk text-xl" style={{color:'#0077FF'}} /> },
-      { key: 'google', label: 'Google', icon: <i className="fa-brands fa-google text-xl" style={{color:'#4285F4'}} /> },
+      {
+        key: 'telegram', label: 'Telegram', icon: (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.504-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" /></svg>
+        )
+      },
+      {
+        key: 'yandex', label: 'Яндекс', icon: (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#FC3F1D"><path d="M14.47 2.12c-2.78 0-5.2 1.79-5.2 4.87 0 2.08 1.2 3.51 2.9 4.5l.73.44-.84 1.6c-.49-.28-1.5-.87-2.63-1.67C7.5 10.12 5.5 8.25 5.5 5.37 5.5 2.15 8.3 0 12.07 0c4.14 0 6.93 2.65 6.93 6.12 0 3.08-1.87 5.2-4.14 6.7l-.02.02c-.6.4-.96.65-1.12.78L12.4 11.2c.37-.22.78-.5 1.2-.82 1.56-1.18 2.64-2.6 2.64-4.56 0-2.2-1.58-3.7-3.77-3.7zM12.27 24l1.6-3.2H8.67L7.07 24h5.2z" /></svg>
+        )
+      },
+      {
+        key: 'vk', label: 'VK', icon: (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#0077FF"><path d="M15.684 0H8.316C1.592 0 0 1.592 0 8.316v7.368C0 22.408 1.592 24 8.316 24h7.368C22.408 24 24 22.408 24 15.684V8.316C24 1.592 22.391 0 15.684 0zm3.692 17.123h-1.744c-.66 0-.864-.525-2.05-1.727-1.033-1-1.49-1.135-1.744-1.135-.356 0-.458.102-.458.593v1.575c0 .424-.135.678-1.253.678-1.846 0-3.896-1.118-5.335-3.202C4.624 10.857 4.03 8.57 4.03 8.096c0-.254.102-.491.593-.491h1.744c.44 0 .61.203.78.678.848 2.456 2.27 4.608 2.85 4.608.22 0 .322-.102.322-.66V9.721c-.068-1.186-.695-1.287-.695-1.71 0-.203.17-.407.44-.407h2.744c.373 0 .508.203.508.644v3.473c0 .372.17.508.271.508.22 0 .407-.136.814-.542 1.27-1.388 2.18-3.523 2.18-3.523.119-.254.322-.491.763-.491h1.744c.525 0 .644.27.525.644-.22 1.017-2.354 4.031-2.354 4.031-.186.305-.254.44 0 .78.186.254.796.78 1.203 1.27.745.847 1.32 1.558 1.473 2.05.17.49-.085.744-.576.744z" /></svg>
+        )
+      },
+      {
+        key: 'google', label: 'Google', icon: (
+          <svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" /><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" /></svg>
+        )
+      },
     ],
     []
   );
 
   useEffect(() => {
     if (!isOpen) return;
-    const prevBodyOverflow = document.body.style.overflow;
-    const prevHtmlOverflow = document.documentElement.style.overflow;
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prevBodyOverflow;
-      document.documentElement.style.overflow = prevHtmlOverflow;
-    };
+    lockBodyScroll();
+    return () => unlockBodyScroll();
   }, [isOpen]);
 
   useEffect(() => {

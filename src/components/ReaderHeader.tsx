@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuthContext } from '../contexts/AuthContext';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/iosScrollLock';
 import FramedAvatar from './FramedAvatar';
 import Logo from './icons/Logo';
 import ReportIcon from './icons/ReportIcon';
@@ -83,14 +84,8 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
 
   // Lock scroll when report is open (mobile only — header report is mobile-only)
   useEffect(() => {
-    if (isReportOpen) {
-      document.body.style.overflow = 'hidden';
-      document.documentElement.style.overflow = 'hidden';
-    }
-    return () => {
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
-    };
+    if (isReportOpen) lockBodyScroll();
+    return () => unlockBodyScroll();
   }, [isReportOpen]);
 
   const handleSubmitReport = () => {

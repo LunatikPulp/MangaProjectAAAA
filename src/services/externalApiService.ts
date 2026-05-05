@@ -65,6 +65,17 @@ export function proxyImageUrl(url: string, wm: string = ""): string {
   return `${API_BASE}/img/${hash}.webp?url=${encodeURIComponent(url)}${wm ? `&wm=${wm}` : ''}`;
 }
 
+export function getPreloadedData(): Record<string, any> | null {
+  try {
+    const el = document.getElementById('__PRELOADED_DATA__');
+    if (el) {
+      const data = JSON.parse(el.textContent || '{}');
+      if (data && Object.keys(data).length > 0) return data;
+    }
+  } catch {}
+  return null;
+}
+
 /** Build user-facing manga URL path using slug */
 export function mangaPath(manga: { id: string; slug?: string }): string {
   return `/manga/${manga.slug || manga.id}`;
@@ -220,19 +231,51 @@ export async function getCrawlerStatus(): Promise<{
   return res.json();
 }
 
-/** Lazy-load страниц главы по slug */
+/** In-memory cache for chapter pages — avoids re-fetching already loaded chapters */
+const _chapterPagesCache = new Map<string, { pages: string[]; total_pages: number }>();
+const _chapterPagesPending = new Map<string, Promise<{ pages: string[]; total_pages: number }>>();
+
+/** Lazy-load страниц главы по slug (with dedup + in-memory cache) */
 export async function fetchChapterPages(chapterSlug: string, mangaId?: string): Promise<{
   pages: string[];
   total_pages: number;
 }> {
+  const cacheKey = `${mangaId || ''}:${chapterSlug}`;
+
+  // Return from cache instantly
+  const cached = _chapterPagesCache.get(cacheKey);
+  if (cached) return cached;
+
+  // Deduplicate concurrent requests for same chapter
+  const pending = _chapterPagesPending.get(cacheKey);
+  if (pending) return pending;
+
   let url = `${API_BASE}/catalog/chapter-pages/${encodeURIComponent(chapterSlug)}`;
   if (mangaId) url += `?manga_id=${encodeURIComponent(mangaId)}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Ошибка загрузки страниц: ${res.status} ${text}`);
+
+  const promise = fetch(url).then(async (res) => {
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Ошибка загрузки страниц: ${res.status} ${text}`);
+    }
+    const data = await res.json();
+    if (data.pages?.length > 0) {
+      _chapterPagesCache.set(cacheKey, data);
+    }
+    return data;
+  }).finally(() => {
+    _chapterPagesPending.delete(cacheKey);
+  });
+
+  _chapterPagesPending.set(cacheKey, promise);
+  return promise;
+}
+
+/** Prefetch chapter pages in background (fire-and-forget, no errors thrown) */
+export function prefetchChapterPages(chapterSlugs: string[], mangaId?: string): void {
+  for (const slug of chapterSlugs) {
+    fetchChapterPages(slug, mangaId).catch(() => {});
   }
-  return res.json();
 }
 
 /** Массовый парсинг манг */

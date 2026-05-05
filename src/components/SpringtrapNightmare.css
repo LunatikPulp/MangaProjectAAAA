@@ -71,7 +71,7 @@
   right: 0;
   bottom: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   z-index: 99999;
   background: #000000;
   display: flex;
@@ -81,7 +81,7 @@
 
 .fnaf-video-fullscreen {
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   object-fit: cover;
 }
 
@@ -91,7 +91,7 @@
   top: 0;
   left: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   object-fit: cover;
   z-index: -1;
   pointer-events: none;
@@ -322,7 +322,7 @@ html.springtrap-nightmare-active body::after {
   right: 0;
   bottom: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   pointer-events: none;
   z-index: 9998;
   background-image: url('/Horror_design/scratches.png');
@@ -466,7 +466,7 @@ html.springtrap-nightmare-active a:hover {
   right: 0;
   bottom: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   z-index: 9999;
   pointer-events: none;
   font-family: 'VCR OSD Mono', 'JetBrains Mono', 'Courier New', monospace;
@@ -550,7 +550,7 @@ body:has(.fnaf-vhs-noise) .fnaf-vhs-noise {
   right: 0;
   bottom: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   background-image: url('/Horror_design/vhs-broken.gif');
   background-size: cover;
   background-position: center;
@@ -577,10 +577,10 @@ body:has(.fnaf-vhs-noise) .fnaf-vhs-noise {
   right: 0;
   bottom: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   z-index: 10001;
   pointer-events: none;
-  background-image: url('/Horror_design/head_springtrap.png');
+  background-image: url('/Horror_design/head_springtrap.webp');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;

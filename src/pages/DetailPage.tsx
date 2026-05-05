@@ -15,7 +15,7 @@ import { ToasterContext } from '../contexts/ToasterContext';
 import BookmarkButton from '../components/BookmarkButton';
 import { useReports } from '../hooks/useReports';
 import SubscribeButton from '../components/SubscribeButton';
-import { API_BASE } from '../services/externalApiService';
+import { API_BASE, prefetchChapterPages } from '../services/externalApiService';
 import StarIcon from '../components/icons/StarIcon';
 import HeartIcon from '../components/icons/HeartIcon';
 import { BookmarkStatus } from '../types';
@@ -201,6 +201,16 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
             continueStartPage,
         };
     }, [history, manga.id, manga.chapters, getLastReadChapter]);
+
+    // Prefetch continue chapter + first chapter pages in background for instant reading
+    useEffect(() => {
+        if (!manga.chapters.length) return;
+        const sortedAsc = [...manga.chapters].sort((a, b) => parseFloat(a.chapterNumber) - parseFloat(b.chapterNumber));
+        const toFetch = new Set<string>();
+        if (continueChapterId) toFetch.add(continueChapterId);
+        if (sortedAsc[0]) toFetch.add(sortedAsc[0].id);
+        if (toFetch.size > 0) prefetchChapterPages([...toFetch], manga.id);
+    }, [manga.id, manga.chapters, continueChapterId]);
 
     const similarManga = useMemo(() => {
         if (!mangaList || mangaList.length === 0) return [];
@@ -582,11 +592,12 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
                                                         }`}
                                                     >
                                                         <div className="flex items-center gap-3">
-                                                            <div className={`w-1.5 h-1.5 rounded-full ${isRead ? 'bg-brand' : 'bg-brand'}`} />
+                                                            <div className={`w-1.5 h-1.5 rounded-full ${isRead ? 'bg-brand' : 'bg-overlay'}`} />
                                                             <span className={`font-bold ${isRead ? 'text-muted' : 'text-text-secondary group-hover:text-brand transition-colors'}`}>
                                                                 {formatChapterName(chapter)}
                                                             </span>
                                                             {isLastRead && <span className="text-[10px] bg-brand text-white px-1.5 py-0.5 rounded font-bold">Продолжить</span>}
+                                                            {isRead && !isLastRead && <span className="text-[10px] bg-surface border border-overlay text-muted px-1.5 py-0.5 rounded font-bold">Прочитано</span>}
                                                         </div>
                                                         <div className="flex items-center gap-4 text-xs text-muted font-mono">
                                                             <span className="flex items-center gap-1" title="Просмотры">
@@ -723,8 +734,8 @@ const DetailPage: React.FC<DetailPageProps> = ({ manga }) => {
             )}
 
             {typeof document !== 'undefined' && createPortal(
-                <div className="md:hidden fixed bottom-20 left-4 right-4 z-[60]">
-                    <div className="bg-surface/95 backdrop-blur-xl border border-overlay  shadow-2xl p-2 flex items-center justify-between gap-3">
+                <div className="md:hidden fixed left-0 right-0 z-[60]" style={{ bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
+                    <div className="mx-4 bg-surface/95 backdrop-blur-xl border border-overlay  shadow-2xl p-2 flex items-center justify-between gap-3 overscroll-contain">
                         <div className="relative">
                             <button 
                                 onClick={() => setMenuOpen(!isMenuOpen)}

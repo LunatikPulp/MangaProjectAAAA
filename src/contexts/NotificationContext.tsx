@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, ReactNode, useContext, useCallback } from 'react';
+import React, { createContext, useState, useEffect, ReactNode, useContext, useCallback, useMemo } from 'react';
 import { Notification, NotificationCategory } from '../types';
 import { AuthContext } from './AuthContext';
 import { API_BASE } from '../services/externalApiService';
@@ -38,7 +38,9 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 20000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchNotifications();
+    }, 20000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
   
@@ -67,13 +69,13 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     setNotifications([]);
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-  const unreadByCategory: Record<NotificationCategory | 'all', number> = {
+  const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+  const unreadByCategory: Record<NotificationCategory | 'all', number> = useMemo(() => ({
     all: unreadCount,
     updates: notifications.filter(n => !n.read && n.category === 'updates').length,
     social: notifications.filter(n => !n.read && n.category === 'social').length,
     important: notifications.filter(n => !n.read && n.category === 'important').length,
-  };
+  }), [notifications, unreadCount]);
 
   return (
     <NotificationContext.Provider value={{ notifications, addNotification, markAsRead, clearNotifications, unreadCount, unreadByCategory }}>

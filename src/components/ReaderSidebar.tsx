@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/iosScrollLock';
 import ListIcon from './icons/ListIcon';
 import CommentIcon from './icons/CommentIcon';
 import SettingsIcon from './icons/SettingsIcon';
@@ -132,14 +133,8 @@ const ReaderSidebar: React.FC<ReaderSidebarProps> = ({
 
     // Lock scroll when report panel is open
     React.useEffect(() => {
-        if (isReportPanelOpen) {
-            document.body.style.overflow = 'hidden';
-            document.documentElement.style.overflow = 'hidden';
-        }
-        return () => {
-            document.body.style.overflow = '';
-            document.documentElement.style.overflow = '';
-        };
+        if (isReportPanelOpen) lockBodyScroll();
+        return () => unlockBodyScroll();
     }, [isReportPanelOpen]);
 
     const handleSubmitReport = () => {

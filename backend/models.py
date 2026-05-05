@@ -476,3 +476,22 @@ class PasswordResetToken(Base):
     token = Column(String, unique=True, index=True)
     used = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ReadingProgress(Base):
+    __tablename__ = "reading_progress"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    manga_id = Column(String, nullable=False, index=True)
+    chapter_id = Column(String, nullable=False)
+    chapter_number = Column(String, default="")
+    current_page = Column(Integer, default=1)
+    total_pages = Column(Integer, default=1)
+    is_complete = Column(Boolean, default=False)
+    last_read_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'manga_id', 'chapter_id', name='unique_user_reading_progress'),
+        Index('ix_reading_progress_user_last_read', 'user_id', 'last_read_at'),
+    )

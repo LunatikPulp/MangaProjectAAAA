@@ -40,7 +40,9 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({ featuredManga }) => {
 
     if (!featuredManga || featuredManga.length === 0) return null;
 
-    const currentManga = featuredManga[page];
+    const safePage = ((page % featuredManga.length) + featuredManga.length) % featuredManga.length;
+    const currentManga = featuredManga[safePage];
+    if (!currentManga) return null;
 
     return (
         <div className="relative aspect-[16/9] md:aspect-[16/7] w-full overflow-hidden flex items-center justify-center mb-8 border border-overlay spring-scanlines">

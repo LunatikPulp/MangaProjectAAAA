@@ -1,0 +1,1967 @@
+/* ═══════════════════════════════════════════════════════════════════
+   PROFILE THEMES — Springtrap «Decayed System» / Black Market Skins
+   Activated via [data-profile-theme] on profile container
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── FREE TIER: Наследие Пиццерии ─── */
+
+/* Base — Классическая палитра (default) */
+[data-profile-theme="base"] {
+  --profile-accent: var(--c-brand);
+  --profile-accent-rgb: var(--c-brand-rgb);
+  --profile-glow: var(--c-brand-accent);
+  --profile-glow-rgb: var(--c-brand-accent-rgb);
+  --profile-surface: var(--c-surface);
+  --profile-border: var(--c-overlay);
+  --profile-badge-bg: var(--c-overlay);
+}
+
+/* Neon — Токсичное свечение */
+[data-profile-theme="neon"] {
+  --profile-accent: #A9FF00;
+  --profile-accent-rgb: 169 255 0;
+  --profile-glow: #A9FF00;
+  --profile-glow-rgb: 169 255 0;
+  --profile-surface: #141814;
+  --profile-border: rgba(169, 255, 0, 0.15);
+  --profile-badge-bg: rgba(169, 255, 0, 0.06);
+}
+
+/* Corroded — Ржавый распад */
+[data-profile-theme="corroded"] {
+  --profile-accent: #8B5E3C;
+  --profile-accent-rgb: 139 94 60;
+  --profile-glow: #C17A4A;
+  --profile-glow-rgb: 193 122 74;
+  --profile-surface: #171311;
+  --profile-border: rgba(139, 94, 60, 0.2);
+  --profile-badge-bg: rgba(139, 94, 60, 0.08);
+}
+
+/* ─── RARE TIER: Системные аномалии (1 000 Scrap) ─── */
+
+/* Spring-Locked — Пружинный замок (багровый, запёкшаяся кровь) */
+[data-profile-theme="spring-locked"] {
+  --profile-accent: #6B0000;
+  --profile-accent-rgb: 107 0 0;
+  --profile-glow: #CC1B1B;
+  --profile-glow-rgb: 204 27 27;
+  --profile-surface: #1A0808;
+  --profile-border: rgba(139, 0, 0, 0.3);
+  --profile-badge-bg: rgba(139, 0, 0, 0.1);
+}
+
+/* Coolant-Leak — Утечка охладителя (ледяной циан, заиндевевший) */
+[data-profile-theme="coolant-leak"] {
+  --profile-accent: #006B8F;
+  --profile-accent-rgb: 0 107 143;
+  --profile-glow: #00D4FF;
+  --profile-glow-rgb: 0 212 255;
+  --profile-surface: #080F14;
+  --profile-border: rgba(0, 180, 230, 0.2);
+  --profile-badge-bg: rgba(0, 180, 230, 0.06);
+}
+
+/* Cyber-Sakura — Синтетическая сакура (кислотно-розовый киберпанк) */
+[data-profile-theme="cyber-sakura"] {
+  --profile-accent: #FF2D8A;
+  --profile-accent-rgb: 255 45 138;
+  --profile-glow: #FF69E0;
+  --profile-glow-rgb: 255 105 224;
+  --profile-surface: #18081A;
+  --profile-border: rgba(255, 45, 138, 0.25);
+  --profile-badge-bg: rgba(255, 45, 138, 0.08);
+}
+
+/* ─── EPIC TIER: Критические угрозы (5 000 Scrap) ─── */
+
+/* Biohazard — Радиация (ураново-жёлтый + кислотный зелёный) */
+[data-profile-theme="biohazard"] {
+  --profile-accent: #B8CC00;
+  --profile-accent-rgb: 184 204 0;
+  --profile-glow: #DFFF00;
+  --profile-glow-rgb: 223 255 0;
+  --profile-surface: #0D0E04;
+  --profile-border: rgba(184, 204, 0, 0.2);
+  --profile-badge-bg: rgba(184, 204, 0, 0.06);
+}
+
+/* Terminal — Терминал (абсолютная тьма, зелёный консольный шрифт) */
+[data-profile-theme="terminal"] {
+  --profile-accent: #00FF41;
+  --profile-accent-rgb: 0 255 65;
+  --profile-glow: #00FF41;
+  --profile-glow-rgb: 0 255 65;
+  --profile-surface: #000000;
+  --profile-border: rgba(0, 255, 65, 0.12);
+  --profile-badge-bg: rgba(0, 255, 65, 0.04);
+}
+
+/* Golden-Era — Золотая эра (потускневшее золото и сепия) */
+[data-profile-theme="golden-era"] {
+  --profile-accent: #B8860B;
+  --profile-accent-rgb: 184 134 11;
+  --profile-glow: #DAA520;
+  --profile-glow-rgb: 218 165 32;
+  --profile-surface: #141008;
+  --profile-border: rgba(184, 134, 11, 0.25);
+  --profile-badge-bg: rgba(184, 134, 11, 0.08);
+}
+
+/* ─── LEGENDARY / MYTHIC TIER: Полное разрушение (15 000 Scrap) ─── */
+
+/* System-Crash — BSOD (иссиня-чёрный экран смерти) */
+[data-profile-theme="system-crash"] {
+  --profile-accent: #0000AA;
+  --profile-accent-rgb: 0 0 170;
+  --profile-glow: #FFFFFF;
+  --profile-glow-rgb: 255 255 255;
+  --profile-surface: #000044;
+  --profile-border: rgba(0, 0, 170, 0.4);
+  --profile-badge-bg: rgba(0, 0, 170, 0.15);
+}
+
+/* Phantom — Ghost in the Machine (холодный циан, аномалия, статик) */
+[data-profile-theme="phantom"] {
+  --profile-accent: #00FFFF;
+  --profile-accent-rgb: 0 255 255;
+  --profile-glow: #00FFFF;
+  --profile-glow-rgb: 0 255 255;
+  --profile-surface: #000000;
+  --profile-border: rgba(0, 255, 255, 0.08);
+  --profile-badge-bg: rgba(0, 255, 255, 0.04);
+}
+
+/* ═══ Profile accent utilities ═══ */
+[data-profile-theme] .profile-accent-text {
+  color: var(--profile-accent);
+}
+
+[data-profile-theme] .profile-accent-bg {
+  background-color: var(--profile-accent);
+}
+
+[data-profile-theme] .profile-accent-border {
+  border-color: var(--profile-accent);
+}
+
+[data-profile-theme] .profile-glow-text {
+  color: var(--profile-glow);
+}
+
+[data-profile-theme] .profile-glow-shadow {
+  box-shadow: 0 0 20px rgb(var(--profile-glow-rgb) / 0.25);
+}
+
+[data-profile-theme] .profile-surface-bg {
+  background-color: color-mix(in srgb, var(--profile-surface) 75%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+[data-profile-theme] .profile-border {
+  border-color: var(--profile-border);
+}
+
+[data-profile-theme] .profile-badge-bg {
+  background-color: var(--profile-badge-bg);
+}
+
+/* ═══ Broken Frame — clip-path for «torn metal» look ═══ */
+.broken-frame {
+  clip-path: polygon(0% 3%, 2% 0%, 15% 1%, 17% 0%, 35% 2%, 37% 0%,
+      55% 1%, 58% 0%, 75% 2%, 78% 0%, 95% 1%, 98% 0%, 100% 3%,
+      99% 15%, 100% 18%, 99% 35%, 100% 38%, 99% 55%, 100% 58%,
+      99% 75%, 100% 78%, 99% 95%, 100% 97%,
+      97% 100%, 95% 99%, 78% 100%, 75% 99%, 58% 100%, 55% 99%,
+      38% 100%, 35% 99%, 18% 100%, 15% 99%, 2% 100%, 0% 97%,
+      1% 78%, 0% 75%, 1% 58%, 0% 55%, 1% 38%, 0% 35%, 1% 18%, 0% 15%);
+}
+
+/* Simpler broken frame for small elements like badges */
+.broken-frame-sm {
+  clip-path: polygon(0% 5%, 3% 0%, 25% 2%, 50% 0%, 75% 2%, 97% 0%, 100% 5%,
+      98% 50%, 100% 95%, 97% 100%, 75% 98%, 50% 100%, 25% 98%, 3% 100%,
+      0% 95%, 2% 50%);
+}
+
+/* ═══ Glitch effect — horror-style RGB channel split on hover ═══ */
+.glitch-avatar {
+  position: relative;
+}
+
+.glitch-avatar::before,
+.glitch-avatar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s;
+}
+
+.glitch-avatar:hover::before {
+  opacity: 0.6;
+  mix-blend-mode: multiply;
+  background-color: rgba(255, 0, 0, 0.3);
+  transform: translate(-3px, 1px);
+  animation: glitchChannel 0.15s ease-in-out 1;
+}
+
+.glitch-avatar:hover::after {
+  opacity: 0.6;
+  mix-blend-mode: multiply;
+  background-color: rgba(0, 100, 255, 0.3);
+  transform: translate(3px, -1px);
+  animation: glitchChannel2 0.15s ease-in-out 1;
+}
+
+@keyframes glitchChannel {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+
+  20% {
+    transform: translate(-4px, 2px);
+    opacity: 0.8;
+  }
+
+  40% {
+    transform: translate(3px, -1px);
+    opacity: 0.5;
+  }
+
+  60% {
+    transform: translate(-2px, -2px);
+    opacity: 0.7;
+  }
+
+  80% {
+    transform: translate(4px, 1px);
+    opacity: 0.4;
+  }
+
+  100% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes glitchChannel2 {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+
+  20% {
+    transform: translate(3px, -2px);
+    opacity: 0.7;
+  }
+
+  40% {
+    transform: translate(-4px, 1px);
+    opacity: 0.5;
+  }
+
+  60% {
+    transform: translate(2px, 2px);
+    opacity: 0.6;
+  }
+
+  80% {
+    transform: translate(-3px, -1px);
+    opacity: 0.4;
+  }
+
+  100% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+}
+
+/* Full image glitch with pseudo-element clipping */
+.glitch-avatar:hover {
+  animation: glitchShake 0.2s ease-in-out;
+}
+
+@keyframes glitchShake {
+  0% {
+    transform: translate(0);
+  }
+
+  20% {
+    transform: translate(-2px, 1px);
+  }
+
+  40% {
+    transform: translate(2px, -1px);
+  }
+
+  60% {
+    transform: translate(-1px, -1px);
+  }
+
+  80% {
+    transform: translate(1px, 1px);
+  }
+
+  100% {
+    transform: translate(0);
+  }
+}
+
+/* ═══ Scanline flicker for banner ═══ */
+.profile-scanlines {
+  position: relative;
+}
+
+.profile-scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.04) 2px,
+      rgba(0, 0, 0, 0.04) 4px);
+  z-index: 1;
+}
+
+/* ═══ Badge glow pulse for rare+ ═══ */
+.badge-glow-common {
+  border: 2px solid rgba(136, 136, 136, 0.4) !important;
+}
+
+.badge-glow-rare {
+  animation: badgeGlowRare 3s ease-in-out infinite;
+  border: 2px solid rgba(74, 158, 255, 0.5) !important;
+}
+
+@keyframes badgeGlowRare {
+
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(74, 158, 255, 0.4), 0 0 4px rgba(74, 158, 255, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 16px rgba(74, 158, 255, 0.6), 0 0 8px rgba(74, 158, 255, 0.4);
+  }
+}
+
+.badge-glow-epic {
+  animation: badgeGlowEpic 2.5s ease-in-out infinite;
+  border: 2px solid rgba(168, 85, 247, 0.6) !important;
+}
+
+@keyframes badgeGlowEpic {
+
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.5), 0 0 5px rgba(168, 85, 247, 0.3);
+  }
+
+  50% {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.7), 0 0 10px rgba(168, 85, 247, 0.5);
+  }
+}
+
+.badge-glow-legendary {
+  animation: badgeGlowLegendary 2s ease-in-out infinite;
+  border: 2px solid rgba(255, 215, 0, 0.7) !important;
+}
+
+@keyframes badgeGlowLegendary {
+
+  0%,
+  100% {
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.6), 0 0 6px rgba(255, 215, 0, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 28px rgba(255, 215, 0, 0.8), 0 0 14px rgba(255, 215, 0, 0.6);
+  }
+}
+
+/* ═══ Corrupted text flicker ═══ */
+.text-corrupt {
+  animation: textCorrupt 4s infinite;
+}
+
+@keyframes textCorrupt {
+
+  0%,
+  95%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+
+  96% {
+    opacity: 0.8;
+    transform: skewX(-2deg);
+  }
+
+  97% {
+    opacity: 1;
+    transform: skewX(1deg);
+  }
+
+  98% {
+    opacity: 0.7;
+    transform: translate(-1px, 1px);
+  }
+
+  99% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ═══ Profile card hover lift with glow ═══ */
+.profile-card-hover {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.profile-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgb(var(--profile-glow-rgb, var(--c-brand-rgb)) / 0.1);
+}
+
+/* ═══ Corruption Level Meter ═══ */
+@keyframes corruptionPulse {
+
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.corruption-pulse {
+  animation: corruptionPulse 1.5s ease-in-out infinite;
+}
+
+/* ═══ Scan line effect for "Continue Reading" ═══ */
+@keyframes scanLine {
+  0% {
+    top: -100%;
+  }
+
+  100% {
+    top: 200%;
+  }
+}
+
+.scan-line-effect:hover .scan-line {
+  animation: scanLine 1.5s ease-in-out infinite;
+}
+
+/* ═══ Typewriter cursor blink ═══ */
+@keyframes cursorBlink {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+.typewriter-cursor::after {
+  content: '█';
+  animation: cursorBlink 0.8s step-end infinite;
+  color: var(--profile-glow, #A9FF00);
+}
+
+/* ═══ Full-screen glitch overlay ═══ */
+@keyframes fullGlitch {
+  0% {
+    opacity: 1;
+    transform: translate(0);
+  }
+
+  10% {
+    opacity: 0.8;
+    transform: translate(-5px, 3px) skewX(5deg);
+  }
+
+  20% {
+    opacity: 0.6;
+    transform: translate(5px, -2px) skewX(-3deg);
+  }
+
+  30% {
+    opacity: 0.9;
+    transform: translate(-3px, -1px);
+  }
+
+  40% {
+    opacity: 0.7;
+    transform: translate(4px, 2px) skewX(2deg);
+  }
+
+  50% {
+    opacity: 0.5;
+    transform: translate(-2px, 4px);
+  }
+
+  60% {
+    opacity: 0.8;
+    transform: translate(3px, -3px) skewX(-4deg);
+  }
+
+  70% {
+    opacity: 0.6;
+    transform: translate(-4px, 1px);
+  }
+
+  80% {
+    opacity: 0.9;
+    transform: translate(2px, -2px) skewX(3deg);
+  }
+
+  90% {
+    opacity: 0.7;
+    transform: translate(-1px, 3px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(0);
+  }
+}
+
+.full-glitch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg,
+      transparent 0px,
+      rgba(169, 255, 0, 0.03) 2px,
+      transparent 4px);
+  mix-blend-mode: overlay;
+  animation: fullGlitch 0.5s ease-in-out;
+}
+
+.full-glitch-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(255, 0, 0, 0.1) 33%, rgba(0, 255, 0, 0.1) 66%, rgba(0, 0, 255, 0.1) 100%);
+  animation: fullGlitch 0.3s ease-in-out reverse;
+}
+
+/* ═══ Neon online glow for friends ═══ */
+@keyframes neonOnline {
+
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(0, 255, 100, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 14px rgba(0, 255, 100, 0.8), 0 0 28px rgba(0, 255, 100, 0.3);
+  }
+}
+
+.friend-online {
+  animation: neonOnline 2s ease-in-out infinite;
+  border-color: #00FF64 !important;
+}
+
+/* ═══ Hidden text easter egg ═══ */
+.hidden-text-egg {
+  color: var(--c-surface, #1e1e1e);
+  transition: color 0s;
+}
+
+.hidden-text-egg::selection {
+  background: var(--profile-glow, #A9FF00);
+  color: #000;
+}
+
+/* ═══ Achievement glitch-in animation ═══ */
+@keyframes achievementGlitchIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(10px);
+    filter: blur(4px) hue-rotate(90deg) saturate(3);
+    clip-path: inset(40% 0 40% 0);
+  }
+
+  15% {
+    opacity: 0.6;
+    transform: scale(1.05) translateX(-3px);
+    filter: blur(2px) hue-rotate(45deg) saturate(2);
+    clip-path: inset(10% 0 30% 0);
+  }
+
+  30% {
+    opacity: 0.8;
+    transform: scale(0.98) translateX(4px);
+    filter: blur(1px) hue-rotate(-20deg);
+    clip-path: inset(5% 0 5% 0);
+  }
+
+  45% {
+    opacity: 0.9;
+    transform: scale(1.02) translateX(-2px);
+    filter: blur(0.5px) hue-rotate(10deg);
+    clip-path: inset(0 0 0 0);
+  }
+
+  60% {
+    opacity: 1;
+    transform: scale(1) translateX(1px);
+    filter: none;
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+    filter: none;
+    clip-path: inset(0 0 0 0);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+   SKIN BLOCK STYLES — Applied to profile containers
+   ═══════════════════════════════════════════════════════════════════ */
+
+  /* Neon Border — pulsating glow */
+  .skin-block-neon-border {
+    border: 1px solid rgb(var(--profile-glow-rgb, 169 255 0) / 0.4) !important;
+    animation: skinNeonPulse 3s ease-in-out infinite;
+  }
+
+  @keyframes skinNeonPulse {
+
+    0%,
+    100% {
+      box-shadow: 0 0 8px rgb(var(--profile-glow-rgb, 169 255 0) / 0.15), inset 0 0 8px rgb(var(--profile-glow-rgb, 169 255 0) / 0.05);
+    }
+
+    50% {
+      box-shadow: 0 0 20px rgb(var(--profile-glow-rgb, 169 255 0) / 0.3), inset 0 0 15px rgb(var(--profile-glow-rgb, 169 255 0) / 0.1);
+    }
+  }
+
+  /* Rusted Metal Background */
+  .skin-block-rusted-metal-bg {
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgb(var(--profile-accent-rgb, 85 85 85) / 0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgb(var(--profile-accent-rgb, 85 85 85) / 0.1) 0%, transparent 40%) !important;
+  }
+
+  /* Glassmorphism */
+  .skin-block-glassmorphism {
+    background: rgb(var(--profile-accent-rgb, 57 255 20) / 0.05) !important;
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid rgb(var(--profile-glow-rgb, 127 255 0) / 0.2) !important;
+  }
+
+  /* ═══ Springtrap Avatar Glitch Effect ═══ */
+  @keyframes springtrapGlitch {
+    0% {
+      filter: none;
+      transform: translate(0);
+    }
+
+    10% {
+      filter: hue-rotate(90deg) saturate(3) contrast(1.5);
+      transform: translate(-3px, 2px);
+    }
+
+    20% {
+      filter: hue-rotate(-90deg) saturate(2) contrast(1.3);
+      transform: translate(3px, -2px);
+      clip-path: inset(20% 0 30% 0);
+    }
+
+    30% {
+      filter: hue-rotate(45deg) saturate(4) brightness(1.2);
+      transform: translate(-2px, -2px);
+      clip-path: inset(50% 0 10% 0);
+    }
+
+    40% {
+      filter: hue-rotate(-45deg) saturate(3) contrast(1.4);
+      transform: translate(2px, 2px);
+      clip-path: inset(10% 0 60% 0);
+    }
+
+    50% {
+      filter: hue-rotate(120deg) saturate(5) brightness(0.8);
+      transform: translate(-1px, 1px);
+      clip-path: inset(40% 0 20% 0);
+    }
+
+    60% {
+      filter: none;
+      transform: translate(1px, -1px);
+      clip-path: none;
+    }
+
+    100% {
+      filter: none;
+      transform: translate(0);
+      clip-path: none;
+    }
+  }
+
+  20% {
+    text-shadow: -3px 0 #FF0040, 3px 0 #00FFFF;
+  }
+
+  40% {
+    text-shadow: 3px 0 #FF0040, -3px 0 #00FFFF;
+  }
+
+  60% {
+    text-shadow: -2px 2px #A9FF00, 2px -2px #8B5E3C;
+  }
+
+  80% {
+    text-shadow: 2px -2px #FF0040, -2px 2px #00FFFF;
+  }
+}
+
+.springtrap-glitch {
+  animation: springtrapGlitch 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+    springtrapChroma 0.3s steps(5) forwards;
+  position: relative;
+}
+
+.springtrap-glitch::before,
+.springtrap-glitch::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  animation: springtrapLayers 0.3s steps(3) forwards;
+}
+
+.springtrap-glitch::before {
+  background: rgba(255, 0, 64, 0.3);
+  mix-blend-mode: screen;
+  transform: translate(-4px, 0);
+}
+
+.springtrap-glitch::after {
+  background: rgba(0, 255, 255, 0.3);
+  mix-blend-mode: screen;
+  transform: translate(4px, 0);
+}
+
+@keyframes springtrapLayers {
+  0% {
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 0.8;
+  }
+
+  40% {
+    opacity: 0.5;
+  }
+
+  60% {
+    opacity: 0.9;
+  }
+
+  80% {
+    opacity: 0.3;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ═══ Animated Nickname Effects ═══ */
+
+/* Gradient Pulse — background-clip: text + animated gradient */
+.nickname-gradient-pulse {
+  background: linear-gradient(90deg,
+      var(--profile-accent, #8B0000),
+      var(--profile-glow, #DC143C),
+      var(--profile-accent, #8B0000));
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: nicknameGradientPulse 3s ease-in-out infinite;
+}
+
+@keyframes nicknameGradientPulse {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Toxic Glitch — jitter + split colors */
+.nickname-toxic-glitch {
+  position: relative;
+  color: var(--profile-glow, #7FFF00);
+  animation: nicknameGlitchJitter 4s infinite;
+  text-shadow:
+    0 0 8px rgb(var(--profile-glow-rgb, 127 255 0) / 0.5),
+    0 0 20px rgb(var(--profile-glow-rgb, 127 255 0) / 0.2);
+}
+
+@keyframes nicknameGlitchJitter {
+
+  0%,
+  92%,
+  100% {
+    transform: translate(0);
+    text-shadow: 0 0 8px rgb(var(--profile-glow-rgb, 127 255 0) / 0.5);
+  }
+
+  93% {
+    transform: translate(-2px, 1px);
+    text-shadow: 2px 0 #00FFFF, -2px 0 #FF0040;
+  }
+
+  94% {
+    transform: translate(2px, -1px);
+    text-shadow: -2px 0 #00FFFF, 2px 0 #FF0040;
+  }
+
+  95% {
+    transform: translate(-1px, -1px);
+    text-shadow: 1px 0 #FF0040;
+  }
+
+  96% {
+    transform: translate(1px, 1px);
+    text-shadow: -1px 0 #00FFFF;
+  }
+
+  97% {
+    transform: translate(0);
+    text-shadow: 0 0 8px rgb(var(--profile-glow-rgb, 127 255 0) / 0.5);
+  }
+}
+
+/* ═══ Epic Overlays ═══ */
+
+/* Scanlines overlay for containers */
+.skin-overlay-scanlines {
+  position: relative;
+  overflow: hidden;
+}
+
+.skin-overlay-scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: repeating-linear-gradient(0deg,
+      transparent,
+      transparent 3px,
+      rgba(0, 0, 0, 0.06) 3px,
+      rgba(0, 0, 0, 0.06) 6px);
+  opacity: 0.7;
+}
+
+/* Embers/particles overlay */
+.skin-overlay-embers {
+  position: relative;
+  overflow: hidden;
+}
+
+.skin-overlay-embers::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    radial-gradient(1px 1px at 20% 30%, rgb(var(--profile-glow-rgb, 255 255 255) / 0.4), transparent),
+    radial-gradient(1px 1px at 40% 70%, rgb(var(--profile-glow-rgb, 255 255 255) / 0.3), transparent),
+    radial-gradient(1px 1px at 60% 20%, rgb(var(--profile-glow-rgb, 255 255 255) / 0.5), transparent),
+    radial-gradient(1px 1px at 80% 60%, rgb(var(--profile-glow-rgb, 255 255 255) / 0.3), transparent),
+    radial-gradient(1.5px 1.5px at 10% 80%, rgb(var(--profile-glow-rgb, 255 255 255) / 0.4), transparent),
+    radial-gradient(1px 1px at 90% 40%, rgb(var(--profile-glow-rgb, 255 255 255) / 0.35), transparent);
+  background-size: 100% 100%;
+  animation: embersFloat 8s ease-in-out infinite;
+}
+
+@keyframes embersFloat {
+  0% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+
+  50% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+}
+
+/* ═══ Preview Watermark ═══ */
+.preview-watermark {
+  position: relative;
+  overflow: hidden;
+}
+
+.preview-watermark::before {
+  content: 'НЕСАНКЦИОНИРОВАННЫЙ ДОСТУП  НЕСАНКЦИОНИРОВАННЫЙ ДОСТУП  НЕСАНКЦИОНИРОВАННЫЙ ДОСТУП  НЕСАНКЦИОНИРОВАННЫЙ ДОСТУП  НЕСАНКЦИОНИРОВАННЫЙ ДОСТУП  НЕСАНКЦИОНИРОВАННЫЙ ДОСТУП';
+  position: absolute;
+  inset: -50%;
+  z-index: 50;
+  pointer-events: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 4px;
+  line-height: 3;
+  color: rgba(255, 0, 0, 0.08);
+  transform: rotate(-35deg);
+  white-space: nowrap;
+  word-spacing: 40px;
+  overflow: hidden;
+}
+
+/* ═══ Rarity badges ═══ */
+.rarity-badge-rare {
+  background: linear-gradient(135deg, rgba(0, 119, 255, 0.15), rgba(0, 119, 255, 0.05));
+  border: 1px solid rgba(0, 119, 255, 0.3);
+  color: #4DA6FF;
+}
+
+.rarity-badge-epic {
+  background: linear-gradient(135deg, rgba(150, 0, 255, 0.15), rgba(150, 0, 255, 0.05));
+  border: 1px solid rgba(150, 0, 255, 0.3);
+  color: #B366FF;
+  animation: rarityEpicGlow 2.5s ease-in-out infinite;
+}
+
+@keyframes rarityEpicGlow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 4px rgba(150, 0, 255, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 12px rgba(150, 0, 255, 0.5);
+  }
+}
+
+.rarity-badge-mythic,
+.rarity-badge-legendary {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 165, 0, 0.1));
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  color: #FFD700;
+  animation: rarityMythicGlow 2s ease-in-out infinite;
+}
+
+@keyframes rarityMythicGlow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(255, 215, 0, 0.3);
+    text-shadow: 0 0 4px rgba(255, 215, 0, 0.3);
+  }
+
+  50% {
+    box-shadow: 0 0 16px rgba(255, 215, 0, 0.6);
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SKIN-SPECIFIC EFFECTS — Each skin has unique CSS visuals
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Spring-Locked: Pulsing dark-red hover states ── */
+.skin-effect-spring-locked {
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.skin-effect-spring-locked:hover {
+  box-shadow: 0 0 18px rgba(204, 27, 27, 0.35), inset 0 0 12px rgba(107, 0, 0, 0.15);
+  border-color: rgba(204, 27, 27, 0.5) !important;
+}
+
+@keyframes bloodPulseHover {
+
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(204, 27, 27, 0.15);
+  }
+
+  50% {
+    box-shadow: 0 0 22px rgba(204, 27, 27, 0.4), 0 0 4px rgba(107, 0, 0, 0.2);
+  }
+}
+
+.skin-block-spring-locked {
+  border: 1px solid rgba(204, 27, 27, 0.25) !important;
+  animation: bloodPulseHover 4s ease-in-out infinite;
+}
+
+.nickname-spring-locked {
+  color: #CC1B1B;
+  text-shadow: 0 0 8px rgba(204, 27, 27, 0.4), 0 0 20px rgba(107, 0, 0, 0.2);
+  animation: nicknameGradientPulse 3s ease-in-out infinite;
+  background: linear-gradient(90deg, #6B0000, #CC1B1B, #6B0000);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Coolant-Leak: Frosted glass / frost shimmer ── */
+@keyframes frostShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skin-block-coolant-leak {
+  background: rgba(0, 107, 143, 0.06) !important;
+  backdrop-filter: blur(12px) saturate(1.3);
+  -webkit-backdrop-filter: blur(12px) saturate(1.3);
+  border: 1px solid rgba(0, 212, 255, 0.15) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.skin-block-coolant-leak::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(0, 212, 255, 0.06) 25%,
+      rgba(0, 212, 255, 0.12) 50%,
+      rgba(0, 212, 255, 0.06) 75%,
+      transparent 100%);
+  background-size: 200% 100%;
+  animation: frostShimmer 6s linear infinite;
+  z-index: 1;
+}
+
+.nickname-coolant-leak {
+  color: #00D4FF;
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.5), 0 0 30px rgba(0, 180, 230, 0.2);
+}
+
+/* ── Cyber-Sakura: VHS distortion / neon pink noise ── */
+@keyframes vhsDistort {
+  0% {
+    clip-path: inset(0 0 0 0);
+    transform: translate(0);
+  }
+
+  5% {
+    clip-path: inset(10% 0 80% 0);
+    transform: translate(-2px, 0);
+  }
+
+  5.5% {
+    clip-path: inset(0 0 0 0);
+    transform: translate(0);
+  }
+
+  30% {
+    clip-path: inset(0 0 0 0);
+    transform: translate(0);
+  }
+
+  35% {
+    clip-path: inset(60% 0 10% 0);
+    transform: translate(3px, 0);
+  }
+
+  35.5% {
+    clip-path: inset(0 0 0 0);
+    transform: translate(0);
+  }
+
+  70% {
+    clip-path: inset(0 0 0 0);
+    transform: translate(0);
+  }
+
+  72% {
+    clip-path: inset(30% 0 40% 0);
+    transform: translate(-1px, 0);
+  }
+
+  72.5% {
+    clip-path: inset(0 0 0 0);
+    transform: translate(0);
+  }
+
+  100% {
+    clip-path: inset(0 0 0 0);
+    transform: translate(0);
+  }
+}
+
+.skin-block-cyber-sakura {
+  border: 1px solid rgba(255, 45, 138, 0.2) !important;
+  box-shadow: 0 0 12px rgba(255, 105, 224, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.skin-block-cyber-sakura::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: repeating-linear-gradient(0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 45, 138, 0.02) 2px,
+      rgba(255, 45, 138, 0.02) 4px);
+  animation: vhsDistort 8s steps(1) infinite;
+}
+
+.nickname-cyber-sakura {
+  background: linear-gradient(90deg, #FF2D8A, #FF69E0, #FF2D8A);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: nicknameGradientPulse 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px rgba(255, 45, 138, 0.4));
+}
+
+/* ── Biohazard: Breathing glow (box-shadow pulses brighter/dimmer) ── */
+@keyframes breatheGlow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(223, 255, 0, 0.1), inset 0 0 6px rgba(184, 204, 0, 0.05);
+  }
+
+  50% {
+    box-shadow: 0 0 28px rgba(223, 255, 0, 0.35), 0 0 60px rgba(184, 204, 0, 0.15), inset 0 0 20px rgba(184, 204, 0, 0.1);
+  }
+}
+
+.skin-block-biohazard {
+  border: 1px solid rgba(184, 204, 0, 0.2) !important;
+  animation: breatheGlow 4s ease-in-out infinite;
+}
+
+.skin-overlay-biohazard {
+  position: relative;
+  overflow: hidden;
+}
+
+.skin-overlay-biohazard::after {
+  content: '☢';
+  position: absolute;
+  bottom: -20px;
+  right: -20px;
+  font-size: 120px;
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.nickname-biohazard {
+  color: #DFFF00;
+  text-shadow: 0 0 12px rgba(223, 255, 0, 0.5), 0 0 30px rgba(184, 204, 0, 0.2);
+  animation: breatheGlowText 4s ease-in-out infinite;
+}
+
+@keyframes breatheGlowText {
+
+  0%,
+  100% {
+    text-shadow: 0 0 6px rgba(223, 255, 0, 0.3);
+  }
+
+  50% {
+    text-shadow: 0 0 16px rgba(223, 255, 0, 0.7), 0 0 40px rgba(184, 204, 0, 0.3);
+  }
+}
+
+/* ── Terminal: CRT scanline scrolling effect ── */
+@keyframes crtScanlineScroll {
+  0% {
+    transform: translateY(-100%);
+  }
+
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+.skin-block-terminal {
+  background: rgba(0, 0, 0, 0.9) !important;
+  border: 1px solid rgba(0, 255, 65, 0.15) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.skin-block-terminal::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: repeating-linear-gradient(0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 255, 65, 0.03) 2px,
+      rgba(0, 255, 65, 0.03) 4px);
+}
+
+.skin-block-terminal::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+  background: linear-gradient(180deg,
+      rgba(0, 255, 65, 0.06) 0%,
+      transparent 8%,
+      transparent 100%);
+  background-size: 100% 30%;
+  animation: crtScanlineScroll 6s linear infinite;
+}
+
+.nickname-terminal {
+  color: #00FF41;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  text-shadow: 0 0 8px rgba(0, 255, 65, 0.6), 0 0 20px rgba(0, 255, 65, 0.2);
+  animation: terminalFlicker 0.1s infinite alternate;
+}
+
+@keyframes terminalFlicker {
+  0% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.95;
+  }
+}
+
+/* ── Golden-Era: Noise grain / wear patina texture ── */
+@keyframes noiseGrain {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  10% {
+    transform: translate(-5%, -5%);
+  }
+
+  20% {
+    transform: translate(5%, 10%);
+  }
+
+  30% {
+    transform: translate(-10%, 5%);
+  }
+
+  40% {
+    transform: translate(10%, -10%);
+  }
+
+  50% {
+    transform: translate(-5%, 15%);
+  }
+
+  60% {
+    transform: translate(15%, -5%);
+  }
+
+  70% {
+    transform: translate(-15%, 10%);
+  }
+
+  80% {
+    transform: translate(10%, 5%);
+  }
+
+  90% {
+    transform: translate(-10%, -15%);
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+.skin-block-golden-era {
+  border: 1px solid rgba(184, 134, 11, 0.25) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.skin-block-golden-era::after {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+  animation: noiseGrain 1s steps(3) infinite;
+}
+
+.skin-overlay-golden-era {
+  position: relative;
+  overflow: hidden;
+}
+
+.skin-overlay-golden-era::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(135deg,
+      rgba(218, 165, 32, 0.04) 0%,
+      transparent 30%,
+      rgba(184, 134, 11, 0.06) 60%,
+      transparent 100%);
+}
+
+.nickname-golden-era {
+  background: linear-gradient(90deg, #B8860B, #DAA520, #FFD700, #DAA520, #B8860B);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: nicknameGradientPulse 4s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px rgba(218, 165, 32, 0.4));
+}
+
+/* ── System-Crash (BSOD): Hard glitch on username ── */
+@keyframes glitchTextBsod {
+
+  0%,
+  90%,
+  100% {
+    text-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
+    transform: translate(0);
+  }
+
+  91% {
+    text-shadow: 3px 0 #00FFFF, -3px 0 #FF0040, 0 0 8px rgba(0, 0, 170, 0.6);
+    transform: translate(-3px, 1px) skewX(-2deg);
+  }
+
+  92% {
+    text-shadow: -2px 0 #FF0040, 2px 0 #00FFFF, 0 0 12px rgba(0, 0, 170, 0.8);
+    transform: translate(3px, -1px) skewX(3deg);
+  }
+
+  93% {
+    text-shadow: 4px 0 #00FFFF, -4px 0 #FF0040;
+    transform: translate(-2px, 2px) skewX(-1deg);
+  }
+
+  94% {
+    text-shadow: -3px 0 #FF0040, 3px 0 #00FFFF;
+    transform: translate(1px, -2px) skewX(2deg);
+  }
+
+  95% {
+    text-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
+    transform: translate(0);
+  }
+}
+
+@keyframes bsodFlicker {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.98;
+  }
+
+  52% {
+    opacity: 0.93;
+  }
+
+  54% {
+    opacity: 1;
+  }
+}
+
+.skin-block-system-crash {
+  background: rgba(0, 0, 68, 0.85) !important;
+  border: 1px solid rgba(0, 0, 170, 0.4) !important;
+  animation: bsodFlicker 5s steps(1) infinite;
+  position: relative;
+}
+
+.skin-block-system-crash::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: repeating-linear-gradient(0deg,
+      transparent,
+      transparent 1px,
+      rgba(255, 255, 255, 0.01) 1px,
+      rgba(255, 255, 255, 0.01) 2px);
+}
+
+.nickname-system-crash {
+  color: #FFFFFF;
+  animation: glitchTextBsod 5s steps(1) infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHANTOM — «Ghost in the Machine»
+   Ethereal noise, unstable wireframe holograms, chromatic ghost, ghost echo
+   MYTHIC TIER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Phantom: Keyframes ── */
+
+@keyframes phantom-scanline {
+  0% {
+    transform: translateY(-100%);
+  }
+
+  100% {
+    transform: translateY(100dvh);
+  }
+}
+
+@keyframes phantom-noise-drift {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  20% {
+    transform: translate(-0.5%, 0.5%);
+  }
+
+  40% {
+    transform: translate(0.5%, -0.3%);
+  }
+
+  60% {
+    transform: translate(-0.3%, -0.5%);
+  }
+
+  80% {
+    transform: translate(0.3%, 0.3%);
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes phantom-hologram-flicker {
+
+  0%,
+  100% {
+    opacity: 0.95;
+  }
+
+  5% {
+    opacity: 0.82;
+  }
+
+  7% {
+    opacity: 0.98;
+  }
+
+  30% {
+    opacity: 0.93;
+  }
+
+  32% {
+    opacity: 0.8;
+  }
+
+  33% {
+    opacity: 0.97;
+  }
+
+  60% {
+    opacity: 0.9;
+  }
+
+  62% {
+    opacity: 0.85;
+  }
+
+  63% {
+    opacity: 0.96;
+  }
+
+  90% {
+    opacity: 0.92;
+  }
+}
+
+@keyframes phantom-corner-flicker {
+
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+
+  10% {
+    opacity: 0.9;
+  }
+
+  12% {
+    opacity: 0.3;
+  }
+
+  14% {
+    opacity: 0.8;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
+
+  52% {
+    opacity: 1;
+  }
+
+  54% {
+    opacity: 0.4;
+  }
+
+  56% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes phantom-glitch-skew {
+  0% {
+    transform: none;
+    clip-path: none;
+  }
+
+  10% {
+    transform: skewX(-12deg) translateX(3px);
+    clip-path: inset(20% 0 30% 0);
+  }
+
+  20% {
+    transform: skewX(8deg) translateX(-5px);
+    clip-path: inset(50% 0 10% 0);
+  }
+
+  30% {
+    transform: skewX(-4deg) translateX(2px);
+    clip-path: inset(10% 0 60% 0);
+  }
+
+  40% {
+    transform: none;
+    clip-path: none;
+  }
+
+  100% {
+    transform: none;
+    clip-path: none;
+  }
+}
+
+@keyframes phantom-avatar-pulse {
+
+  0%,
+  100% {
+    filter: grayscale(0.8) drop-shadow(0 0 8px rgba(0, 255, 255, 0.3));
+  }
+
+  50% {
+    filter: grayscale(0.8) drop-shadow(0 0 20px rgba(0, 255, 255, 0.6)) drop-shadow(0 0 40px rgba(0, 255, 255, 0.2));
+  }
+}
+
+@keyframes phantom-ghost-echo-fade {
+  0% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes phantom-global-tear {
+
+  0%,
+  98%,
+  100% {
+    transform: translateX(0);
+    filter: hue-rotate(0deg);
+  }
+
+  98.5% {
+    transform: translateX(-5px) skewX(2deg);
+    filter: hue-rotate(-20deg);
+  }
+
+  99% {
+    transform: translateX(4px) skewX(-2deg);
+    filter: hue-rotate(20deg);
+  }
+
+  99.5% {
+    transform: translateX(-2px);
+  }
+}
+
+@keyframes phantom-laser-scan {
+  0% {
+    top: -100%;
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  90% {
+    opacity: 1;
+  }
+
+  100% {
+    top: 200%;
+    opacity: 0;
+  }
+}
+
+@keyframes phantom-energy-surge {
+  0% {
+    left: -100%;
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  20%,
+  100% {
+    left: 200%;
+    opacity: 0;
+  }
+}
+
+[data-profile-theme="phantom"] {
+  --profile-glow-rgb: 0, 255, 255;
+}
+
+/* ── Step 1: Ethereal Noise Background (scoped to blocks only, no container bg) ── */
+
+/* Overlay: noise + ghostly gradients + scanline */
+.skin-overlay-phantom {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ghostly cyan/grey radial gradients + SVG noise texture */
+.skin-overlay-phantom::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 25% 35%, rgba(var(--profile-glow-rgb), 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 75% 65%, rgba(var(--profile-glow-rgb), 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(180, 180, 180, 0.02) 0%, transparent 60%),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+  animation: phantom-noise-drift 12s ease-in-out infinite;
+}
+
+/* VHS tracking line overlay */
+.skin-overlay-phantom::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -100%;
+  width: 100%;
+  height: 2px;
+  pointer-events: none;
+  z-index: 5;
+  background: linear-gradient(90deg, transparent 10%, rgba(var(--profile-glow-rgb), 0.15) 30%, rgba(var(--profile-glow-rgb), 0.25) 50%, rgba(var(--profile-glow-rgb), 0.15) 70%, transparent 90%);
+  box-shadow: 0 0 20px rgba(var(--profile-glow-rgb), 0.1), 0 0 60px rgba(var(--profile-glow-rgb), 0.05);
+  animation: phantom-scanline 8s linear infinite;
+}
+
+/* ── Step 2: Unstable Wireframe / Hologram Blocks ── */
+.skin-block-phantom {
+  background: rgba(0, 20, 20, 0.75) !important;
+  border: none !important;
+  position: relative;
+  animation: phantom-hologram-flicker 6s steps(1) infinite;
+}
+
+/* HUD corner brackets — top-left, top-right, bottom-left, bottom-right */
+.skin-block-phantom::before,
+.skin-block-phantom::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+  animation: phantom-corner-flicker 4s steps(1) infinite;
+}
+
+/* Top-left + bottom-right corners */
+.skin-block-phantom::before {
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-top: 1px solid rgba(var(--profile-glow-rgb), 0.2);
+  border-left: 1px solid rgba(var(--profile-glow-rgb), 0.2);
+  border-bottom: 1px solid rgba(var(--profile-glow-rgb), 0.2);
+  border-right: 1px solid rgba(var(--profile-glow-rgb), 0.2);
+  /* Sci-fi corner cut effect */
+  clip-path: polygon(0 0, 20px 0, 20px 1px, 1px 1px, 1px 20px, 0 20px,
+      0 calc(100% - 20px), 1px calc(100% - 20px), 1px calc(100% - 1px), 20px calc(100% - 1px), 20px 100%, 0 100%,
+      100% 100%, calc(100% - 20px) 100%, calc(100% - 20px) calc(100% - 1px), calc(100% - 1px) calc(100% - 1px), calc(100% - 1px) calc(100% - 20px), 100% calc(100% - 20px),
+      100% 20px, calc(100% - 1px) 20px, calc(100% - 1px) 1px, calc(100% - 20px) 1px, calc(100% - 20px) 0, 100% 0);
+  box-shadow: 0 0 8px rgba(var(--profile-glow-rgb), 0.1);
+}
+
+/* Inner glow line (subtle) */
+.skin-block-phantom::after {
+  inset: 4px;
+  border: 1px solid rgba(var(--profile-glow-rgb), 0.04);
+  opacity: 0.5;
+}
+
+/* ── Step 3: Chromatic Ghost Typography + Phantom Tears ── */
+.nickname-phantom {
+  position: relative;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow:
+    -2px 0 rgba(var(--profile-glow-rgb), 0.4),
+    2px 0 rgba(255, 0, 128, 0.3),
+    0 0 12px rgba(var(--profile-glow-rgb), 0.3);
+  transition: all 0.15s ease;
+}
+
+/* "Тающий" призрачный след под ником */
+.nickname-phantom::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: transparent;
+  text-shadow: 0 4px 8px rgba(var(--profile-glow-rgb), 0.4);
+  filter: blur(2px);
+  opacity: 0.6;
+  animation: phantom-noise-drift 4s infinite alternate;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.nickname-phantom:hover {
+  animation: phantom-glitch-skew 0.15s steps(1) forwards;
+  text-shadow:
+    -4px 0 rgba(var(--profile-glow-rgb), 0.7),
+    4px 0 rgba(255, 0, 128, 0.6),
+    0 0 20px rgba(var(--profile-glow-rgb), 0.4);
+}
+
+/* ── Chromatic Ghost Avatar ── */
+[data-profile-theme="phantom"] .avatar-hover-target img {
+  filter: grayscale(0.8);
+  transition: filter 0.15s ease;
+}
+
+[data-profile-theme="phantom"] .avatar-hover-target {
+  animation: phantom-avatar-pulse 3s ease-in-out infinite;
+  transition: all 0.15s ease;
+}
+
+[data-profile-theme="phantom"] .avatar-hover-target:hover {
+  animation: phantom-glitch-skew 0.15s steps(1) forwards;
+}
+
+[data-profile-theme="phantom"] .avatar-hover-target:hover img {
+  filter: grayscale(0.5) brightness(1.2);
+}
+
+/* ── Step 4: Ghost Echo Hover on Manga Covers, Cards & Buttons ── */
+
+/* All interactive elements: ghost echo transition */
+[data-profile-theme="phantom"] .profile-card-hover,
+[data-profile-theme="phantom"] .group.relative,
+[data-profile-theme="phantom"] a[href*="manga"],
+[data-profile-theme="phantom"] button {
+  position: relative;
+  transition: box-shadow 0.3s ease;
+}
+
+/* Inset cyan glow on hover */
+[data-profile-theme="phantom"] .profile-card-hover:hover,
+[data-profile-theme="phantom"] .group.relative:hover,
+[data-profile-theme="phantom"] a[href*="manga"]:hover,
+[data-profile-theme="phantom"] button:hover {
+  box-shadow: inset 0 0 15px rgba(var(--profile-glow-rgb), 0.12), 0 0 15px rgba(var(--profile-glow-rgb), 0.08);
+}
+
+/* Ghost echo pseudo — lingers when hover ends */
+[data-profile-theme="phantom"] .profile-card-hover::after,
+[data-profile-theme="phantom"] .group.relative>a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: inset 0 0 20px rgba(var(--profile-glow-rgb), 0.15);
+  opacity: 0;
+  transition: opacity 0s;
+}
+
+[data-profile-theme="phantom"] .profile-card-hover:hover::after,
+[data-profile-theme="phantom"] .group.relative:hover>a::after {
+  opacity: 1;
+  transition: opacity 0s;
+}
+
+/* When hover ends, fade the echo slowly (ghost trail) */
+[data-profile-theme="phantom"] .profile-card-hover:not(:hover)::after,
+[data-profile-theme="phantom"] .group.relative:not(:hover)>a::after {
+  opacity: 0;
+  transition: opacity 1.2s ease-out 0s;
+}
+
+/* ── Phantom: All blocks get the wireframe hologram treatment ── */
+[data-profile-theme="phantom"] .profile-surface-bg {
+  background: rgba(0, 20, 20, 0.7) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-profile-theme="phantom"] .profile-border:not([class*="badge-glow-"]) {
+  border-color: rgba(var(--profile-glow-rgb), 0.06) !important;
+}
+
+[data-profile-theme="phantom"] .profile-badge-bg {
+  background: rgba(var(--profile-glow-rgb), 0.03) !important;
+}
+
+/* ── Phantom: Stat rows faint glow ── */
+[data-profile-theme="phantom"] .stat-row-noise:hover {
+  background: rgba(var(--profile-glow-rgb), 0.03);
+  box-shadow: inset 0 0 10px rgba(var(--profile-glow-rgb), 0.05);
+}
+
+/* ── Phantom: Custom scrollbar ── */
+[data-profile-theme="phantom"] ::-webkit-scrollbar {
+  width: 4px;
+}
+
+[data-profile-theme="phantom"] ::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+[data-profile-theme="phantom"] ::-webkit-scrollbar-thumb {
+  background: rgba(var(--profile-glow-rgb), 0.2);
+}
+
+[data-profile-theme="phantom"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--profile-glow-rgb), 0.4);
+}
+
+/* ── Effect 1: CRT Glitch Split — global tear every ~12s ── */
+[data-profile-theme="phantom"] .max-w-6xl {
+  animation: phantom-global-tear 12s infinite;
+}
+
+/* ── Effect 2: Ectoplasm — Laser scan on manga card hover ── */
+[data-profile-theme="phantom"] .profile-card-hover {
+  overflow: hidden;
+}
+
+[data-profile-theme="phantom"] .profile-card-hover:hover::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #00FFFF;
+  box-shadow: 0 0 10px 3px rgba(0, 255, 255, 0.5);
+  z-index: 10;
+  animation: phantom-laser-scan 1.5s linear infinite;
+  pointer-events: none;
+}
+
+/* ── Effect 4: Reactor XP Bar ── */
+[data-profile-theme="phantom"] .xp-bar-fill {
+  background: linear-gradient(90deg, rgba(0, 40, 40, 0.8), rgba(0, 255, 255, 0.8)) !important;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+[data-profile-theme="phantom"] .xp-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+  transform: skewX(-20deg);
+  animation: phantom-energy-surge 3s infinite;
+  pointer-events: none;
+}

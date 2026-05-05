@@ -34,3 +34,4 @@ __pycache__/
 backend/manga_app.db
 backend/manga/
 *.db
+bundle-report.html

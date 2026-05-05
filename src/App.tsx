@@ -2,7 +2,6 @@ import React, { Suspense, useContext, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useParams, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import Header from './components/Header';
-import AuthModal from './components/AuthModal';
 import ProtectedRoute from './components/ProtectedRoute';
 import PageTransition from './components/PageTransition';
 import { MangaContext } from './contexts/MangaContext';
@@ -11,9 +10,11 @@ import { API_BASE } from './services/externalApiService';
 import AdminRoute from './components/AdminRoute';
 import AdminLayout from './components/admin/AdminLayout';
 import DetailPageSkeleton from './components/skeletons/DetailPageSkeleton';
-import SpringtrapNightmare from './components/SpringtrapNightmare';
-import SpringlockWarning from './components/SpringlockWarning';
 import SpringOSErrorPage from './pages/SpringOSErrorPage';
+
+const AuthModal = React.lazy(() => import('./components/AuthModal'));
+const SpringtrapNightmare = React.lazy(() => import('./components/SpringtrapNightmare'));
+const SpringlockWarning = React.lazy(() => import('./components/SpringlockWarning'));
 
 // Lazy-loaded pages — each becomes a separate chunk
 const HomePage = React.lazy(() => import('./pages/HomePage'));
@@ -145,7 +146,8 @@ const ReaderPageWrapper: React.FC = () => {
     const { getMangaById } = useContext(MangaContext);
     const mangaId = id || '';
     const chapId = chapterId || '';
-    const startPage = (location.state as any)?.startPage || 1;
+    const queryParams = new URLSearchParams(location.search);
+    const startPage = (location.state as any)?.startPage || parseInt(queryParams.get('page') || '1', 10) || 1;
     const manga = getMangaById(mangaId);
 
     // Redirect MD5 hash URLs to slug URLs
@@ -257,11 +259,17 @@ const AppContent: React.FC = () => {
   const isLoginPage = location.pathname === '/login' || location.pathname === '/register';
 
   useEffect(() => {
-    fetch(`${API_BASE}/admin/maintenance-status`)
-      .then(r => r.json())
-      .then(data => setMaintenanceMode(data.maintenance === true))
-      .catch(() => setMaintenanceMode(false));
-  }, [location.pathname]);
+    const checkMaintenance = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetch(`${API_BASE}/admin/maintenance-status`)
+        .then(r => r.json())
+        .then(data => setMaintenanceMode(data.maintenance === true))
+        .catch(() => setMaintenanceMode(false));
+    };
+    checkMaintenance();
+    const interval = setInterval(checkMaintenance, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Полная блокировка: не админ, нет bypass, не страница логина
   if (maintenanceMode && !isAdmin && !hasBypass && !isLoginPage) {

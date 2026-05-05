@@ -249,18 +249,20 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
 
   const fetchMangaById = useCallback(async (id: string): Promise<Manga | undefined> => {
-    const existing = mangaList.find(m => m.id === id);
+    const existing = mangaListRef.current.find(m => m.id === id);
     if (existing && existing.chapters.length > 0) return existing;
 
     try {
-      const res = await fetch(`${API_BASE}/manga/${id}/detail`, { credentials: 'include' });
-      if (!res.ok) return existing;
-      const item = await res.json();
+      const [detailRes, chapRes] = await Promise.all([
+        fetch(`${API_BASE}/manga/${id}/detail`, { credentials: 'include' }),
+        fetch(`${API_BASE}/manga/${id}/chapters`, { credentials: 'include' }),
+      ]);
+
+      if (!detailRes.ok) return existing;
+      const item = await detailRes.json();
       const localCache = getLocalCache();
       const manga = backendItemToManga(item, localCache);
 
-      // Загружаем главы
-      const chapRes = await fetch(`${API_BASE}/manga/${id}/chapters`, { credentials: 'include' });
       if (chapRes.ok) {
         const chapData = await chapRes.json();
         manga.chapters = chapData.map((ch: any, idx: number) => normalizeChapter(ch, idx));
@@ -280,7 +282,7 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } catch {
       return existing;
     }
-  }, [mangaList]);
+  }, []);
 
   const fetchMangaChapters = useCallback(async (mangaId: string): Promise<Chapter[]> => {
     try {
@@ -489,9 +491,12 @@ export const MangaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setLocalCache(cache);
   }, []);
 
+  const mangaListRef = useRef(mangaList);
+  mangaListRef.current = mangaList;
+
   const getMangaById = useCallback((id: string): Manga | undefined => {
-    return mangaList.find(manga => manga.id === id || manga.slug === id);
-  }, [mangaList]);
+    return mangaListRef.current.find(manga => manga.id === id || manga.slug === id);
+  }, []);
 
   return (
     <MangaContext.Provider value={{

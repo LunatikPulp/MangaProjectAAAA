@@ -15,9 +15,23 @@ from sqlalchemy import func
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+CRON_TOKEN_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cron_token")
+
+def _get_cron_headers():
+    token_path = CRON_TOKEN_PATH
+    if not os.path.exists(token_path):
+        logger.warning(f"Cron token file not found: {token_path}")
+        return {}
+    with open(token_path, "r") as f:
+        token = f.read().strip()
+    if not token:
+        logger.warning("Cron token file is empty")
+        return {}
+    return {"Authorization": f"Bearer {token}"}
+
 class CronManager:
     def __init__(self):
-        self.scraper = MangaBuffScraper(use_proxy=False)  # Отключаем прокси
+        self.scraper = MangaBuffScraper(use_proxy=False)
         self.is_running = False
         self.thread = None
         self.stats = {
@@ -32,56 +46,50 @@ class CronManager:
         logger.info("Starting manga update check...")
         self.stats['status'] = 'running'
         db: Session = SessionLocal()
+        cron_headers = _get_cron_headers()
 
         try:
-            # Получаем последние обновления с главной страницы
             updates = self.scraper.get_latest_updates(limit=50)
             new_imports = 0
-            processed_ids = set()  # Дедупликация — один manga_id за цикл
+            processed_ids = set()
 
             for update in updates:
                 try:
-                    manga_slug = update['manga_id']  # slug из URL (не БД id!)
+                    manga_slug = update['manga_id']
                     manga_url = update['manga_url']
 
                     if not manga_slug or not manga_url:
                         continue
 
-                    # Пропускаем если уже обрабатывали в этом цикле
                     if manga_url in processed_ids:
                         logger.debug(f"Skipping duplicate: {update['title']}")
                         continue
                     processed_ids.add(manga_url)
 
-                    # manga_id в БД = MD5 от URL (как в парсере server.py)
                     manga_id = hashlib.md5(manga_url.encode()).hexdigest()
 
-                    # Проверяем есть ли уже эта манга в базе
                     from models import MangaItem
                     existing_manga = db.query(MangaItem).filter(MangaItem.manga_id == manga_id).first()
 
                     if not existing_manga:
-                        # Пропускаем если в обновлениях нет номера главы (скорее всего 0 глав)
                         if not update.get('latest_chapter'):
                             logger.info(f"Skipping {update['title']} — no chapters detected")
                             continue
 
-                        # Новая манга - импортируем её через API
                         logger.info(f"New manga found: {update['title']} - importing...")
                         try:
                             import requests
                             response = requests.post(
                                 'http://localhost:8000/manga/mass-parse',
                                 json={'urls': [manga_url]},
+                                headers=cron_headers,
                                 timeout=120
                             )
                             if response.status_code == 200:
                                 result = response.json()
-                                # Проверяем что главы реально есть
                                 results = result.get('results', [])
                                 ch_count = results[0].get('chapters_count', 0) if results else 0
                                 if ch_count == 0:
-                                    # Удаляем тайтл без глав
                                     empty = db.query(MangaItem).filter(MangaItem.manga_id == manga_id).first()
                                     if empty:
                                         db.delete(empty)
@@ -90,6 +98,9 @@ class CronManager:
                                 else:
                                     new_imports += 1
                                     logger.info(f"Successfully imported: {update['title']} ({ch_count} chapters)")
+                            elif response.status_code == 401:
+                                logger.error("Cron token is invalid (401). Regenerate .cron_token!")
+                                self.stats['errors'] += 1
                             else:
                                 logger.error(f"Failed to import {manga_id}: {response.status_code}")
                                 self.stats['errors'] += 1
@@ -97,11 +108,8 @@ class CronManager:
                             logger.error(f"Error importing {manga_id}: {e}")
                             self.stats['errors'] += 1
                     else:
-                        # Манга уже есть — проверяем нужно ли обновление
                         latest_chapter = update.get('latest_chapter')
                         if latest_chapter:
-                            # Получаем все номера глав и находим макс числовым сравнением
-                            # (chapter_number — строка, SQL MAX сравнивает посимвольно)
                             ch_numbers = [
                                 row[0] for row in db.query(Chapter.chapter_number).filter(
                                     Chapter.manga_id == manga_id
@@ -118,13 +126,14 @@ class CronManager:
                                     logger.info(f"Skipping {update['title']} — chapter {latest_chapter} already in DB (max: {max_ch_num})")
                                     continue
                             except (ValueError, TypeError):
-                                pass  # Не удалось сравнить — обновляем на всякий случай
+                                pass
 
                         logger.info(f"Updating: {update['title']} (new chapter: {latest_chapter or 'unknown'})")
                         try:
                             import requests
                             response = requests.post(
                                 f'http://localhost:8000/catalog/recrawl-manga/{manga_id}',
+                                headers=cron_headers,
                                 timeout=120
                             )
                             if response.status_code == 200:
@@ -135,6 +144,9 @@ class CronManager:
                                     logger.info(f"Added {added} new chapters for: {update['title']}")
                                 else:
                                     logger.info(f"No new chapters for: {update['title']}")
+                            elif response.status_code == 401:
+                                logger.error("Cron token is invalid (401). Regenerate .cron_token!")
+                                self.stats['errors'] += 1
                             else:
                                 logger.warning(f"Could not update {manga_id}: {response.status_code}")
                         except Exception as e:
@@ -163,51 +175,41 @@ class CronManager:
             db.close()
 
     def cleanup_old_sessions(self):
-        """Очистка старых сессий (пример дополнительной задачи)"""
         logger.info("Cleaning up old sessions...")
-        # Здесь можно добавить логику очистки
         pass
 
     def run_scheduler(self):
-        """Запуск планировщика в отдельном потоке"""
         logger.info("Cron scheduler started")
         self.is_running = True
 
         while self.is_running:
             schedule.run_pending()
-            time.sleep(60)  # Проверка каждую минуту
+            time.sleep(60)
 
     def start(self):
-        """Запуск cron-задач"""
         if self.is_running:
             logger.warning("Scheduler already running")
             return
 
-        # Настройка расписания
         schedule.every(5).minutes.do(self.check_for_updates)
         schedule.every(30).minutes.do(self.prefetch_new_chapter_images)
 
-        # Запуск в отдельном потоке
         self.thread = threading.Thread(target=self.run_scheduler, daemon=True)
         self.thread.start()
 
-        # Первая проверка сразу при старте (в фоне, чтобы не блокировать)
         threading.Thread(target=self.check_for_updates, daemon=True).start()
 
-        logger.info("Cron tasks scheduled (immediate + every 10 minutes)")
+        logger.info("Cron tasks scheduled (immediate + every 5 minutes)")
 
     def stop(self):
-        """Остановка cron-задач"""
         self.is_running = False
         schedule.clear()
         logger.info("Cron scheduler stopped")
 
     def get_stats(self):
-        """Получить статистику работы"""
         return self.stats
 
     def prefetch_new_chapter_images(self):
-        """Prefetch and cache images for recently added chapters"""
         logger.info("Starting image prefetch...")
         db: Session = SessionLocal()
         try:
@@ -253,16 +255,13 @@ class CronManager:
             db.close()
 
     def trigger_manual_update(self):
-        """Ручной запуск проверки обновлений"""
         logger.info("Manual update triggered")
         threading.Thread(target=self.check_for_updates, daemon=True).start()
 
 
-# Глобальный экземпляр менеджера
 cron_manager = CronManager()
 
 
 if __name__ == "__main__":
-    # Тестовый запуск
     manager = CronManager()
     manager.check_for_updates()

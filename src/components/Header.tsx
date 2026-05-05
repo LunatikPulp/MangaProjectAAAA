@@ -10,6 +10,7 @@ import FramedAvatar from './FramedAvatar';
 import Logo from './icons/Logo';
 
 import { API_BASE } from '../services/externalApiService';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/iosScrollLock';
 
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -108,7 +109,7 @@ const MobileTabItem: React.FC<{ to: string; label: string; children: React.React
 };
 
 const Header: React.FC = () => {
-  const { user, logout, openAuthModal } = useContext(AuthContext);
+  const { user, logout, openAuthModal, loading: authLoading } = useContext(AuthContext);
   const { mangaList, searchMangas } = useContext(MangaContext);
   const { unreadCount } = useContext(NotificationContext);
   const location = useLocation();
@@ -177,11 +178,8 @@ const Header: React.FC = () => {
 
   useEffect(() => {
     if (!isMobileMenuOpen) return;
-    const prevBody = document.body.style.overflow;
-    const prevHtml = document.documentElement.style.overflow;
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prevBody; document.documentElement.style.overflow = prevHtml; };
+    lockBodyScroll();
+    return () => unlockBodyScroll();
   }, [isMobileMenuOpen]);
 
   return (
@@ -321,7 +319,7 @@ const Header: React.FC = () => {
                 </div>
               </button>
 
-              {user ? (
+              {authLoading ? null : user ? (
                 <div className="relative" ref={profileRef}>
                   <button onClick={() => setProfileOpen(!isProfileOpen)} aria-label="Меню профиля" className="relative">
                     <FramedAvatar avatarUrl={user.avatar_url} username={user.username} size={32} frameKey={user.avatar_frame} className="border-2 border-transparent hover:border-brand-accent rounded-full transition-colors" />
@@ -344,7 +342,7 @@ const Header: React.FC = () => {
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-sm font-bold text-text-primary font-mono">{user.username}</p>
                           {scrapBalance !== null && (
-                            <span className="text-[12px] font-mono font-bold text-yellow-400 inline-flex items-center gap-0.5">{scrapBalance}<img src="/money/scrap.png" alt="scrap" className="inline-block w-3.5 h-3.5" /></span>
+                            <span className="text-[12px] font-mono font-bold text-yellow-400 inline-flex items-center gap-0.5">{scrapBalance}<img src="/money/scrap.webp" alt="scrap" className="inline-block w-3.5 h-3.5" /></span>
                           )}
                         </div>
                         <p className="text-xs text-muted truncate">{user.email}</p>
@@ -391,7 +389,7 @@ const Header: React.FC = () => {
       {/* ===== Mobile Bottom Tab Bar ===== */}
       {!isMessagesPage && <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-base-95 backdrop-blur-xl border-t border-overlay shadow-[0_-2px_10px_rgba(0,0,0,0.3)]" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="flex items-center justify-around h-16 px-2">
-          <MobileTabItem to="/" label="Главная"><HomeIcon className="w-6 h-6" /></MobileTabItem>
+          <MobileTabItem to="/catalog" label="Каталог"><HomeIcon className="w-6 h-6" /></MobileTabItem>
           <MobileTabItem to="/bookmarks" label="Закладки" requireAuth={true}><BookmarkIcon className="w-6 h-6" /></MobileTabItem>
 
           {/* Центр — Логотип */}
@@ -433,7 +431,7 @@ const Header: React.FC = () => {
               style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
             >
               <div className="p-4 space-y-1 overflow-y-auto max-h-[calc(60vh-2rem)]">
-                {user ? (
+                {authLoading ? null : user ? (
                   <Link
                     to="/profile"
                     onClick={() => setMobileMenuOpen(false)}
@@ -444,7 +442,7 @@ const Header: React.FC = () => {
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-bold text-text-primary font-mono truncate">{user.username}</p>
                         {scrapBalance !== null && (
-                          <span className="text-[12px] font-mono font-bold text-yellow-400 inline-flex items-center gap-0.5">{scrapBalance}<img src="/money/scrap.png" alt="scrap" className="inline-block w-3.5 h-3.5" /></span>
+                          <span className="text-[12px] font-mono font-bold text-yellow-400 inline-flex items-center gap-0.5">{scrapBalance}<img src="/money/scrap.webp" alt="scrap" className="inline-block w-3.5 h-3.5" /></span>
                         )}
                       </div>
                       <p className="text-xs text-muted truncate">{user.email}</p>
@@ -464,51 +462,33 @@ const Header: React.FC = () => {
                 <NavLink to="/tops" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}>
                   <span>{'>'}</span> Топы
                 </NavLink>
+                {user && (
                 <NavLink
                   to="/history"
-                  onClick={(e) => {
-                    if (!user) {
-                      e.preventDefault();
-                      setMobileMenuOpen(false);
-                      openAuthModal('login');
-                    } else {
-                      setMobileMenuOpen(false);
-                    }
-                  }}
+                  onClick={() => setMobileMenuOpen(false)}
                   className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
                 >
                   <span>{'>'}</span> История
                 </NavLink>
+                )}
+                {user && (
                 <NavLink
                   to="/quiz"
-                  onClick={(e) => {
-                    if (!user) {
-                      e.preventDefault();
-                      setMobileMenuOpen(false);
-                      openAuthModal('login');
-                    } else {
-                      setMobileMenuOpen(false);
-                    }
-                  }}
+                  onClick={() => setMobileMenuOpen(false)}
                   className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
                 >
                   <span>{'>'}</span> 🧩 Викторина
                 </NavLink>
+                )}
+                {user && (
                 <NavLink
                   to="/cards"
-                  onClick={(e) => {
-                    if (!user) {
-                      e.preventDefault();
-                      setMobileMenuOpen(false);
-                      openAuthModal('login');
-                    } else {
-                      setMobileMenuOpen(false);
-                    }
-                  }}
+                  onClick={() => setMobileMenuOpen(false)}
                   className={({ isActive }) => `flex items-center gap-3 px-4 py-3 font-mono text-sm transition-colors ${isActive ? 'bg-brand-10 text-brand-accent border-l-2 border-brand-accent' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
                 >
                   <span>{'>'}</span> 🃏 Карточки
                 </NavLink>
+                )}
 
                 <div className="border-t border-overlay my-2"></div>
 

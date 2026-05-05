@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User } from '../types';
 import { API_BASE } from '../services/externalApiService';
 
@@ -77,6 +77,7 @@ async function fetchMe(): Promise<User | null> {
       telegram_username: data.telegram_username || '',
       google_id: data.google_id || '',
       yandex_id: data.yandex_id || '',
+      chapters_read: data.chapters_read || 0,
     };
   } catch {
     return null;
@@ -92,11 +93,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     returnTo: undefined,
   });
 
-  // On load — restore session from cookie
   useEffect(() => {
     const init = async () => {
       try {
-        // Migrate: clear old localStorage token if present
         if (localStorage.getItem('backend_token')) {
           localStorage.removeItem('backend_token');
         }
@@ -113,11 +112,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(backendUser);
           localStorage.setItem('user', JSON.stringify(backendUser));
         } else {
+          setUser(null);
           localStorage.removeItem('user');
+          localStorage.removeItem('profileData');
         }
       } catch (error) {
-        console.error("Failed to restore session", error);
+        setUser(null);
         localStorage.removeItem('user');
+        localStorage.removeItem('profileData');
       } finally {
         setLoading(false);
       }
@@ -234,6 +236,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
     } catch {}
     localStorage.removeItem('user');
+    localStorage.removeItem('profileData');
     setUser(null);
   };
 
@@ -256,33 +259,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logout();
   };
 
-  const subscribeToManga = (mangaId: string) => {
+  const subscribeToManga = useCallback((mangaId: string) => {
     if (!user) return;
     const currentSubs = user.subscribedMangaIds || [];
     if (!currentSubs.includes(mangaId)) {
       const newUser = { ...user, subscribedMangaIds: [...currentSubs, mangaId] };
       updateUserState(newUser);
     }
-  };
+  }, [user]);
 
-  const unsubscribeFromManga = (mangaId: string) => {
+  const unsubscribeFromManga = useCallback((mangaId: string) => {
     if (!user) return;
     const currentSubs = user.subscribedMangaIds || [];
     const newUser = { ...user, subscribedMangaIds: currentSubs.filter(id => id !== mangaId) };
     updateUserState(newUser);
-  };
+  }, [user]);
 
-  const openAuthModal = (view: AuthModalView = 'login', returnTo?: string) => {
+  const openAuthModal = useCallback((view: AuthModalView = 'login', returnTo?: string) => {
     setAuthModal({ isOpen: true, view, returnTo });
-  };
+  }, []);
 
-  const closeAuthModal = () => {
+  const closeAuthModal = useCallback(() => {
     setAuthModal(prev => ({ ...prev, isOpen: false, returnTo: undefined }));
-  };
+  }, []);
 
-  const setAuthModalView = (view: AuthModalView) => {
+  const setAuthModalView = useCallback((view: AuthModalView) => {
     setAuthModal(prev => ({ ...prev, view }));
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout, register, updateUser, refreshUser, deleteAccount, subscribeToManga, unsubscribeFromManga, authModal, openAuthModal, closeAuthModal, setAuthModalView }}>
